@@ -187,6 +187,16 @@ pub struct RLEBitVectorBuilder {
 }
 
 impl RLEBitVectorBuilder {
+    pub fn new() -> RLEBitVectorBuilder {
+        RLEBitVectorBuilder {
+            z: vec![],
+            zo: vec![],
+            len: 0,
+            num_zeros: 0,
+            num_ones: 0,
+        }
+    }
+
     pub fn run(&mut self, num_zeros: usize, num_ones: usize) {
         if num_zeros == 0 && num_ones == 0 {
             return;
@@ -236,5 +246,72 @@ impl RLEBitVectorBuilder {
                 last_block_length == last_block_num_zeros
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::rlebitvector::RLEBitVectorBuilder;
+
+    use super::*;
+
+    #[test]
+    fn test_single_run() {
+        let mut bb = RLEBitVectorBuilder::new();
+        let num_zeros = 10;
+        let num_ones = 12;
+        bb.run(num_zeros, num_ones);
+        bb.run(num_zeros, num_ones);
+        let bv = bb.build();
+        for i in 0..num_zeros {
+            assert_eq!(bv.rank1(i), 0);
+        }
+        for i in num_zeros..num_zeros + num_ones {
+            assert_eq!(bv.rank1(i), i - (num_zeros - 1));
+        }
+    }
+
+    #[test]
+    fn test_runs_rank() {
+        let mut bb = RLEBitVectorBuilder::new();
+        bb.run(1, 2);
+        bb.run(3, 4);
+        bb.run(2, 1);
+        let bv = bb.build();
+        let ans = [0, 1, 2, 2, 2, 2, 3, 4, 5, 6, 6, 6, 7];
+        for (i, x) in ans.into_iter().enumerate() {
+            assert_eq!(bv.rank1(i), x);
+            assert_eq!(bv.rank0(i), i + 1 - x);
+        }
+    }
+
+    #[test]
+    fn test_runs_select1() {
+        let mut bb = RLEBitVectorBuilder::new();
+        bb.run(1, 2);
+        bb.run(3, 4);
+        bb.run(2, 1);
+        let bv = bb.build();
+        let ans = [1, 2, 6, 7, 8, 9, 12];
+        for (i, x) in ans.into_iter().enumerate() {
+            assert_eq!(bv.select1(i + 1).unwrap(), x);
+        }
+        assert_eq!(bv.select1(0), None);
+        assert_eq!(bv.select1(8), None);
+    }
+
+    #[test]
+    fn test_runs_select0() {
+        let mut bb = RLEBitVectorBuilder::new();
+        bb.run(1, 2);
+        bb.run(3, 4);
+        bb.run(2, 1);
+        let bv = bb.build();
+        let ans = [0, 3, 4, 5, 10, 11];
+        for (i, x) in ans.into_iter().enumerate() {
+            assert_eq!(bv.select0(i + 1).unwrap(), x);
+        }
+        assert_eq!(bv.select1(0), None);
+        assert_eq!(bv.select1(13), None);
     }
 }
