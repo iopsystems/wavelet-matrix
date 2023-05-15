@@ -1,4 +1,5 @@
 mod bitvector;
+mod originalrlebitvector;
 mod rlebitvector;
 mod simplebitvector;
 mod sparsebitvector;

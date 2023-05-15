@@ -187,16 +187,6 @@ pub struct RLEBitVectorBuilder {
 }
 
 impl RLEBitVectorBuilder {
-    pub fn new() -> RLEBitVectorBuilder {
-        RLEBitVectorBuilder {
-            z: vec![],
-            zo: vec![],
-            len: 0,
-            num_zeros: 0,
-            num_ones: 0,
-        }
-    }
-
     pub fn run(&mut self, num_zeros: usize, num_ones: usize) {
         if num_zeros == 0 && num_ones == 0 {
             return;
@@ -206,11 +196,11 @@ impl RLEBitVectorBuilder {
         self.num_ones += num_ones;
         self.len += num_zeros + num_ones;
         if num_zeros == 0 && len > 0 {
-            // self run consists of only ones; coalesce it with the
+            // this run consists of only ones; coalesce it with the
             // previous run (since all runs contain ones at their end).
             self.zo[len - 1] += num_ones;
         } else if num_ones == 0 && self.last_block_contains_only_zeros() {
-            // self run consists of only zeros; coalesce it with the
+            // this run consists of only zeros; coalesce it with the
             // previous run (since it turns out to consist of only zeros).
             self.z[len - 1] += num_zeros;
             self.zo[len - 1] += num_zeros;
@@ -251,13 +241,11 @@ impl RLEBitVectorBuilder {
 
 #[cfg(test)]
 mod tests {
-    use crate::rlebitvector::RLEBitVectorBuilder;
-
     use super::*;
 
     #[test]
     fn test_single_run() {
-        let mut bb = RLEBitVectorBuilder::new();
+        let mut bb = RLEBitVector::builder();
         let num_zeros = 10;
         let num_ones = 12;
         bb.run(num_zeros, num_ones);
@@ -273,7 +261,7 @@ mod tests {
 
     #[test]
     fn test_runs_rank() {
-        let mut bb = RLEBitVectorBuilder::new();
+        let mut bb = RLEBitVector::builder();
         bb.run(1, 2);
         bb.run(3, 4);
         bb.run(2, 1);
@@ -287,7 +275,7 @@ mod tests {
 
     #[test]
     fn test_runs_select1() {
-        let mut bb = RLEBitVectorBuilder::new();
+        let mut bb = RLEBitVector::builder();
         bb.run(1, 2);
         bb.run(3, 4);
         bb.run(2, 1);
@@ -302,7 +290,7 @@ mod tests {
 
     #[test]
     fn test_runs_select0() {
-        let mut bb = RLEBitVectorBuilder::new();
+        let mut bb = RLEBitVector::builder();
         bb.run(1, 2);
         bb.run(3, 4);
         bb.run(2, 1);
