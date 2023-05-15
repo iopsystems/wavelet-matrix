@@ -204,6 +204,7 @@ mod tests {
     #[test]
     fn test_runs_select1() {
         let mut bb = OriginalRLEBitVector::builder();
+        // 000011111111 001 01111
         bb.run(4, 8);
         bb.run(2, 1);
         bb.run(1, 4);
@@ -222,13 +223,14 @@ mod tests {
     #[test]
     fn test_runs_select0() {
         let mut bb = OriginalRLEBitVector::builder();
+        // 000011111111 001 01111
         bb.run(4, 8);
         bb.run(2, 1);
         bb.run(1, 4);
         let bv = bb.build();
         let ans = [0, 1, 2, 3, 12, 13, 15];
         for (i, x) in ans.into_iter().enumerate() {
-            println!("{:?}, {:?} ?= {:?}", i + 1, bv.select0(i + 1), x);
+            // println!("{:?}, {:?} ?= {:?}", i + 1, bv.select0(i + 1), x);
             assert_eq!(bv.select0(i + 1).unwrap(), x);
         }
         assert_eq!(bv.select0(0), None);
