@@ -45,7 +45,7 @@ impl BitVector for OriginalRLEBitVector {
         ) - 1;
 
         // we want to know whether `index` is pointing to a zero.
-        // we can determine this by computing the number of ones in preceding runs
+        // we can determine this by checking whether the number of ones in preceding runs
         // plus the number of zeros up to and including this run is >= index.
         let preceding_ones = self.o.select1(j + 1).unwrap_or(0);
         let preceding_zeros_inclusive = self.z.select1(j + 2).unwrap_or(self.num_zeros);
@@ -89,8 +89,6 @@ impl BitVector for OriginalRLEBitVector {
         // dbg!("select1:", n, r, i, i + n - 1);
         Some(i + n - 1)
     }
-
-    // asymmetry is because zeros precede ones
 
     fn select0(&self, n: usize) -> Option<usize> {
         if n < 1 || n > self.num_zeros {
