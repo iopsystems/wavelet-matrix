@@ -44,19 +44,18 @@ impl BitVector for OriginalRLEBitVector {
             self.z.num_ones(),
         ) - 1;
 
-        // q: is `index` pointing to a zero?
-        // a: it is if the number of ones in preceding runs plus the number of
-        //    zeros up to and including this run is >= index.
-
-        let preceding =
-            self.o.select1(j + 1).unwrap_or(0) + self.z.select1(j + 2).unwrap_or(self.num_zeros);
-        let index_is_zero = preceding > index;
+        // we want to know whether `index` is pointing to a zero.
+        // we can determine this by computing the number of ones in preceding runs
+        // plus the number of zeros up to and including this run is >= index.
+        let preceding_ones = self.o.select1(j + 1).unwrap_or(0);
+        let preceding_zeros_inclusive = self.z.select1(j + 2).unwrap_or(self.num_zeros);
+        let index_is_zero = preceding_ones + preceding_zeros_inclusive > index;
 
         if index_is_zero {
-            self.o.select1(j + 1).unwrap_or(0) // number of preceding ones
+            preceding_ones
         } else {
             // number of elements up to and including index, minus number of preceding zeros
-            index + 1 - self.z.select1(j + 2).unwrap_or(self.num_zeros)
+            index + 1 - preceding_zeros_inclusive
         }
     }
 
@@ -154,8 +153,8 @@ impl OriginalRLEBitVectorBuilder {
 
     pub fn build(mut self) -> OriginalRLEBitVector {
         let z1_is_zero = self.z.len() < self.o.len();
-        println!("{:?}", self.z);
-        println!("{:?}", self.o);
+        // println!("{:?}", self.z);
+        // println!("{:?}", self.o);
 
         // cumulate z and o to derive 1 bit positions
         let mut z_off = 0;
@@ -197,11 +196,9 @@ mod tests {
         let bv = bb.build();
         let ans = [0, 1, 2, 2, 2, 2, 3, 4, 5, 6, 6, 6, 7];
         for (i, x) in ans.into_iter().enumerate() {
-            // bv.rank1(i);
             assert_eq!(bv.rank1(i), x);
             assert_eq!(bv.rank0(i), i + 1 - x);
         }
-        // assert!(false);
     }
 
     #[test]
