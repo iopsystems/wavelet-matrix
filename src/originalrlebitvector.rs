@@ -184,6 +184,46 @@ impl OriginalRLEBitVectorBuilder {
 mod tests {
     use super::*;
 
+    use crate::rlebitvector::*;
+
+    use rand::Rng;
+
+    #[test]
+    fn compare_bitvecs() {
+        let mut rng = rand::thread_rng();
+
+        // 100 iterations of constructing and checking 2 bitvectors
+        for _ in 0..100 {
+            let mut bb1 = OriginalRLEBitVector::builder();
+            let mut bb2 = RLEBitVector::builder();
+
+            // create vectors of runs of zeros and ones
+            for _ in 1..100 {
+                let num_zeros = rng.gen_range(1..100);
+                let num_ones = rng.gen_range(1..100);
+                bb1.run(num_zeros, num_ones);
+                bb2.run(num_zeros, num_ones);
+            }
+            let bv1 = bb1.build();
+            let bv2 = bb2.build();
+
+            for i in 0..bv1.len() {
+                assert_eq!(bv1.rank1(i), bv2.rank1(i));
+                assert_eq!(bv1.rank0(i), bv2.rank0(i));
+            }
+
+            let num_ones = bv1.rank1(bv1.len());
+            for i in 1..=num_ones {
+                assert_eq!(bv1.select1(i), bv2.select1(i));
+            }
+
+            let num_zeros = bv1.rank0(bv1.len());
+            for i in 1..=num_zeros {
+                assert_eq!(bv1.select0(i), bv2.select0(i));
+            }
+        }
+    }
+
     #[test]
     fn test_runs_rank() {
         let mut bb = OriginalRLEBitVector::builder();

@@ -8,3 +8,4 @@ edition = "2021"
 [dependencies]
 bincode = "2.0.0-rc.3"
 log = "0.4"
+rand = "0.8.5"
