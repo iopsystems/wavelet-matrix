@@ -75,21 +75,13 @@ impl BitVector for RLEBitVector {
         let num_cumulative_zeros = self.z.select1(j + 1).unwrap();
 
         // Number of zeros preceding the j-th block
-        let num_preceding_zeros = if j == 0 {
-            0
-        } else {
-            self.z.select1(j).unwrap()
-        };
+        let num_preceding_zeros = self.z.select1(j).unwrap_or(0);
 
         // Number of zeros in the j-th block
         let num_zeros = num_cumulative_zeros - num_preceding_zeros;
 
         // Start index of the j-th block
-        let block_start = if j == 0 {
-            0
-        } else {
-            self.zo.select1(j).unwrap()
-        };
+        let block_start = self.zo.select1(j).unwrap_or(0);
 
         // Number of ones preceding the j-th block
         let num_preceding_ones = block_start - num_preceding_zeros;
@@ -99,11 +91,7 @@ impl BitVector for RLEBitVector {
 
         // This used to be num_preceding_ones + 0.max(index - ones_start + 1),
         // but we need to prevent subtraction overflow.
-        let adj = if index + 1 >= ones_start {
-            index + 1 - ones_start
-        } else {
-            0
-        };
+        let adj = (index + 1).saturating_sub(ones_start);
         num_preceding_ones + adj
     }
 

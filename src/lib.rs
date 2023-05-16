@@ -1,8 +1,8 @@
-mod bitvector;
-mod originalrlebitvector;
-mod rlebitvector;
-mod simplebitvector;
-mod sparsebitvector;
+pub mod bitvector;
+pub mod originalrlebitvector;
+pub mod rlebitvector;
+pub mod simplebitvector;
+pub mod sparsebitvector;
 mod utils;
 mod waveletmatrix;
 

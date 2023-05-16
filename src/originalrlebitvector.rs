@@ -14,7 +14,6 @@ pub struct OriginalRLEBitVector {
     len: usize,
     num_zeros: usize,
     num_ones: usize,
-    z1_is_zero: bool,
 }
 
 impl OriginalRLEBitVector {
@@ -150,10 +149,6 @@ impl OriginalRLEBitVectorBuilder {
     }
 
     pub fn build(mut self) -> OriginalRLEBitVector {
-        let z1_is_zero = self.z.len() < self.o.len();
-        // println!("{:?}", self.z);
-        // println!("{:?}", self.o);
-
         // cumulate z and o to derive 1 bit positions
         let mut z_off = 0;
         for i in 0..self.z.len() {
@@ -175,7 +170,6 @@ impl OriginalRLEBitVectorBuilder {
             len: self.len,
             num_zeros: self.num_zeros,
             num_ones: self.num_ones,
-            z1_is_zero,
         }
     }
 }
