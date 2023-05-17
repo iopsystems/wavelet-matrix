@@ -14,16 +14,16 @@ pub struct SparseBitVector {
 }
 
 impl SparseBitVector {
-    pub fn new(ones:  Vec<OnesType>, len: usize) -> SparseBitVector {
+    pub fn new(ones: Vec<OnesType>, len: usize) -> SparseBitVector {
         if let Some(&last) = ones.last() {
             assert!((last as usize) < len);
-        } 
+        }
 
         let n = len;
         let m = ones.len().max(1);
-        let chunk_size = (n as f64 / m as f64).ceil() as usize; 
+        let chunk_size = (n as f64 / m as f64).ceil() as usize;
         let num_chunks = div_ceil(n, chunk_size);
-        println!("initializing sparse vector with n = {} and m = {} with {} chunks of size {}", n, m, num_chunks, chunk_size); 
+        // println!("initializing sparse vector with n = {} and m = {} with {} chunks of size {}", n, m, num_chunks, chunk_size);
         let mut rank_blocks: Vec<usize> = vec![];
         rank_blocks.resize(num_chunks, 0);
         for one in ones.iter().copied() {
