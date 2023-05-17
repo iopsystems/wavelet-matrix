@@ -6,9 +6,6 @@ use wavelet_matrix::bitvector::BitVector;
 use wavelet_matrix::originalrlebitvector::OriginalRLEBitVector;
 use wavelet_matrix::rlebitvector::RLEBitVector;
 
-// Number of times to call the core function (eg. rank or select) within the benchmarked function
-// const N_QUERIES_PER_TEST: usize = 1000;
-
 // returns k runs that sum to n
 fn build_runs(k: usize, n: usize) -> Vec<(usize, usize)> {
     // assert we want an even number of runs
@@ -17,10 +14,7 @@ fn build_runs(k: usize, n: usize) -> Vec<(usize, usize)> {
 
     // We want to generate k runs, so we first sample k-1 random numbers in 1..n-1.
     // As an example, if k = 3 then we sample k-1 = 2 numbers in 1..n-1, taking the
-    // deltas to be the runs:
-    // 0 x x n
-    //  ^ ^ ^ runs
-    //
+
     // Sample k - 1 numbers in [0..n-2]
     let mut samples = rand::seq::index::sample(&mut rng, n - 1, k - 1).into_vec();
     // Shift them by 1, sort, then prepend 0 and append n, which gives us
@@ -49,9 +43,7 @@ fn build_runs(k: usize, n: usize) -> Vec<(usize, usize)> {
         let num_ones = runs[1];
         v.push((num_zeros, num_ones));
     }
-
     assert!(deltas.iter().sum::<usize>() == n);
-
     v
 }
 
@@ -113,11 +105,13 @@ fn bench_new_bitvector_select0(rng: &mut ThreadRng, bv: &RLEBitVector) -> usize 
 
 fn bench_bitvectors(c: &mut Criterion) {
     let num_runs = vec![
-        1_000_000,   //
-        5_000_000,   //
-        10_000_000,  //
-        50_000_000,  //
-        100_000_000, //
+        1_000_000,     //
+        5_000_000,     //
+        10_000_000,    //
+        50_000_000,    //
+        100_000_000,   //
+        500_000_000,   //
+        1_000_000_000, //
     ]; // k
     let bitvector_length = 4_000_000_000; // n
 
