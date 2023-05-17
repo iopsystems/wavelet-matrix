@@ -29,7 +29,7 @@ impl SparseBitVector {
 }
 
 impl BitVector for SparseBitVector {
-    fn rank1(&self, index: usize) -> usize {
+    fn  rank1(&self, index: usize) -> usize {
         binary_search_after(&self.ones, index.try_into().unwrap(), 0, self.ones.len())
     }
 
