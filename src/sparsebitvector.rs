@@ -37,8 +37,7 @@ impl SparseBitVector {
         rank_blocks.push(ones.len());
 
         SparseBitVector {
-                        // convert from usize to u32 (inefficient, but hopefully temporary)
-            ones: ones.into_iter().map(|d| d.try_into().unwrap()).collect(),
+            ones,
             chunk_size,
             rank_blocks,
             len,
