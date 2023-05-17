@@ -150,19 +150,19 @@ fn bench_new_bitvector_select0(bv: &RLEBitVector) -> usize {
 }
 
 fn bench_bitvectors(c: &mut Criterion) {
-    let ns = [100_000, 1_000_000];
-    let total_run_length = 1_000_000_000;
+    let num_runs = [100_000, 500_000, 1_000_000, 5_000_000, 10_000_000]; // k
+    let bitvector_length = 1_000_000_000; // n
 
     let mut group = c.benchmark_group("Rank1");
-    for n_runs in ns.iter().copied() {
-        let runs = build_runs(n_runs, total_run_length);
+    for k in num_runs.iter().copied() {
+        let runs = build_runs(k, bitvector_length);
         let bv_orig = build_orig_bitvector(&runs);
         let bv_new = build_new_bitvector(&runs);
         let mut ret = 0;
-        group.bench_function(BenchmarkId::new("Orig", n_runs), |b| {
+        group.bench_function(BenchmarkId::new("Orig", k), |b| {
             b.iter(|| ret += bench_orig_bitvector_rank(&bv_orig))
         });
-        group.bench_function(BenchmarkId::new("New", n_runs), |b| {
+        group.bench_function(BenchmarkId::new("New", k), |b| {
             b.iter(|| ret += bench_new_bitvector_rank(&bv_new))
         });
         assert!(ret > 0);
@@ -170,15 +170,15 @@ fn bench_bitvectors(c: &mut Criterion) {
     group.finish();
 
     let mut group = c.benchmark_group("Select1");
-    for n_runs in ns.iter().copied() {
-        let runs = build_runs(n_runs, total_run_length);
+    for k in num_runs.iter().copied() {
+        let runs = build_runs(k, bitvector_length);
         let bv_orig = build_orig_bitvector(&runs);
         let bv_new = build_new_bitvector(&runs);
         let mut ret = 0;
-        group.bench_function(BenchmarkId::new("Orig", n_runs), |b| {
+        group.bench_function(BenchmarkId::new("Orig", k), |b| {
             b.iter(|| ret += bench_orig_bitvector_select1(&bv_orig))
         });
-        group.bench_function(BenchmarkId::new("New", n_runs), |b| {
+        group.bench_function(BenchmarkId::new("New", k), |b| {
             b.iter(|| ret += bench_new_bitvector_select1(&bv_new))
         });
         assert!(ret > 0);
@@ -186,15 +186,15 @@ fn bench_bitvectors(c: &mut Criterion) {
     group.finish();
 
     let mut group = c.benchmark_group("Select0");
-    for n_runs in ns.iter().copied() {
-        let runs = build_runs(n_runs, total_run_length);
+    for k in num_runs.iter().copied() {
+        let runs = build_runs(k, bitvector_length);
         let bv_orig = build_orig_bitvector(&runs);
         let bv_new = build_new_bitvector(&runs);
         let mut ret = 0;
-        group.bench_function(BenchmarkId::new("Orig", n_runs), |b| {
+        group.bench_function(BenchmarkId::new("Orig", k), |b| {
             b.iter(|| ret += bench_orig_bitvector_select0(&bv_orig))
         });
-        group.bench_function(BenchmarkId::new("New", n_runs), |b| {
+        group.bench_function(BenchmarkId::new("New", k), |b| {
             b.iter(|| ret += bench_new_bitvector_select0(&bv_new))
         });
         assert!(ret > 0);
