@@ -21,7 +21,6 @@ impl SparseBitVector {
 
         let n_chunks = (len / ones.len()).max(1);
         let chunk_size = div_ceil(len, n_chunks);
-        // dbg!(n_chunks, chunk_size, len, ones.len());
         let mut rank_blocks = vec![];
         rank_blocks.resize(n_chunks, 0);
         for one in ones.iter().copied() {
