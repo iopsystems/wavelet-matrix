@@ -19,8 +19,12 @@ impl SparseBitVector {
             assert!((last as usize) < len);
         }
 
-        let n = len;
-        let m = ones.len().max(1);
+        // accelerate rank queries by subdividing the universe into equally-sized chunks
+        // and store the number of ones that appear in each chunk.
+        // Picking n/m as the chunk size gives us approximately m chunks, so the size
+        // of this sampled rank acceleration index is proportional to the number of elements.
+        let n = len; // universe size
+        let m = ones.len().max(1); // number of ones
         let chunk_size = (n as f64 / m as f64).ceil() as usize;
         let num_chunks = div_ceil(n, chunk_size);
         // println!("initializing sparse vector with n = {} and m = {} with {} chunks of size {}", n, m, num_chunks, chunk_size);
@@ -30,12 +34,14 @@ impl SparseBitVector {
             rank_blocks[one as usize / chunk_size] += 1;
         }
 
-        // cumulate
+        // convert the rank block values to cumulative sums
         let mut acc = 0;
         for x in rank_blocks.iter_mut() {
             *x += acc;
             acc = *x;
         }
+        // safety element in case the last index is a multiple of the chunk size
+        // todo: we could conditionally push this element only whe needed
         rank_blocks.push(ones.len());
 
         SparseBitVector {
