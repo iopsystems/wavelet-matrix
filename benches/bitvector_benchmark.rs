@@ -133,38 +133,41 @@ fn bench_bitvectors(c: &mut Criterion) {
     //     10_000_000,
     // ]; // k
     let num_runs = [
-        250_000,   //
-        500_000,   //
-        // 750_000,   //
-        1_000_000, //
-        // 2_500_000, //
-        5_000_000, //
-        // 7_500_000, //
-        10_000_000,
+        // 100_000,   //
+        // 500_000,   //
+        // 1_000_000, //
+        // 5_000_000, //
+        10_000_000, //
+        50_000_000, //
+        100_000_000, //
+        // 500_000_000, //
     ]; // k
-    let bitvector_length = 1_000_000_000; // n
+    let bitvector_length = 4_000_000_000; // n
     let runs: Vec<_> = num_runs
         .iter()
-        .map(|&k| build_runs(k, bitvector_length))
+        .map(|&k| {
+            println!("building runs {}", k);
+            build_runs(k, bitvector_length)
+        })
         .collect();
     let mut rng = rand::thread_rng();
 
-    let mut group = c.benchmark_group("Orig");
-    for (k, runs) in num_runs.iter().copied().zip(runs.iter()) {
-        let bv = build_orig_bitvector(runs);
-        let mut ret = 0;
-        group.bench_function(BenchmarkId::new("Rank1", k), |b| {
-            b.iter(|| ret += bench_orig_bitvector_rank(&mut rng, &bv))
-        });
-        group.bench_function(BenchmarkId::new("Select1", k), |b| {
-            b.iter(|| ret += bench_orig_bitvector_select1(&mut rng, &bv))
-        });
-        group.bench_function(BenchmarkId::new("Select0", k), |b| {
-            b.iter(|| ret += bench_orig_bitvector_select0(&mut rng, &bv))
-        });
-        assert!(ret > 0);
-    }
-    group.finish();
+    // let mut group = c.benchmark_group("Orig");
+    // for (k, runs) in num_runs.iter().copied().zip(runs.iter()) {
+    //     let bv = build_orig_bitvector(runs);
+    //     let mut ret = 0;
+    //     group.bench_function(BenchmarkId::new("Rank1", k), |b| {
+    //         b.iter(|| ret += bench_orig_bitvector_rank(&mut rng, &bv))
+    //     });
+    //     group.bench_function(BenchmarkId::new("Select1", k), |b| {
+    //         b.iter(|| ret += bench_orig_bitvector_select1(&mut rng, &bv))
+    //     });
+    //     group.bench_function(BenchmarkId::new("Select0", k), |b| {
+    //         b.iter(|| ret += bench_orig_bitvector_select0(&mut rng, &bv))
+    //     });
+    //     assert!(ret > 0);
+    // }
+    // group.finish();
 
     let mut group = c.benchmark_group("New");
     for (k, runs) in num_runs.iter().copied().zip(runs.iter()) {
@@ -173,12 +176,12 @@ fn bench_bitvectors(c: &mut Criterion) {
         group.bench_function(BenchmarkId::new("Rank1", k), |b| {
             b.iter(|| ret += bench_new_bitvector_rank(&mut rng, &bv))
         });
-        group.bench_function(BenchmarkId::new("Select1", k), |b| {
-            b.iter(|| ret += bench_new_bitvector_select1(&mut rng, &bv))
-        });
-        group.bench_function(BenchmarkId::new("Select0", k), |b| {
-            b.iter(|| ret += bench_new_bitvector_select0(&mut rng, &bv))
-        });
+        // group.bench_function(BenchmarkId::new("Select1", k), |b| {
+        //     b.iter(|| ret += bench_new_bitvector_select1(&mut rng, &bv))
+        // });
+        // group.bench_function(BenchmarkId::new("Select0", k), |b| {
+        //     b.iter(|| ret += bench_new_bitvector_select0(&mut rng, &bv))
+        // });
         assert!(ret > 0);
     }
     group.finish();

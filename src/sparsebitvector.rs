@@ -17,12 +17,15 @@ impl SparseBitVector {
     pub fn new(ones:  Vec<OnesType>, len: usize) -> SparseBitVector {
         if let Some(&last) = ones.last() {
             assert!((last as usize) < len);
-        }
+        } 
 
-        let n_chunks = (len / ones.len()).max(1);
-        let chunk_size = div_ceil(len, n_chunks);
-        let mut rank_blocks = vec![];
-        rank_blocks.resize(n_chunks, 0);
+        let n = len;
+        let m = ones.len().max(1);
+        let chunk_size = (n as f64 / m as f64).ceil() as usize; 
+        let num_chunks = div_ceil(n, chunk_size);
+        println!("initializing sparse vector with n = {} and m = {} with {} chunks of size {}", n, m, num_chunks, chunk_size); 
+        let mut rank_blocks: Vec<usize> = vec![];
+        rank_blocks.resize(num_chunks, 0);
         for one in ones.iter().copied() {
             rank_blocks[one as usize / chunk_size] += 1;
         }
@@ -55,9 +58,9 @@ impl BitVector for SparseBitVector {
     fn rank1(&self, index: usize) -> usize {
         let i = index / self.chunk_size;
         let offset_lo = if i == 0 { 0 } else { self.rank_blocks[i - 1] };
-        let offset_hi =  self.rank_blocks[i];
+        let offset_hi = self.rank_blocks[i];
         binary_search_after(&self.ones, index.try_into().unwrap(), offset_lo, offset_hi)
-        // binary_search_after(&self.ones, index, 0, self.ones.len())
+        // binary_search_after(&self.ones, index.try_into().unwrap(), 0, self.ones.len())
     }
 
     fn rank0(&self, index: usize) -> usize {
