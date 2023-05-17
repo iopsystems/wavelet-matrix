@@ -205,8 +205,8 @@ impl RLEBitVectorBuilder {
         info!("built RLEBitVector: {} runs", self.z.len());
 
         RLEBitVector {
-            z: SparseBitVector::new(self.z, self.len),
-            zo: SparseBitVector::new(self.zo, self.len),
+            z: SparseBitVector::new(self.z.iter().map(|&x| x.try_into().unwrap()).collect(), self.len+1),
+            zo: SparseBitVector::new(self.zo.iter().map(|&x| x.try_into().unwrap()).collect(), self.len+1),
             len: self.len,
             num_zeros: self.num_zeros,
             num_ones: self.num_ones,

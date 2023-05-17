@@ -12,7 +12,8 @@ wasm-release:
 
 .PHONY: test
 test:
-	cargo test
+# 	RUST_BACKTRACE=1 
+	RUST_BACKTRACE=1 cargo test
 
 .PHONY: run
 run:

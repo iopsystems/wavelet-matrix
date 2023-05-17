@@ -1,11 +1,12 @@
 use criterion::{criterion_group, criterion_main, BenchmarkId, Criterion};
+use rand::rngs::ThreadRng;
 use rand::Rng;
 use wavelet_matrix::bitvector::BitVector;
 use wavelet_matrix::originalrlebitvector::OriginalRLEBitVector;
 use wavelet_matrix::rlebitvector::RLEBitVector;
 
 // Number of times to call the core function (eg. rank or select) within the benchmarked function
-const N_QUERIES_PER_TEST: usize = 1000;
+// const N_QUERIES_PER_TEST: usize = 1000;
 
 // returns k runs that sum to n
 fn build_runs(k: usize, n: usize) -> Vec<(usize, usize)> {
@@ -72,130 +73,111 @@ fn build_new_bitvector(runs: &[(usize, usize)]) -> RLEBitVector {
 }
 
 #[inline]
-fn bench_orig_bitvector_rank(bv: &OriginalRLEBitVector) -> usize {
-    let mut rng = rand::thread_rng();
-    let n = bv.len();
-    let mut ret = 0;
-    for _ in 0..N_QUERIES_PER_TEST {
-        let i = rng.gen_range(1..n);
-        let r = bv.rank1(i);
-        ret += r;
-    }
-    ret
+fn bench_orig_bitvector_rank(rng: &mut ThreadRng, bv: &OriginalRLEBitVector) -> usize {
+    bv.rank1(rng.gen_range(1..bv.len()))
 }
 
 #[inline]
-fn bench_new_bitvector_rank(bv: &RLEBitVector) -> usize {
-    let mut rng = rand::thread_rng();
-    let n = bv.len();
-    let mut ret = 0;
-    for _ in 0..N_QUERIES_PER_TEST {
-        let i = rng.gen_range(0..n);
-        let r = bv.rank1(i);
-        ret += r;
-    }
-    ret
+fn bench_new_bitvector_rank(rng: &mut ThreadRng, bv: &RLEBitVector) -> usize {
+    bv.rank1(rng.gen_range(1..bv.len()))
 }
 
 #[inline]
-fn bench_orig_bitvector_select1(bv: &OriginalRLEBitVector) -> usize {
-    let mut rng = rand::thread_rng();
+fn bench_orig_bitvector_select1(rng: &mut ThreadRng, bv: &OriginalRLEBitVector) -> usize {
     let n = bv.num_ones();
-    let mut ret = 0;
-    for _ in 0..N_QUERIES_PER_TEST {
-        let i = rng.gen_range(1..=n);
-        let r = bv.select1(i).unwrap();
-        ret += r;
-    }
-    ret
+    let i = rng.gen_range(1..=n);
+    bv.select1(i).unwrap()
 }
 
 #[inline]
-fn bench_new_bitvector_select1(bv: &RLEBitVector) -> usize {
-    let mut rng = rand::thread_rng();
+fn bench_new_bitvector_select1(rng: &mut ThreadRng, bv: &RLEBitVector) -> usize {
     let n = bv.num_ones();
-    let mut ret = 0;
-    for _ in 0..N_QUERIES_PER_TEST {
-        let i = rng.gen_range(1..=n);
-        let r = bv.select1(i).unwrap();
-        ret += r;
-    }
-    ret
+    let i = rng.gen_range(1..=n);
+    bv.select1(i).unwrap()
 }
 
 #[inline]
-fn bench_orig_bitvector_select0(bv: &OriginalRLEBitVector) -> usize {
-    let mut rng = rand::thread_rng();
+fn bench_orig_bitvector_select0(rng: &mut ThreadRng, bv: &OriginalRLEBitVector) -> usize {
     let n = bv.num_zeros();
-    let mut ret = 0;
-    for _ in 0..N_QUERIES_PER_TEST {
-        let i = rng.gen_range(1..=n);
-        let r = bv.select0(i).unwrap();
-        ret += r;
-    }
-    ret
+    let i = rng.gen_range(1..=n);
+    bv.select0(i).unwrap()
 }
 
 #[inline]
-fn bench_new_bitvector_select0(bv: &RLEBitVector) -> usize {
-    let mut rng = rand::thread_rng();
+fn bench_new_bitvector_select0(rng: &mut ThreadRng, bv: &RLEBitVector) -> usize {
     let n = bv.num_zeros();
-    let mut ret = 0;
-    for _ in 0..N_QUERIES_PER_TEST {
-        let i = rng.gen_range(1..n);
-        let r = bv.select0(i).unwrap();
-        ret += r;
-    }
-    ret
+    let i = rng.gen_range(1..n);
+    bv.select0(i).unwrap()
 }
 
 fn bench_bitvectors(c: &mut Criterion) {
-    let num_runs = [100_000, 500_000, 1_000_000, 5_000_000, 10_000_000]; // k
+    // let num_runs = [
+    //     100_000,   //
+    //     200_000,   //
+    //     300_000,   //
+    //     400_000,   //
+    //     500_000,   //
+    //     600_000,   //
+    //     700_000,   //
+    //     800_000,   //
+    //     900_000,   //
+    //     1_000_000, //
+    //     2_000_000, //
+    //     3_000_000, //
+    //     4_000_000, //
+    //     5_000_000, //
+    //     6_000_000, //
+    //     7_000_000, //
+    //     8_000_000, //
+    //     9_000_000, //
+    //     10_000_000,
+    // ]; // k
+    let num_runs = [
+        250_000,   //
+        500_000,   //
+        // 750_000,   //
+        1_000_000, //
+        // 2_500_000, //
+        5_000_000, //
+        // 7_500_000, //
+        10_000_000,
+    ]; // k
     let bitvector_length = 1_000_000_000; // n
+    let runs: Vec<_> = num_runs
+        .iter()
+        .map(|&k| build_runs(k, bitvector_length))
+        .collect();
+    let mut rng = rand::thread_rng();
 
-    let mut group = c.benchmark_group("Rank1");
-    for k in num_runs.iter().copied() {
-        let runs = build_runs(k, bitvector_length);
-        let bv_orig = build_orig_bitvector(&runs);
-        let bv_new = build_new_bitvector(&runs);
+    let mut group = c.benchmark_group("Orig");
+    for (k, runs) in num_runs.iter().copied().zip(runs.iter()) {
+        let bv = build_orig_bitvector(runs);
         let mut ret = 0;
-        group.bench_function(BenchmarkId::new("Orig", k), |b| {
-            b.iter(|| ret += bench_orig_bitvector_rank(&bv_orig))
+        group.bench_function(BenchmarkId::new("Rank1", k), |b| {
+            b.iter(|| ret += bench_orig_bitvector_rank(&mut rng, &bv))
         });
-        group.bench_function(BenchmarkId::new("New", k), |b| {
-            b.iter(|| ret += bench_new_bitvector_rank(&bv_new))
+        group.bench_function(BenchmarkId::new("Select1", k), |b| {
+            b.iter(|| ret += bench_orig_bitvector_select1(&mut rng, &bv))
+        });
+        group.bench_function(BenchmarkId::new("Select0", k), |b| {
+            b.iter(|| ret += bench_orig_bitvector_select0(&mut rng, &bv))
         });
         assert!(ret > 0);
     }
     group.finish();
 
-    let mut group = c.benchmark_group("Select1");
-    for k in num_runs.iter().copied() {
-        let runs = build_runs(k, bitvector_length);
-        let bv_orig = build_orig_bitvector(&runs);
-        let bv_new = build_new_bitvector(&runs);
+    let mut group = c.benchmark_group("New");
+    for (k, runs) in num_runs.iter().copied().zip(runs.iter()) {
+        let bv = build_new_bitvector(runs);
         let mut ret = 0;
-        group.bench_function(BenchmarkId::new("Orig", k), |b| {
-            b.iter(|| ret += bench_orig_bitvector_select1(&bv_orig))
+        group.bench_function(BenchmarkId::new("Rank1", k), |b| {
+            b.iter(|| ret += bench_new_bitvector_rank(&mut rng, &bv))
         });
-        group.bench_function(BenchmarkId::new("New", k), |b| {
-            b.iter(|| ret += bench_new_bitvector_select1(&bv_new))
+        group.bench_function(BenchmarkId::new("Select1", k), |b| {
+            b.iter(|| ret += bench_new_bitvector_select1(&mut rng, &bv))
         });
-        assert!(ret > 0);
-    }
-    group.finish();
-
-    let mut group = c.benchmark_group("Select0");
-    for k in num_runs.iter().copied() {
-        let runs = build_runs(k, bitvector_length);
-        let bv_orig = build_orig_bitvector(&runs);
-        let bv_new = build_new_bitvector(&runs);
-        let mut ret = 0;
-        group.bench_function(BenchmarkId::new("Orig", k), |b| {
-            b.iter(|| ret += bench_orig_bitvector_select0(&bv_orig))
-        });
-        group.bench_function(BenchmarkId::new("New", k), |b| {
-            b.iter(|| ret += bench_new_bitvector_select0(&bv_new))
+        group.bench_function(BenchmarkId::new("Select0", k), |b| {
+            b.iter(|| ret += bench_new_bitvector_select0(&mut rng, &bv))
         });
         assert!(ret > 0);
     }

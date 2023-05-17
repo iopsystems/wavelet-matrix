@@ -3,19 +3,44 @@
 use crate::bitvector::BitVector;
 use crate::utils::{binary_search_after, binary_search_after_by};
 
-pub type OnesType = u32; // usize
+pub type OnesType = u32; // usize; // u32
 
 #[derive(Debug, bincode::Encode, bincode::Decode)]
 pub struct SparseBitVector {
     ones: Vec<OnesType>,
+    chunk_size: usize,
+    rank_blocks: Vec<usize>,
     len: usize,
 }
 
 impl SparseBitVector {
-    pub fn new(ones: Vec<usize>, len: usize) -> SparseBitVector {
+    pub fn new(ones:  Vec<OnesType>, len: usize) -> SparseBitVector {
+        if let Some(&last) = ones.last() {
+            assert!((last as usize) < len);
+        }
+
+        let n_chunks = (len / ones.len()).max(1);
+        let chunk_size = div_ceil(len, n_chunks);
+        // dbg!(n_chunks, chunk_size, len, ones.len());
+        let mut rank_blocks = vec![];
+        rank_blocks.resize(n_chunks, 0);
+        for one in ones.iter().copied() {
+            rank_blocks[one as usize / chunk_size] += 1;
+        }
+
+        // cumulate
+        let mut acc = 0;
+        for x in rank_blocks.iter_mut() {
+            *x += acc;
+            acc = *x;
+        }
+        rank_blocks.push(ones.len());
+
         SparseBitVector {
-            // convert from usize to u32 (inefficient, but hopefully temporary)
+                        // convert from usize to u32 (inefficient, but hopefully temporary)
             ones: ones.into_iter().map(|d| d.try_into().unwrap()).collect(),
+            chunk_size,
+            rank_blocks,
             len,
         }
     }
@@ -29,8 +54,12 @@ impl SparseBitVector {
 }
 
 impl BitVector for SparseBitVector {
-    fn  rank1(&self, index: usize) -> usize {
-        binary_search_after(&self.ones, index.try_into().unwrap(), 0, self.ones.len())
+    fn rank1(&self, index: usize) -> usize {
+        let i = index / self.chunk_size;
+        let offset_lo = if i == 0 { 0 } else { self.rank_blocks[i - 1] };
+        let offset_hi =  self.rank_blocks[i];
+        binary_search_after(&self.ones, index.try_into().unwrap(), offset_lo, offset_hi)
+        // binary_search_after(&self.ones, index, 0, self.ones.len())
     }
 
     fn rank0(&self, index: usize) -> usize {
@@ -95,9 +124,10 @@ impl SparseBitVectorBuilder {
 
     pub fn build(mut self) -> SparseBitVector {
         self.ones.sort();
-        SparseBitVector {
-            ones: self.ones,
-            len: self.len,
-        }
+        SparseBitVector::new(self.ones, self.len)
     }
+}
+
+fn div_ceil(a: usize, b: usize) -> usize {
+    (a + b - 1) / b
 }
