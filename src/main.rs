@@ -1,19 +1,23 @@
 use std::error::Error;
 
-use bio::data_structures::rank_select::RankSelect;
-use bv::BitVec;
-use bv::BitsMut;
+use simple_sds::ops::{BitVec, Rank, Select};
+use simple_sds::sparse_vector::{SparseBuilder, SparseVector};
 
 fn main() -> Result<(), Box<dyn Error>> {
     println!("hello there!");
 
-    let mut bits: BitVec<u8> = BitVec::new_fill(false, 64);
-    bits.set_bit(5, true);
-    bits.set_bit(32, true);
-    let rs = RankSelect::new(bits, 1);
-    assert!(rs.rank(6).unwrap() == 1);
-    assert!(rs.select(1).unwrap() == 5);
-    assert!(rs.select(2).unwrap() == 32);
+    let len = 100;
+    let ones = [1, 3];
+
+    let mut b = SparseBuilder::new(len, ones.len()).unwrap();
+    b.extend(ones.into_iter());
+    let v = SparseVector::try_from(b).unwrap();
+
+    for i in 0..=ones.last().copied().unwrap() {
+        dbg!(i, v.rank(i), v.select(i));
+    }
+
+    dbg!(v.len());
 
     Ok(())
 }

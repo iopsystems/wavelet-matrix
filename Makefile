@@ -12,7 +12,7 @@ wasm-release:
 
 .PHONY: test
 test:
-	RUST_BACKTRACE=1 cargo test -- --nocapture
+	RUST_BACKTRACE=full cargo test -- --nocapture --test-threads=1
 # 	cargo test
 
 .PHONY: run
