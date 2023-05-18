@@ -110,23 +110,22 @@ fn bench_bitvectors(c: &mut Criterion) {
         10_000_000, //
         // 50_000_000,    //
         100_000_000, //
-        // 500_000_000,   //
-        1_000_000_000, //
+                     // 500_000_000,   //
+                     // 1_000_000_000, //
     ]; // k
     let bitvector_length = 4_000_000_000usize; // n
-
-    use std::fs::File;
 
     let runs: Vec<Vec<(usize, usize)>> = num_runs
         .par_iter()
         .map(|&k| {
-            // return build_runs(k, bitvector_length);
-            let fname = format!("runs_{}.bincode", k);
-            let config = bincode::config::standard();
-            let mut f = File::open(fname).expect("Unable to open file");
-            let v: Vec<(usize, usize)> =
-                bincode::decode_from_std_read(&mut f, config).expect("Unable to decode file");
-            v
+            return build_runs(k, bitvector_length);
+            // use std::fs::File;
+            // let fname = format!("runs_{}.bincode", k);
+            // let config = bincode::config::standard();
+            // let mut f = File::open(fname).expect("Unable to open file");
+            // let v: Vec<(usize, usize)> =
+            //     bincode::decode_from_std_read(&mut f, config).expect("Unable to decode file");
+            // v
             // let ret = build_runs(k, bitvector_length);
             // let f = File::create(fname).expect("Unable to create file");
             // let mut f = BufWriter::new(f);
@@ -136,8 +135,6 @@ fn bench_bitvectors(c: &mut Criterion) {
             // vec![]
         })
         .collect();
-
-    // return;
 
     let mut rng = rand::thread_rng();
 

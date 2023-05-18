@@ -13,6 +13,7 @@ criterion = "0.4.0"
 log = "0.4"
 rand = "0.8.5"
 rayon = "1.7.0"
+rsdict = "0.0.6"
 
 [profile.release]
 lto = true

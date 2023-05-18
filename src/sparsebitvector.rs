@@ -24,16 +24,16 @@ impl SparseBitVector {
         }
 
         // accelerate rank queries by subdividing the universe into equally-sized chunks
-        // and store the number of ones that appear in each chunk.
+        // and storing the number of ones that appear in each chunk.
         // Picking n/m as the chunk size gives us approximately m chunks, so the size
-        // of this sampled rank acceleration index is proportional to the number of elements.
+        // of the acceleration index is proportional to the number of elements (ones.len()).
         let n = len; // universe size
         let m = ones.len().max(1); // number of ones
         let chunk_size = (n as f64 / m as f64).ceil() as usize;
         let num_chunks = div_ceil(n, chunk_size);
         // println!("initializing sparse vector with n = {} and m = {} with {} chunks of size {}", n, m, num_chunks, chunk_size);
         let mut rank_blocks: Vec<usize> = vec![];
-        rank_blocks.resize(num_chunks, 1); // pre-fill with count = 1 so that we can use select queries later...
+        rank_blocks.resize(num_chunks, 1); // pre-fill with count = 1 so that we can use select queries later even if some blocks have count 0...
         for one in ones.iter().copied() {
             rank_blocks[one as usize / chunk_size] += 1;
         }
@@ -44,16 +44,15 @@ impl SparseBitVector {
             *x += acc;
             acc = *x;
         }
-        // safety element in case the last index is a multiple of the chunk size
-        // todo: we could conditionally push this element only when needed
-        // rank_blocks.push(ones.len());
 
-        let mut bits: BitVec<u8> = BitVec::new_fill(false, (acc + 1) as u64);
+        let nbits = acc + 1; // more than ones.len() due to the extra 'spacer' ones
+        let mut bits: BitVec<u8> = BitVec::new_fill(false, nbits as u64);
         for x in rank_blocks {
             bits.set_bit(x as u64, true);
         }
-        let rs_k = 1; // ((acc + 1).ilog2().pow(2) / 32) as usize;
-                      // println!("rs k = {}", rs_k);
+        let rs_k = 8;
+        // (nbits.ilog2().pow(2) / 32) as usize;
+        // println!("rs k = {}", rs_k);
         let rs = RankSelect::new(bits, rs_k);
 
         SparseBitVector {
