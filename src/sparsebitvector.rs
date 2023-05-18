@@ -3,13 +3,17 @@
 use crate::bitvector::BitVector;
 use crate::utils::{binary_search_after, binary_search_after_by};
 
+use bio::data_structures::rank_select::RankSelect;
+use bv::BitVec;
+use bv::BitsMut;
+
 pub type OnesType = u32; // usize; // u32
 
-#[derive(Debug, bincode::Encode, bincode::Decode)]
+#[derive(Debug)]
 pub struct SparseBitVector {
     ones: Vec<OnesType>,
     chunk_size: usize,
-    rank_blocks: Vec<usize>,
+    rank_blocks: RankSelect, // Vec<usize>,
     len: usize,
 }
 
@@ -29,7 +33,7 @@ impl SparseBitVector {
         let num_chunks = div_ceil(n, chunk_size);
         // println!("initializing sparse vector with n = {} and m = {} with {} chunks of size {}", n, m, num_chunks, chunk_size);
         let mut rank_blocks: Vec<usize> = vec![];
-        rank_blocks.resize(num_chunks, 0);
+        rank_blocks.resize(num_chunks, 1); // pre-fill with count = 1 so that we can use select queries later...
         for one in ones.iter().copied() {
             rank_blocks[one as usize / chunk_size] += 1;
         }
@@ -41,13 +45,21 @@ impl SparseBitVector {
             acc = *x;
         }
         // safety element in case the last index is a multiple of the chunk size
-        // todo: we could conditionally push this element only whe needed
-        rank_blocks.push(ones.len());
+        // todo: we could conditionally push this element only when needed
+        // rank_blocks.push(ones.len());
+
+        let mut bits: BitVec<u8> = BitVec::new_fill(false, (acc + 1) as u64);
+        for x in rank_blocks {
+            bits.set_bit(x as u64, true);
+        }
+        let rs_k = 1; // ((acc + 1).ilog2().pow(2) / 32) as usize;
+                      // println!("rs k = {}", rs_k);
+        let rs = RankSelect::new(bits, rs_k);
 
         SparseBitVector {
             ones,
             chunk_size,
-            rank_blocks,
+            rank_blocks: rs,
             len,
         }
     }
@@ -62,9 +74,15 @@ impl SparseBitVector {
 
 impl BitVector for SparseBitVector {
     fn rank1(&self, index: usize) -> usize {
+        // dbg!(&self.ones, index);
+
         let i = index / self.chunk_size;
-        let offset_lo = if i == 0 { 0 } else { self.rank_blocks[i - 1] };
-        let offset_hi = self.rank_blocks[i];
+        let offset_lo = self.rank_blocks.select_1(i as u64).unwrap_or(0) as usize - i;
+        let offset_hi = self
+            .rank_blocks
+            .select_1((i + 1) as u64)
+            .unwrap_or(self.ones.len() as u64) as usize
+            - (i + 1);
         binary_search_after(&self.ones, index.try_into().unwrap(), offset_lo, offset_hi)
         // binary_search_after(&self.ones, index.try_into().unwrap(), 0, self.ones.len())
     }

@@ -10,7 +10,7 @@ use crate::utils::binary_search_after_by;
 // Represents a bitvector as a sequence of (run of zeros followed by a run of ones).
 // Consecutive runs of the same digit are coalesced during constrution (in the builder).
 // I think we rely on this
-#[derive(Debug, bincode::Encode, bincode::Decode)]
+#[derive(Debug)]
 pub struct RLEBitVector {
     // z[i]: Cumulative number of zeros before the start of the i-th 1-run;
     // can be thought of as pointing to the index of the first 1 in a 01-run.
@@ -70,7 +70,7 @@ impl BitVector for RLEBitVector {
 
         // Number of complete 01-runs up to and including the virtual index `index`
         let j = self.zo.rank1(index);
-
+        // dbg!(j);
         // Number of zeros including the j-th block
         let num_cumulative_zeros = self.z.select1(j + 1).unwrap();
 
@@ -205,8 +205,14 @@ impl RLEBitVectorBuilder {
         info!("built RLEBitVector: {} runs", self.z.len());
 
         RLEBitVector {
-            z: SparseBitVector::new(self.z.iter().map(|&x| x.try_into().unwrap()).collect(), self.len+1),
-            zo: SparseBitVector::new(self.zo.iter().map(|&x| x.try_into().unwrap()).collect(), self.len+1),
+            z: SparseBitVector::new(
+                self.z.iter().map(|&x| x.try_into().unwrap()).collect(),
+                self.len + 1,
+            ),
+            zo: SparseBitVector::new(
+                self.zo.iter().map(|&x| x.try_into().unwrap()).collect(),
+                self.len + 1,
+            ),
             len: self.len,
             num_zeros: self.num_zeros,
             num_ones: self.num_ones,

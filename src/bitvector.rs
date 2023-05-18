@@ -1,4 +1,4 @@
-pub trait BitVector: bincode::Encode + bincode::Decode {
+pub trait BitVector {
     fn rank1(&self, index: usize) -> usize;
 
     fn rank0(&self, index: usize) -> usize;

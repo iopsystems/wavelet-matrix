@@ -4,7 +4,7 @@ use crate::bitvector::BitVector;
 type BitBlockType = u64;
 
 // A very simple bit vector supporting O(1) rank queries and O(log(n)) select queries.
-#[derive(Debug, bincode::Encode, bincode::Decode)]
+#[derive(Debug)]
 pub struct SimpleBitVector {
     // Store bits in blocks. Each block stores its bits in order from LSB to MSB.
     blocks: Vec<BitBlockType>,

@@ -51,7 +51,7 @@ use std::{
 
 // todo: + 'static needed to solve a bincode compilation error that I don't understand
 // ("the parameter type `T` may not live long enough; consider adding an explicit lifetime bound...")
-#[derive(Debug, bincode::Encode, bincode::Decode)]
+#[derive(Debug)]
 pub struct WaveletMatrix<T: BitVector + 'static> {
     levels: Vec<Level<T>>,
     max_symbol: u32,
@@ -262,7 +262,7 @@ pub fn num_levels_for_symbol(symbol: u32) -> usize {
     (32 - symbol.leading_zeros() as usize).max(1)
 }
 
-#[derive(Debug, bincode::Encode, bincode::Decode)]
+#[derive(Debug)]
 struct Level<T: BitVector> {
     bits: T,
     num_zeros: usize,
