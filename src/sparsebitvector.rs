@@ -3,9 +3,11 @@
 use crate::bitvector::BitVector;
 use crate::utils::{binary_search_after, binary_search_after_by};
 
-use bio::data_structures::rank_select::RankSelect;
+// use bio::data_structures::rank_select::RankSelect;
 use bv::BitVec;
 use bv::BitsMut;
+use rsdict::RsDict;
+use simple_sds::sparse_vector::{SparseBuilder, SparseVector};
 
 pub type OnesType = u32; // usize; // u32
 
@@ -13,7 +15,7 @@ pub type OnesType = u32; // usize; // u32
 pub struct SparseBitVector {
     ones: Vec<OnesType>,
     chunk_size: usize,
-    rank_blocks: RankSelect, // Vec<usize>,
+    rank_blocks: RsDict, // Vec<usize>,
     len: usize,
 }
 
@@ -46,14 +48,12 @@ impl SparseBitVector {
         }
 
         let nbits = acc + 1; // more than ones.len() due to the extra 'spacer' ones
-        let mut bits: BitVec<u8> = BitVec::new_fill(false, nbits as u64);
+        let mut bits: BitVec<u64> = BitVec::new_fill(false, nbits as u64);
         for x in rank_blocks {
             bits.set_bit(x as u64, true);
         }
-        let rs_k = 8;
-        // (nbits.ilog2().pow(2) / 32) as usize;
-        // println!("rs k = {}", rs_k);
-        let rs = RankSelect::new(bits, rs_k);
+        // let rs_k = 8; // (nbits.ilog2().pow(2) / 32) as usize;
+        let rs = RsDict::from_blocks(bits.into_boxed_slice().iter().copied()); // RankSelect::new(bits, rs_k);
 
         SparseBitVector {
             ones,
@@ -76,10 +76,14 @@ impl BitVector for SparseBitVector {
         // dbg!(&self.ones, index);
 
         let i = index / self.chunk_size;
-        let offset_lo = self.rank_blocks.select_1(i as u64).unwrap_or(0) as usize - i;
+        let offset_lo = if i == 0 {
+            0
+        } else {
+            self.rank_blocks.select1((i - 1) as u64).unwrap_or(0) as usize - i
+        };
         let offset_hi = self
             .rank_blocks
-            .select_1((i + 1) as u64)
+            .select1((i) as u64)
             .unwrap_or(self.ones.len() as u64) as usize
             - (i + 1);
         binary_search_after(&self.ones, index.try_into().unwrap(), offset_lo, offset_hi)

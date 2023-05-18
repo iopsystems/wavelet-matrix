@@ -105,13 +105,13 @@ fn bench_new_bitvector_select0(rng: &mut ThreadRng, bv: &RLEBitVector) -> usize 
 
 fn bench_bitvectors(c: &mut Criterion) {
     let num_runs = vec![
-        1_000_000, //
-        // 5_000_000,     //
-        10_000_000, //
-        // 50_000_000,    //
-        100_000_000, //
-                     // 500_000_000,   //
-                     // 1_000_000_000, //
+        1_000_000,     //
+        5_000_000,     //
+        10_000_000,    //
+        50_000_000,    //
+        100_000_000,   //
+        500_000_000,   //
+        1_000_000_000, //
     ]; // k
     let bitvector_length = 4_000_000_000usize; // n
 
@@ -148,9 +148,9 @@ fn bench_bitvectors(c: &mut Criterion) {
         group.bench_function(BenchmarkId::new("Select1", k), |b| {
             b.iter(|| ret += bench_orig_bitvector_select1(&mut rng, &bv))
         });
-        // group.bench_function(BenchmarkId::new("Select0", k), |b| {
-        //     b.iter(|| ret += bench_orig_bitvector_select0(&mut rng, &bv))
-        // });
+        group.bench_function(BenchmarkId::new("Select0", k), |b| {
+            b.iter(|| ret += bench_orig_bitvector_select0(&mut rng, &bv))
+        });
         assert!(ret > 0);
     }
     group.finish();
@@ -165,9 +165,9 @@ fn bench_bitvectors(c: &mut Criterion) {
         group.bench_function(BenchmarkId::new("Select1", k), |b| {
             b.iter(|| ret += bench_new_bitvector_select1(&mut rng, &bv))
         });
-        // group.bench_function(BenchmarkId::new("Select0", k), |b| {
-        //     b.iter(|| ret += bench_new_bitvector_select0(&mut rng, &bv))
-        // });
+        group.bench_function(BenchmarkId::new("Select0", k), |b| {
+            b.iter(|| ret += bench_new_bitvector_select0(&mut rng, &bv))
+        });
         assert!(ret > 0);
     }
     group.finish();
