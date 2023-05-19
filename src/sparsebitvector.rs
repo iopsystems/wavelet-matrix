@@ -6,25 +6,22 @@ use simple_sds::ops::{BitVec, Rank, Select, SelectZero};
 use simple_sds::serialize::Serialize;
 use simple_sds::sparse_vector::{SparseBuilder, SparseVector};
 
-pub type OnesType = u32; // usize; // u32
+pub type OnesType = u32; // usize;
 
 #[derive(Debug)]
 pub struct SparseBitVector {
-    ones: SparseVector, //Vec<OnesType>,
+    ones: SparseVector,
     len: usize,
 }
 
 impl SparseBitVector {
     pub fn new(ones: Vec<OnesType>, len: usize) -> SparseBitVector {
-        if let Some(&last) = ones.last() {
-            assert!((last as usize) < len);
-        }
         let mut b = SparseBuilder::new(len, ones.len()).unwrap();
         b.extend(ones.into_iter().map(|x| x as usize));
         assert!(b.is_full());
         let v = SparseVector::try_from(b).unwrap();
 
-        println!("[debug] sparse bitvector bits: {}", 8 * v.size_in_bytes());
+        println!("{},", 8 * v.size_in_bytes());
 
         SparseBitVector { ones: v, len }
     }
@@ -77,7 +74,7 @@ impl BitVector for SparseBitVector {
     }
 
     fn num_zeros(&self) -> usize {
-        self.ones.count_ones()
+        self.ones.count_zeros()
     }
 
     fn num_ones(&self) -> usize {

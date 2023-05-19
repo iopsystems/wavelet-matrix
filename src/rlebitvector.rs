@@ -207,11 +207,11 @@ impl RLEBitVectorBuilder {
         RLEBitVector {
             z: SparseBitVector::new(
                 self.z.iter().map(|&x| x.try_into().unwrap()).collect(),
-                self.len + 1,
+                self.num_zeros + 1,
             ),
             zo: SparseBitVector::new(
                 self.zo.iter().map(|&x| x.try_into().unwrap()).collect(),
-                self.len + 1,
+                self.num_zeros + self.num_ones + 1,
             ),
             len: self.len,
             num_zeros: self.num_zeros,

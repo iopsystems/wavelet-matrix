@@ -139,7 +139,7 @@ fn bench_bitvectors(c: &mut Criterion) {
     let runs: Vec<Vec<(usize, usize)>> = num_runs
         .iter()
         .map(|&k| {
-            println!("[debug] generating {} runs", k);
+            // println!("[debug] generating {} runs", k);
             build_runs(k, bitvector_length)
             // use std::fs::File;
             // let fname = format!("runs_{}.bincode", k);
@@ -162,6 +162,7 @@ fn bench_bitvectors(c: &mut Criterion) {
 
     let mut group = c.benchmark_group("Orig");
     for (k, runs) in num_runs.iter().copied().zip(runs.iter()) {
+        println!("[debug] Orig,{},", k);
         let bv = build_orig_bitvector(runs);
         let mut ret = 0;
         group.bench_function(BenchmarkId::new("Rank1", k), |b| {
@@ -179,6 +180,7 @@ fn bench_bitvectors(c: &mut Criterion) {
 
     let mut group = c.benchmark_group("New");
     for (k, runs) in num_runs.iter().copied().zip(runs.iter()) {
+        println!("[debug] New,{},", k);
         let bv = build_new_bitvector(runs);
         let mut ret = 0;
         group.bench_function(BenchmarkId::new("Rank1", k), |b| {
