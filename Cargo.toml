@@ -8,7 +8,7 @@ edition = "2021"
 [dependencies]
 criterion = "0.4.0"
 rand = "0.8.5"
-simple-sds = { git = "https://github.com/jltsiren/simple-sds/" }
+simple-sds = { git = "https://github.com/jltsiren/simple-sds/", rev = "85f36bf863ddd980003127c65923b660895793a4" }
 
 [profile.release]
 lto = true
