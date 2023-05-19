@@ -3,6 +3,7 @@
 use crate::bitvector::BitVector;
 
 use simple_sds::ops::{BitVec, Rank, Select, SelectZero};
+use simple_sds::serialize::Serialize;
 use simple_sds::sparse_vector::{SparseBuilder, SparseVector};
 
 pub type OnesType = u32; // usize; // u32
@@ -22,6 +23,9 @@ impl SparseBitVector {
         b.extend(ones.into_iter().map(|x| x as usize));
         assert!(b.is_full());
         let v = SparseVector::try_from(b).unwrap();
+
+        println!("[debug] sparse bitvector bits: {}", 8 * v.size_in_bytes());
+
         SparseBitVector { ones: v, len }
     }
 

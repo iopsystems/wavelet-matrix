@@ -1,7 +1,7 @@
 use criterion::{criterion_group, criterion_main, BenchmarkId, Criterion};
 use rand::rngs::ThreadRng;
 use rand::Rng;
-use rayon::prelude::*;
+// use rayon::prelude::*;
 use wavelet_matrix::bitvector::BitVector;
 use wavelet_matrix::originalrlebitvector::OriginalRLEBitVector;
 use wavelet_matrix::rlebitvector::RLEBitVector;
@@ -105,20 +105,42 @@ fn bench_new_bitvector_select0(rng: &mut ThreadRng, bv: &RLEBitVector) -> usize 
 
 fn bench_bitvectors(c: &mut Criterion) {
     let num_runs = vec![
-        1_000_000,     //
-        5_000_000,     //
-        10_000_000,    //
-        50_000_000,    //
-        100_000_000,   //
-        500_000_000,   //
-        1_000_000_000, //
+        1000000,   //
+        1637890,   //
+        2682700,   //
+        4393970,   //
+        7196860,   //
+        11787690,  //
+        19306980,  //
+        31622780,  //
+        51794750,  //
+        84834290,  //
+        138949550, //
+        227584590, //
+        372759370, //
+        610540230, //
+        1000000000,
+        // 1_000_000,     //
+        // 2_500_000,     //
+        // 5_000_000,     //
+        // 7_500_000,     //
+        // 10_000_000,    //
+        // 25_000_000,    //
+        // 50_000_000,    //
+        // 75_000_000,    //
+        // 100_000_000,   //
+        // 250_000_000,   //
+        // 500_000_000,   //
+        // 750_000_000,   //
+        // 1_000_000_000, //
     ]; // k
-    let bitvector_length = 4_000_000_000usize; // n
+    let bitvector_length = 2_000_000_000usize; // n
 
     let runs: Vec<Vec<(usize, usize)>> = num_runs
-        .par_iter()
+        .iter()
         .map(|&k| {
-            return build_runs(k, bitvector_length);
+            println!("[debug] generating {} runs", k);
+            build_runs(k, bitvector_length)
             // use std::fs::File;
             // let fname = format!("runs_{}.bincode", k);
             // let config = bincode::config::standard();
