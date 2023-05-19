@@ -6,15 +6,8 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-bincode = "2.0.0-rc.3"
-bio = "1.1.0"
-bv = "0.11.1"
 criterion = "0.4.0"
-log = "0.4"
 rand = "0.8.5"
-rayon = "1.7.0"
-rsdict = "0.0.6"
-sdsl = "0.3.1"
 simple-sds = { git = "https://github.com/jltsiren/simple-sds/" }
 
 [profile.release]

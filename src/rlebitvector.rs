@@ -1,7 +1,4 @@
-// for now
 #![allow(dead_code)]
-
-use log::info;
 
 use crate::bitvector::BitVector;
 use crate::sparsebitvector::SparseBitVector;
@@ -202,8 +199,6 @@ impl RLEBitVectorBuilder {
     }
 
     pub fn build(self) -> RLEBitVector {
-        info!("built RLEBitVector: {} runs", self.z.len());
-
         RLEBitVector {
             z: SparseBitVector::new(
                 self.z.iter().map(|&x| x.try_into().unwrap()).collect(),
