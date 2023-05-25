@@ -16,19 +16,19 @@ use crate::utils::{div_ceil, BitBlock};
 // - current thoughts: we can use the BitBlock trait to centralize common functionality
 //   across block types, and type aliases to fix the individual block types for each
 //   individual bitvector type and block.
-type BT = u64; // Block type
+pub type BT = u64; // Block type
 
 // Raw bits represented in an array of integer blocks.
 // Immutable once constructed
 pub struct RawBitVector {
-    data: Box<[BT]>,
+    blocks: Box<[BT]>,
     len: usize,
 }
 
 impl RawBitVector {
     /// Return the bool value of the bit at index `i`
-    fn get(&mut self, i: usize) -> bool {
-        let block = self.data[BT::block_index(i)];
+    pub fn get(&mut self, i: usize) -> bool {
+        let block = self.blocks[BT::block_index(i)];
         let bit = block & (1 << BT::bit_offset(i));
         bit != 0
     }
@@ -36,13 +36,13 @@ impl RawBitVector {
     /// Write a 1-bit to index `i`.
     // Since the data buffer is initialized to its final size at construction time
     // bits may be set in any order.
-    fn set(&mut self, i: usize) {
-        self.data[BT::block_index(i)] |= 1 << BT::bit_offset(i);
+    pub fn set(&mut self, i: usize) {
+        self.blocks[BT::block_index(i)] |= 1 << BT::bit_offset(i);
     }
 
     /// Return an immutable reference to the underlying data as a slice
-    pub fn data(&self) -> &[BT] {
-        &self.data
+    pub fn blocks(&self) -> &[BT] {
+        &self.blocks
     }
 
     /// Return the length in bits
@@ -55,6 +55,6 @@ impl RawBitVector {
         let num_blocks = div_ceil(len, BT::bits() as usize);
         // Initialize to zero so that any trailing bits in the last block will be zero.
         let data = vec![0; num_blocks].into_boxed_slice();
-        Self { data, len }
+        Self { blocks: data, len }
     }
 }
