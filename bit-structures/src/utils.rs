@@ -63,6 +63,12 @@ pub trait BitBlock {
     }
 }
 
+impl BitBlock for u8 {
+    fn bits() -> u32 {
+        Self::BITS
+    }
+}
+
 impl BitBlock for u16 {
     fn bits() -> u32 {
         Self::BITS
@@ -82,6 +88,12 @@ impl BitBlock for u64 {
 }
 
 impl BitBlock for u128 {
+    fn bits() -> u32 {
+        Self::BITS
+    }
+}
+
+impl BitBlock for usize {
     fn bits() -> u32 {
         Self::BITS
     }

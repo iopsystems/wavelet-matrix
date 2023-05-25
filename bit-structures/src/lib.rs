@@ -2,6 +2,7 @@
 #![allow(dead_code)]
 
 mod dense_bitvector;
+mod fixed_width_intvector;
 mod raw_bitvector;
 mod sparse_bitvector;
 mod utils;

@@ -12,8 +12,10 @@
 // for select correction in the final block).
 // Of course, we should benchmark to see.
 //
+// TODO: rename this file to whatever the struct ends up being named
 
 use crate::raw_bitvector::RawBitVector;
+use crate::utils::BitBlock;
 
 type BT = u32; // Block type. TODO: Should we distinguish between types for rank vs. select blocks?
 
@@ -30,6 +32,10 @@ pub struct RankSelectSupport {
 // A builder step of some sort?
 impl RankSelectSupport {
     fn new(data: RawBitVector, _sr: usize, _ss: usize) -> Self {
+        debug_assert!(
+            data.len() < 1 << BT::bits(),
+            "length cannot exceed the maximum representable rank/select block value"
+        );
         // sr: power of 2 of rank sampling rate
         // ss: power of 2 of select sampling rate
         // https://observablehq.com/d/2654fee8107c15ab#SimpleSelectBitVector
