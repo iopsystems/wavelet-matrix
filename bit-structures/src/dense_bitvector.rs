@@ -15,7 +15,7 @@
 
 use crate::raw_bitvector::RawBitVector;
 
-type BT = u32; // Block type
+type BT = u32; // Block type. TODO: Should we distinguish between types for rank vs. select blocks?
 
 pub struct RankSelectSupport {
     data: RawBitVector,
@@ -36,16 +36,21 @@ impl RankSelectSupport {
         Self { data }
     }
 
-    // Return the number of 1-bits at or below index `i`
+    /// Return the number of 1-bits at or below index `i`
     fn rank1(&self, _i: usize) -> usize {
         todo!()
     }
 
+    /// Return the number of 0-bits at or below index `i`
     fn rank0(&self, _i: usize) -> usize {
+        // if index >= self.len {
+        //     return self.len - self.num_ones; // or return self.num_zeros;
+        // }
+        // index - self.rank1(i) + 1
         todo!()
     }
 
-    // Return an option containing the index of `i`-h 1-bit, if one exists, or None otherwise.
+    /// Return an option with the index of `i`-h 1-bit if one exists
     fn select1(&self, i: usize) -> Option<usize> {
         if i >= self.data.len() {
             return None;
@@ -53,6 +58,7 @@ impl RankSelectSupport {
         todo!()
     }
 
+    /// Return an option with the index of `i`-h 0-bit if one exists
     fn select0(&self, _i: usize) -> Option<usize> {
         todo!()
     }

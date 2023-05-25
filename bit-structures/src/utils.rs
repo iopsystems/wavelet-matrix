@@ -1,27 +1,27 @@
 // For now.
 #![allow(dead_code)]
 
-// Bitwise binary search the range [0, n] based on lower_bound_pad from this article:
-//   https://orlp.net/blog/bitwise-binary-search/
-//
-// Returns the index of the partition point according to the given predicate
-// (the index of the first element of the second partition).
-//
-// The slice is assumed to be partitioned according to the given predicate.
-// This means that all elements for which the predicate returns true are at
-// the start of the slice and all elements for which the predicate returns
-// false are at the end.
-//
-// If this slice is not partitioned, the returned result is unspecified
-// and meaningless, as this method performs a kind of binary search.
-//
-// See https://doc.rust-lang.org/1.69.0/std/primitive.slice.html#method.partition_point
-//
-// See the appendix (bottom of this file for a more elaborate but efficient implementation).
+/// Bitwise binary search the range [0, n] based on lower_bound_pad from this article:
+///   https://orlp.net/blog/bitwise-binary-search/
+///
+/// Returns the index of the partition point according to the given predicate
+/// (the index of the first element of the second partition).
+///
+/// The slice is assumed to be partitioned according to the given predicate.
+/// This means that all elements for which the predicate returns true are at
+/// the start of the slice and all elements for which the predicate returns
+/// false are at the end.
+///
+/// If this slice is not partitioned, the returned result is unspecified
+/// and meaningless, as this method performs a kind of binary search.
+///
+/// See https://doc.rust-lang.org/1.69.0/std/primitive.slice.html#method.partition_point
+///
+/// See the appendix (bottom of this file for a more elaborate but efficient implementation).
 pub fn partition_point(n: usize, pred: impl Fn(usize) -> bool) -> usize {
     let mut b = 0;
     let mut bit = bit_floor(n);
-    while bit > 0 {
+    while bit != 0 {
         let i = (b | bit) - 1;
         if i < n && pred(i) {
             b |= bit
@@ -44,19 +44,20 @@ pub fn div_ceil(n: usize, m: usize) -> usize {
     (n + m - 1) / m
 }
 
-// Trait representing an integer type that is being used as a block of bits.
+/// Trait representing an integer type that is being used as a block of bits.
 // todo: move into its own file so we can use it in the other types
 pub trait BitBlock {
-    // The number of bits in this integer representation
+    /// The number of bits in this integer representation
     fn bits() -> u32;
 
-    // Block index of the block containing the `i`-th bit
+    /// Block index of the block containing the `i`-th bit
     fn block_index(i: usize) -> usize {
-        // TODO: Check on godbolt to see whether the log is evaluated at compile time.
+        // According to a quick Godbolt check, the call to ilog2
+        // is optimized away in release mode (-C opt-level=2).
         i >> Self::bits().ilog2()
     }
 
-    // Bit index of the `i`-th bit within its block (mask off the high bits)
+    /// Bit index of the `i`-th bit within its block (mask off the high bits)
     fn bit_offset(i: usize) -> usize {
         i & (Self::bits() - 1) as usize
     }
@@ -126,7 +127,7 @@ fn partition_point_overlap(n: usize, mut pred: impl FnMut(usize) -> bool) -> usi
 
     let mut b = 0;
     let mut bit = two_k >> 1;
-    while bit > 0 {
+    while bit != 0 {
         if pred(begin + b + bit) {
             b += bit
         }

@@ -6,6 +6,7 @@
 //   - implement T.bits() for u16, u32, u64;
 //   - see simple-sds split_at_index for how they handle it; maybe we want a T.mask() also for offset masking
 //   - see also my similar block_index_and_offset
+// - add as many debug_assert! s as is reasonable to do
 
 use crate::utils::{div_ceil, BitBlock};
 
@@ -25,19 +26,26 @@ pub struct RawBitVector {
 }
 
 impl RawBitVector {
-    // Return an immutable reference to the underlying data as a slice
+    /// Return the bool value of the bit at index `i`
+    fn get(&mut self, i: usize) -> bool {
+        let block = self.data[BT::block_index(i)];
+        let bit = block & (1 << BT::bit_offset(i));
+        bit != 0
+    }
+
+    /// Return an immutable reference to the underlying data as a slice
     pub fn data(&self) -> &[BT] {
         &self.data
     }
 
-    // Return the length in bits
+    /// Return the length in bits
     pub fn len(&self) -> usize {
         self.len
     }
 }
 
 // We use a builder pattern so that we can separate the mutating construction
-// phase from the final immutable object. It is useful to guarantee immutability
+// phase from the final immutable bitvector. It is useful to guarantee immutability
 // so that e.g. the rank/select support structure does not risk the data changing
 // beneath it.
 pub struct RawBitVectorBuilder {
@@ -54,7 +62,7 @@ impl RawBitVectorBuilder {
         Self { data, len }
     }
 
-    // Set the bit at index `i` to 1
+    /// Write a 1-bit to index `i`
     fn set(&mut self, i: usize) {
         self.data[BT::block_index(i)] |= 1 << BT::bit_offset(i);
     }
