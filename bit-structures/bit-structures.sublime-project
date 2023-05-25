@@ -1,0 +1,47 @@
+{
+  "folders": [
+    {
+      "path": "."
+    }
+  ],
+  "settings": {},
+  "build_systems": [
+    {
+      "name": "Rust Make",
+      // file_regex enables error navigation via click, in conjunction with working_dir:
+      // https://forum.sublimetext.com/t/clicking-on-build-errors-doesnt-work-other-stuff/50728
+      // see also https://stackoverflow.com/questions/64781671/is-there-a-way-to-run-a-go-module-from-another-directory
+      // For Go:
+      // "file_regex": "^(..[^:\n]*):([0-9]+):?([0-9]+)?:? (.*)$",
+      // For Rust: Allow jumping to file with lines like "  --> src/engine.rs:63:12"
+      "file_regex": "^.*?--> (..[^:\n]*):([0-9]+):?([0-9]+)?:?(.*)$",
+      "shell_cmd": "make wasm",
+      // // Set the working directory to the project path so that builds happen from the
+      // // project root (instead of building just the package we're currently editing)
+      "working_dir": "$project_path",
+      "syntax": "Packages/Makefile/Make Output.sublime-syntax",
+      "variants": [
+        {
+          "name": "run",
+          "shell_cmd": "make run"
+        },
+        {
+          "name": "wasm",
+          "shell_cmd": "make wasm"
+        },
+        {
+          "name": "profiling",
+          "shell_cmd": "make wasm-profiling"
+        },
+        {
+          "name": "release",
+          "shell_cmd": "make wasm-release"
+        },
+        {
+          "name": "test",
+          "shell_cmd": "make test"
+        }
+      ]
+    }
+  ]
+}
