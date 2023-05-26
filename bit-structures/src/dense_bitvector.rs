@@ -16,8 +16,9 @@ pub struct DenseBitVector {
 
 impl DenseBitVector {
     fn new(data: RawBitVector, sr_bits: u32, ss_bits: u32) -> Self {
-        debug_assert!(sr_bits >= RawBitVector::block_bits().ilog2());
-        debug_assert!(ss_bits >= RawBitVector::block_bits().ilog2());
+        let raw_block_bits = RawBitVector::block_bits();
+        debug_assert!(sr_bits >= raw_block_bits.ilog2());
+        debug_assert!(ss_bits >= raw_block_bits.ilog2());
 
         let ss = 1 << ss_bits; // Select sampling rate, in 1-bits
         let sr = 1 << sr_bits; // Rank sampling rate, in bits
@@ -30,7 +31,7 @@ impl DenseBitVector {
         let mut one_threshold = 0; // take a select sample at the (one_threshold+1)th 1-bit
 
         // Raw blocks per rank block
-        let raw_block_sr = sr >> RawBitVector::block_bits().ilog2();
+        let raw_block_sr = sr >> raw_block_bits.ilog2();
 
         // Iterate one rank block at a time for convenient rank sampling
         for blocks in data.blocks().chunks(raw_block_sr) {
@@ -51,7 +52,7 @@ impl DenseBitVector {
                     one_threshold += ss;
                 }
                 cumulative_ones += block_ones;
-                cumulative_bits += RawBitVector::block_bits();
+                cumulative_bits += raw_block_bits;
             }
         }
 

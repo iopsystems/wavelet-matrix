@@ -61,11 +61,12 @@ impl RawBitVector {
         &self.blocks
     }
 
-    /// Return the length in bits
+    /// Bitvector length in bits.
     pub fn len(&self) -> usize {
         self.len
     }
 
+    /// Number of bits in a raw block.
     pub fn block_bits() -> u32 {
         BT::bits()
     }
