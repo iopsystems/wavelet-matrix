@@ -121,7 +121,7 @@ impl DenseBitVector {
                 rank += block.count_ones()
             }
 
-            // Add any ones in the final partially-covered raw block
+            // Add any ones in the final partly-covered raw block
             let raw_bit_offset = self.raw_offset(i);
             if raw_bit_offset > 0 {
                 let mask = one_mask(raw_bit_offset);
