@@ -2,7 +2,7 @@
 
 use std::debug_assert;
 
-use crate::utils::{div_ceil, BitBlock};
+use crate::utils::{div_ceil, one_mask, BitBlock};
 
 type BT = u32; // Block type
 
@@ -56,8 +56,7 @@ impl FixedWidthIntVector {
         let offset = BT::bit_offset(bit_index);
 
         // Low bit mask with a number of ones equal to self.bit_width.
-        // Eg. if bit_width is 3, then mask is 0b111.
-        let mask = (1 << self.bit_width) - 1;
+        let mask = one_mask(self.bit_width);
 
         // Extract the bits the value that are present in the target block
         let mut value = (self.data[block_index] & (mask << offset)) >> offset;
@@ -68,7 +67,7 @@ impl FixedWidthIntVector {
         // If needed, extract the remaining bits from the bottom of the next block
         if num_available_bits < self.bit_width {
             let num_remaining_bits = self.bit_width - num_available_bits;
-            let high_bits = self.data[block_index + 1] & ((1 << num_remaining_bits) - 1);
+            let high_bits = self.data[block_index + 1] & one_mask(num_remaining_bits);
             value |= high_bits << num_available_bits;
         }
         value
@@ -80,18 +79,17 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_works() {
-        let mut bv = FixedWidthIntVector::new(100, 3);
-        bv.write_int(5);
-        bv.write_int(6);
-        bv.write_int(2);
-        bv.write_int(0);
-        bv.write_int(7);
-        assert_eq!(bv.read_int(0), 5);
-        assert_eq!(bv.read_int(1), 6);
-        assert_eq!(bv.read_int(2), 2);
-        assert_eq!(bv.read_int(3), 0);
-        assert_eq!(bv.read_int(4), 7);
+    fn test_fixed() {
+        let seq = [5, 6, 2, 0, 7, 1, 11, 5, 10, 10, 2, 3, 4, 10, 20, 100, 5];
+        let max = seq.iter().max().copied().unwrap();
+        let n_bits = (max as f64).log2().ceil() as usize;
+        let mut bv = FixedWidthIntVector::new(100, n_bits);
+        for n in seq {
+            bv.write_int(n);
+        }
+        for (i, n) in seq.iter().copied().enumerate() {
+            assert_eq!(bv.read_int(i), n);
+        }
     }
 
     #[test]
@@ -105,4 +103,5 @@ mod tests {
     // - test that you cannot write more ints than you have length
     // - test that 64-bit blocks (and other bit widths) all work
     // - test sequences with repeating elements, etc.
+    // - test multi-block sequences
 }

@@ -44,6 +44,12 @@ pub fn div_ceil(n: usize, m: usize) -> usize {
     (n + m - 1) / m
 }
 
+// Return a mask with the lowest `num_bits` bits set to 1.
+// For example, one_mask(3) == 0b111/
+pub fn one_mask(num_bits: usize) -> u32 {
+    (1 << num_bits) - 1
+}
+
 /// Trait representing an integer type that is being used as a block of bits.
 // todo: move into its own file so we can use it in the other types
 pub trait BitBlock {

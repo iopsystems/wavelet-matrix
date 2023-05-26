@@ -11,21 +11,37 @@
 use crate::utils::{div_ceil, BitBlock};
 
 // todo:
+// - add a builder so that we can RLE the start and end of the bitvector, only storing the middle chunk.
+//   - not entirely sure how best to do this
+//     - a trim() method on RawBitVector? then we can't set beyond the trimmed after
+//     - a builder that preallocates the full thing and trims on build?
+//     - a builder that reallocates as you go?
+
+// todo:
 // - is there an elegant way to generalize this to arbitrary unsigned types?
 // - is there a specific choice that works well with wasm and wasm simd?
 // - current thoughts: we can use the BitBlock trait to centralize common functionality
 //   across block types, and type aliases to fix the individual block types for each
 //   individual bitvector type and block.
-pub type BT = u64; // Block type
+pub type BT = u32; // Block type
 
 // Raw bits represented in an array of integer blocks.
 // Immutable once constructed
+#[derive(Debug)]
 pub struct RawBitVector {
     blocks: Box<[BT]>,
     len: usize,
 }
 
 impl RawBitVector {
+    pub fn new(len: usize) -> Self {
+        // The number of blocks should be just enough to represent `len` bits.
+        let num_blocks = div_ceil(len, BT::bits() as usize);
+        // Initialize to zero so that any trailing bits in the last block will be zero.
+        let data = vec![0; num_blocks].into_boxed_slice();
+        Self { blocks: data, len }
+    }
+
     /// Return the bool value of the bit at index `i`
     pub fn get(&mut self, i: usize) -> bool {
         let block = self.blocks[BT::block_index(i)];
@@ -50,11 +66,7 @@ impl RawBitVector {
         self.len
     }
 
-    pub fn new(len: usize) -> Self {
-        // The number of blocks should be just enough to represent `len` bits.
-        let num_blocks = div_ceil(len, BT::bits() as usize);
-        // Initialize to zero so that any trailing bits in the last block will be zero.
-        let data = vec![0; num_blocks].into_boxed_slice();
-        Self { blocks: data, len }
+    pub fn block_bits() -> u32 {
+        BT::bits()
     }
 }
