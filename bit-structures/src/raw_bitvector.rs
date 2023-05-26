@@ -71,11 +71,11 @@ impl RawBitVector {
         BT::bits()
     }
 
-    pub fn block_index(&self, i: usize) -> u32 {
+    pub fn block_index(&self, i: usize) -> usize {
         BT::block_index(i)
     }
 
-    pub fn bit_offset(&self, i: usize) -> u32 {
+    pub fn bit_offset(&self, i: usize) -> usize {
         BT::bit_offset(i)
     }
 }

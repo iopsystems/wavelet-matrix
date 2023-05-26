@@ -23,3 +23,4 @@ The lowest-level bitvector types (`FixedWidthIntVector`, `RawBitVector`) assume 
   - https://fgiesen.wordpress.com/2018/02/19/reading-bits-in-far-too-many-ways-part-1/:
     > LSB-first natural packing gives us the same bytes as LSB-first packing into a big integer then storing it in little-endian byte order
 - Investigate whether performance is improved by making some blocks u8, eg. in `RawBitVector`. Maybe that reduces the memory bandwidth, though I'm not sure how unsafe it would be to try reinterpreting that memory into u32 or u64 or u128 blocks for popcounts/simd operations.
+- figure out how to flexibly support any combination of select0 and select1
