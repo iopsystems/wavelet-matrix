@@ -7,10 +7,11 @@
 //   - benchmark the effect on nonuniformly distributed 1 bits; i bet it helps more when the data are clustered
 // x change rank to return the count strictly below the input index i so that rank and select become inverses.
 //   x we can possibly reuse the rank block indexing check
+// - is 'dense' the right name for this? the raw one is dense, this just adds rank/select support.
 
 use std::debug_assert;
 
-use crate::{raw_bitvector::RawBitVector, utils::one_mask};
+use crate::{raw_bit_vector::RawBitVector, utils::one_mask};
 
 #[derive(Debug)]
 pub struct DenseBitVector {
@@ -144,7 +145,9 @@ impl DenseBitVector {
         if n >= self.num_ones {
             return None;
         }
-        let sample = self.s[n >> self.ss_pow2];
+
+        let sample = self.s[self.select_index(n)];
+
         let correction = sample & (self.raw.block_bits() - 1);
         let bits = sample >> self.raw.block_bits().ilog2();
         _ = correction;

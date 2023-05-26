@@ -8,7 +8,8 @@
 //   - see also my similar block_index_and_offset
 // - add as many debug_assert! s as is reasonable to do
 
-use crate::utils::{div_ceil, BitBlock};
+use crate::bit_block::BitBlock;
+use crate::utils::div_ceil;
 
 // todo:
 // - add a builder so that we can RLE the start and end of the bitvector, only storing the middle chunk.

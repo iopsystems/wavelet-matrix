@@ -1,12 +1,12 @@
 // Fixed-width unsigned integer vector that bit-packs fixed-width (<= 64 bits) integers into a u64 array.
 
+use crate::bit_block::BitBlock;
+use crate::utils::{div_ceil, one_mask};
 use std::debug_assert;
-
-use crate::utils::{div_ceil, one_mask, BitBlock};
 
 type BT = u32; // Block type
 
-pub struct FixedWidthIntVector {
+pub struct IntVector {
     data: Box<[BT]>,
     /// Number of elements
     len: usize,
@@ -16,7 +16,7 @@ pub struct FixedWidthIntVector {
     write_cursor: usize,
 }
 
-impl FixedWidthIntVector {
+impl IntVector {
     pub fn new(len: usize, bit_width: usize) -> Self {
         assert!(bit_width <= BT::bits().try_into().unwrap());
         // The number of blocks should be just enough to represent `len * bit_width` bits.
@@ -83,7 +83,7 @@ mod tests {
         let seq = [5, 6, 2, 0, 7, 1, 11, 5, 10, 10, 2, 3, 4, 10, 20, 100, 5];
         let max = seq.iter().max().copied().unwrap();
         let n_bits = (max as f64).log2().ceil() as usize;
-        let mut bv = FixedWidthIntVector::new(100, n_bits);
+        let mut bv = IntVector::new(100, n_bits);
         for n in seq {
             bv.write_int(n);
         }
@@ -95,7 +95,7 @@ mod tests {
     #[test]
     #[should_panic]
     fn test_any_panic() {
-        let mut bv = FixedWidthIntVector::new(100, 3);
+        let mut bv = IntVector::new(100, 3);
         bv.write_int(8);
     }
 

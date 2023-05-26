@@ -20,4 +20,8 @@ test:
 run:
 #	cargo run --release
 	cargo run
-	
+
+.PHONY: clean
+clean:
+	cargo clean
+		

@@ -1,10 +1,11 @@
 // For now.
 #![allow(dead_code)]
 
-mod dense_bitvector;
-mod fixed_width_intvector;
-mod raw_bitvector;
-mod sparse_bitvector;
+mod bit_block;
+mod dense_bit_vector;
+mod int_vector;
+mod raw_bit_vector;
+mod sparse_bit_vector;
 mod utils;
 
 #[cfg(test)]

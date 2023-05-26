@@ -1,11 +1,11 @@
 // Elias-Fano-encoded sparse bitvector
 
-use crate::dense_bitvector::DenseBitVector;
-use crate::fixed_width_intvector::FixedWidthIntVector;
+use crate::dense_bit_vector::DenseBitVector;
+use crate::int_vector::IntVector;
 
 struct SparseBitVector {
     high: DenseBitVector,
-    low: FixedWidthIntVector,
+    low: IntVector,
     len: usize,
     universe: usize,
 }
