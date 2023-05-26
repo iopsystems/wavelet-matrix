@@ -5,7 +5,8 @@
 // todo:
 // - use select as an acceleration index for rank
 //   - benchmark the effect on nonuniformly distributed 1 bits; i bet it helps more when the data are clustered
-// -
+// x change rank to return the count strictly below the input index i so that rank and select become inverses.
+//   x we can possibly reuse the rank block indexing check
 
 use std::debug_assert;
 
@@ -75,38 +76,40 @@ impl DenseBitVector {
     }
 
     fn rank1(&self, i: usize) -> usize {
-        if i >= self.raw.len() {
-            return self.num_ones;
-        }
         // Get the prefix count from the rank block
-        let mut rank = self.r[i >> self.sr_pow2];
+        let rank_index = i >> self.sr_pow2;
+        let Some(mut rank) = self.r.get(rank_index).copied() else {
+            return self.num_ones;
+        };
 
-        // Get the starting index of the next raw block
-        let bit_start = (i >> self.sr_pow2) << self.sr_pow2;
+        // Get the starting index of the next raw block after the rank block
+        let bit_start = rank_index << self.sr_pow2;
         let raw_start = self.raw.block_index(bit_start);
 
-        // Count the ones in each block fully covered by start..i
+        // Count the ones in each block fully covered by bit_start..i
         let raw_blocks = &self.raw.blocks();
         let raw_end = self.raw.block_index(i);
         for block in &raw_blocks[raw_start..raw_end] {
             rank += block.count_ones()
         }
 
-        // For the last block, count the bits at or below i
+        // For the last block, count the bits below i
         let raw_offset = self.raw.bit_offset(i);
-        dbg!(raw_offset);
-        let last_mask = one_mask(raw_offset + 1);
-        let last_block = raw_blocks[raw_end];
-        rank += (last_block & last_mask).count_ones();
+        if raw_offset > 0 {
+            let last_mask = one_mask(raw_offset);
+            let last_block = raw_blocks[raw_end];
+            rank += (last_block & last_mask).count_ones();
+        }
+
         rank as usize
     }
 
     fn rank0(&self, i: usize) -> usize {
         let len = self.raw.len();
-        if i >= len {
+        if i > len {
             return len - self.num_ones;
         }
-        i - self.rank1(i) + 1
+        i - self.rank1(i)
     }
 
     fn select1(&self, i: usize) -> Option<usize> {
@@ -143,15 +146,27 @@ mod tests {
         // }
         // panic!("aaa");
         assert_eq!(bv.rank1(0), 0);
-        assert_eq!(bv.rank1(1), 1);
-        assert_eq!(bv.rank1(2), 2);
+        assert_eq!(bv.rank1(1), 0);
+        assert_eq!(bv.rank1(2), 1);
         assert_eq!(bv.rank1(3), 2);
         assert_eq!(bv.rank1(4), 2);
-        assert_eq!(bv.rank1(5), 3);
+        assert_eq!(bv.rank1(5), 2);
         assert_eq!(bv.rank1(9), 3);
-        assert_eq!(bv.rank1(10), 4);
+        assert_eq!(bv.rank1(10), 3);
         assert_eq!(bv.rank1(31), 4);
-        assert_eq!(bv.rank1(32), 5);
+        assert_eq!(bv.rank1(32), 4);
+
+        assert_eq!(bv.rank0(0), 0);
+        assert_eq!(bv.rank0(1), 1);
+        assert_eq!(bv.rank0(2), 1);
+        assert_eq!(bv.rank0(3), 1);
+        assert_eq!(bv.rank0(4), 2);
+        assert_eq!(bv.rank0(5), 3);
+        assert_eq!(bv.rank0(9), 6);
+        assert_eq!(bv.rank0(10), 7);
+        assert_eq!(bv.rank0(31), 27);
+        assert_eq!(bv.rank0(32), 28);
+        assert_eq!(bv.rank0(320), 28);
     }
 
     // todo:
