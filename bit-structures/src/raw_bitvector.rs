@@ -67,7 +67,15 @@ impl RawBitVector {
     }
 
     /// Number of bits in a raw block.
-    pub fn block_bits() -> u32 {
+    pub fn block_bits(&self) -> u32 {
         BT::bits()
+    }
+
+    pub fn block_index(&self, i: usize) -> u32 {
+        BT::block_index(i)
+    }
+
+    pub fn bit_offset(&self, i: usize) -> u32 {
+        BT::bit_offset(i)
     }
 }
