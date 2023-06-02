@@ -10,7 +10,7 @@
 //   x we can possibly reuse the rank block indexing check
 // - is 'dense' the right name for this? the raw one is dense, this just adds rank/select support.
 
-use std::{debug_assert, unreachable};
+use std::debug_assert;
 
 use crate::{raw_bit_vector::RawBitVector, utils::one_mask};
 
@@ -53,7 +53,7 @@ impl DenseBitVector {
                     // Take a select sample, which consists of two parts:
                     // 1. The cumulative bits preceding this raw block
                     let high = cumulative_bits;
-                    // 2. The bit offset of the (ss * i + 1)-th 1-bit
+                    // 2. The bit offset of the (ss * i + 1)-th 1-bit within this raw block
                     let low = threshold - cumulative_ones;
                     // High is a multiple of the raw block size so these
                     // two values should never overlap in their bit ranges.
@@ -143,54 +143,54 @@ impl DenseBitVector {
         i - self.rank1(i)
     }
 
+    /// Return the number of ones represented by an s1 sample
+    fn s1_sample(&self, n: usize) -> (usize, usize) {
+        // A select sample consists of two parts:
+        // 1. The cumulative bits preceding this raw block.
+        // 2. The bit offset of the (ss * i + 1)-th 1-bit within this raw block
+        let sample_index = self.s1_index(n);
+        let sample = self.s1[sample_index];
+        // The raw block index is the cumulative number of bits >> raw_block_pow2
+        let (raw_index, correction) = self.raw.bit_split(sample as usize);
+        let total_ones = sample_index << self.ss_pow2;
+        let preceding_ones = total_ones - correction;
+        (raw_index, preceding_ones)
+    }
+
     fn select1(&self, n: usize) -> Option<usize> {
         if n >= self.num_ones {
             return None;
         }
 
-        // Steps:
+        // Steps (todo):
         // 1. Use the select block for an initial position
         // 2. Use rank blocks to hop over many raw blocks
         // 3. Use raw blocks to hop over many bytes
         // 4. Use bytes to hop over many bits
         // 5. Return the target bit position within the byte
         // debug_assert!(usize::BITS >= u32::BITS);
-
-        let sample_index = self.s1_index(n);
-        let sample = self.s1[sample_index];
-        let mask = self.raw.block_bits() - 1;
-        let correction = sample & mask;
-
-        // ones preceding the current raw block
-        let mut ones = (sample_index << self.ss_pow2) as u32 - correction;
-        let n: u32 = n.try_into().unwrap();
-
-        let raw_start = self.raw_index(sample as usize);
-
-        for (block_offset, block) in self.raw.blocks()[raw_start..].iter().enumerate() {
-            let prev_ones = ones;
-            ones += block.count_ones();
-            if ones >= n {
-                debug_assert!(ones >= n);
-                let extra = n - prev_ones;
-                let mut block = *block;
-                // unset `extra` zeros before reporting the trailing0 count
-                println!("block before: {:b}", block);
-                for _ in 0..extra {
-                    block &= block - 1;
-                }
-                println!("block after: {:b}", block);
-                // index up to the current block (subtract 1 since we're one ahead)
-                let offset = (block_offset + raw_start).saturating_sub(1);
-                let bit_offset =
-                    offset * self.raw.block_bits() as usize + block.trailing_zeros() as usize;
-                dbg!(offset, bit_offset, extra, n);
-                println!();
-                return Some(offset + bit_offset);
+        let (raw_start, preceding_ones) = self.s1_sample(n);
+        let raw_blocks = self.raw.blocks()[raw_start..].iter().copied();
+        let mut block = 0;
+        let mut block_offset = raw_start;
+        let mut ones = preceding_ones;
+        for b in raw_blocks {
+            let next_ones = ones + b.count_ones() as usize;
+            if next_ones >= n {
+                block = b;
+                break;
             }
+            ones = next_ones;
+            block_offset += 1;
         }
-
-        unreachable!();
+        // unset `extra` zeros before reporting the trailing0 block_offset
+        let extra = n - ones;
+        for _ in 0..extra {
+            block &= block - 1;
+        }
+        let bit_offset = block.trailing_zeros();
+        // not: this multiplication could be a shift
+        Some(((block_offset as u32 * self.raw.block_bits()) + bit_offset) as usize)
     }
 
     fn select0(&self, _i: usize) -> Option<usize> {

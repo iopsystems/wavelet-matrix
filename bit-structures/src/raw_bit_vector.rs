@@ -67,6 +67,9 @@ impl RawBitVector {
         self.len
     }
 
+    // todo: is there a way to not have to re-export these functions here, and instead
+    // provide  access to an associated type or something?
+
     /// Number of bits in a raw block.
     pub fn block_bits(&self) -> u32 {
         BT::bits()
@@ -78,5 +81,9 @@ impl RawBitVector {
 
     pub fn bit_offset(&self, i: usize) -> usize {
         BT::bit_offset(i)
+    }
+
+    pub fn bit_split(&self, i: usize) -> (usize, usize) {
+        BT::bit_split(i)
     }
 }
