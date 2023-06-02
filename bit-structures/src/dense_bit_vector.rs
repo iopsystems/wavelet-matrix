@@ -150,9 +150,11 @@ impl DenseBitVector {
         // 2. The bit offset of the (ss * i + 1)-th 1-bit within this raw block
         let sample_index = self.s1_index(n);
         let sample = self.s1[sample_index];
-        // The raw block index is the cumulative number of bits >> raw_block_pow2
-        let (raw_index, correction) = self.raw.bit_split(sample as usize);
         let total_ones = sample_index << self.ss_pow2;
+
+        // The raw block index of the preceding block, and the number of 1-bits
+        // on hte current block to reach the total_ones'th one
+        let (raw_index, correction) = self.raw.bit_split(sample as usize);
         let preceding_ones = total_ones - correction;
         (raw_index, preceding_ones)
     }
@@ -169,28 +171,32 @@ impl DenseBitVector {
         // 4. Use bytes to hop over many bits
         // 5. Return the target bit position within the byte
         // debug_assert!(usize::BITS >= u32::BITS);
-        let (raw_start, preceding_ones) = self.s1_sample(n);
-        let raw_blocks = self.raw.blocks()[raw_start..].iter().copied();
+
+        let (mut raw_index, mut ones) = self.s1_sample(n);
+        let raw_blocks = self.raw.blocks()[raw_index..].iter().copied();
+
+        // want: next block value and index, and the preceding one count up to that block.
+        // This feels inelegant; there might be a better way to express it.
         let mut block = 0;
-        let mut block_offset = raw_start;
-        let mut ones = preceding_ones;
         for b in raw_blocks {
             let next_ones = ones + b.count_ones() as usize;
-            if next_ones >= n {
+            if next_ones > n {
                 block = b;
                 break;
             }
+            raw_index += 1;
             ones = next_ones;
-            block_offset += 1;
         }
+
         // unset `extra` zeros before reporting the trailing0 block_offset
         let extra = n - ones;
         for _ in 0..extra {
             block &= block - 1;
         }
-        let bit_offset = block.trailing_zeros();
-        // not: this multiplication could be a shift
-        Some(((block_offset as u32 * self.raw.block_bits()) + bit_offset) as usize)
+
+        let bit_offset = block.trailing_zeros() as usize;
+        let block_offset = raw_index * self.raw.block_bits() as usize; // note: * could be a shift
+        Some(block_offset + bit_offset)
     }
 
     fn select0(&self, _i: usize) -> Option<usize> {
@@ -201,6 +207,9 @@ impl DenseBitVector {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::bit_block::BitBlock;
+    use crate::raw_bit_vector;
+    use rand::Rng;
 
     #[test]
     fn test_ranks() {
@@ -254,6 +263,36 @@ mod tests {
         assert_eq!(bv.select1(3), Some(10));
         assert_eq!(bv.select1(4), Some(32));
         assert_eq!(bv.select1(5), None);
+    }
+
+    #[test]
+    fn test_select1_rand() {
+        let n_iters = 100;
+        for _ in 1..n_iters {
+            let mut ones = vec![];
+            let mut rng = rand::thread_rng();
+            let mut prev = 0;
+            for _ in 1..100 {
+                let one = prev + rng.gen_range(1..3 * raw_bit_vector::BT::bits()) as usize;
+                prev = one;
+                ones.push(one);
+            }
+
+            // let ones = vec![  9, 25, 61, 76, 96, 134, 163, 187, 265];
+            let mut raw = RawBitVector::new(ones.iter().max().unwrap() + 1);
+            for o in ones.iter().copied() {
+                raw.set(o);
+            }
+
+            println!("ones {:?}", ones);
+            let bv = DenseBitVector::new(raw, 5, 5);
+            for (i, o) in ones.iter().copied().enumerate() {
+                println!("testing index {:?} with one  {:?}", i, o);
+                assert_eq!(bv.select1(i), Some(o));
+            }
+            assert_eq!(bv.select1(ones.len()), None);
+            assert_eq!(bv.select1(2 * ones.len()), None);
+        }
     }
 
     // test todo:
