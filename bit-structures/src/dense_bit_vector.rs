@@ -10,9 +10,13 @@
 //   x we can possibly reuse the rank block indexing check
 // - is 'dense' the right name for this? the raw one is dense, this just adds rank/select support.
 
+use crate::bit_block::BitBlock;
 use std::debug_assert;
 
-use crate::{raw_bit_vector::RawBitVector, utils::one_mask};
+use crate::{
+    raw_bit_vector::{self, RawBitVector},
+    utils::one_mask,
+};
 
 #[derive(Debug)]
 pub struct DenseBitVector {
@@ -172,31 +176,28 @@ impl DenseBitVector {
         // 5. Return the target bit position within the byte
         // debug_assert!(usize::BITS >= u32::BITS);
 
-        let (mut raw_index, mut ones) = self.s1_sample(n);
-        let raw_blocks = self.raw.blocks()[raw_index..].iter().copied();
+        let (raw_start, mut prev_ones) = self.s1_sample(n);
+        let raw_blocks = self.raw.blocks()[raw_start..].iter().copied();
 
         // want: next block value and index, and the preceding one count up to that block.
-        // This feels inelegant; there might be a better way to express it.
-        let mut block = 0;
-        for b in raw_blocks {
-            let next_ones = ones + b.count_ones() as usize;
-            if next_ones > n {
-                block = b;
-                break;
+        let mut cur_ones = prev_ones;
+        let partial_block = raw_blocks.enumerate().find(|(_, block)| {
+            prev_ones = cur_ones;
+            cur_ones += block.count_ones() as usize;
+            cur_ones > n
+        });
+
+        let shift = raw_bit_vector::BT::bits().ilog2() as usize;
+        if let Some((count, mut block)) = partial_block {
+            for _ in prev_ones..n {
+                block &= block - 1; // unset extra zeros
             }
-            raw_index += 1;
-            ones = next_ones;
+            let block_bits = (raw_start + count) << shift;
+            let bit_offset = block.trailing_zeros() as usize;
+            Some(block_bits + bit_offset)
+        } else {
+            Some(raw_start << shift)
         }
-
-        // unset `extra` zeros before reporting the trailing0 block_offset
-        let extra = n - ones;
-        for _ in 0..extra {
-            block &= block - 1;
-        }
-
-        let bit_offset = block.trailing_zeros() as usize;
-        let block_offset = raw_index * self.raw.block_bits() as usize; // note: * could be a shift
-        Some(block_offset + bit_offset)
     }
 
     fn select0(&self, _i: usize) -> Option<usize> {
