@@ -84,7 +84,7 @@ mod tests {
 Appendix: Potentially faster but more complex implementation of partition_point
 
 // Prototype implementation of the more complex but faster overlap method
-// from the same article. Is the overlap version from the orlp.net article
+// from the same article. It is the overlap version from the orlp.net article
 // with some optimizations described further down in the same article.
 fn partition_point_overlap(n: usize, mut pred: impl FnMut(usize) -> bool) -> usize {
     if n == 0 {

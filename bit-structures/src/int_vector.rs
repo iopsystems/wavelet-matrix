@@ -17,6 +17,7 @@ pub struct IntVector {
 }
 
 impl IntVector {
+    // todo: test with zero bit width
     pub fn new(len: usize, bit_width: usize) -> Self {
         assert!(bit_width <= BT::bits().try_into().unwrap());
         // The number of blocks should be just enough to represent `len * bit_width` bits.
@@ -50,7 +51,7 @@ impl IntVector {
         self.write_cursor += self.bit_width;
     }
 
-    pub fn read_int(&mut self, i: usize) -> BT {
+    pub fn get(&self, i: usize) -> BT {
         let bit_index = i * self.bit_width;
         let block_index = BT::block_index(bit_index);
         let offset = BT::bit_offset(bit_index);
@@ -88,7 +89,7 @@ mod tests {
             bv.write_int(n);
         }
         for (i, n) in seq.iter().copied().enumerate() {
-            assert_eq!(bv.read_int(i), n);
+            assert_eq!(bv.get(i), n);
         }
     }
 

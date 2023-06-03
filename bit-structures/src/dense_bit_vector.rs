@@ -29,7 +29,7 @@ pub struct DenseBitVector {
 }
 
 impl DenseBitVector {
-    fn new(data: RawBitVector, sr_pow2: u32, ss_pow2: u32) -> Self {
+    pub fn new(data: RawBitVector, sr_pow2: u32, ss_pow2: u32) -> Self {
         let raw = data;
         let raw_block_bits = raw.block_bits();
         debug_assert!(sr_pow2 >= raw_block_bits.ilog2());
@@ -106,7 +106,7 @@ impl DenseBitVector {
         self.raw.bit_offset(i)
     }
 
-    fn rank1(&self, i: usize) -> usize {
+    pub fn rank1(&self, i: usize) -> usize {
         if i >= self.raw.len() {
             return self.num_ones;
         }
@@ -139,7 +139,7 @@ impl DenseBitVector {
         rank as usize
     }
 
-    fn rank0(&self, i: usize) -> usize {
+    pub fn rank0(&self, i: usize) -> usize {
         let len = self.raw.len();
         if i > len {
             return len - self.num_ones;
@@ -147,7 +147,7 @@ impl DenseBitVector {
         i - self.rank1(i)
     }
 
-    fn select1(&self, n: usize) -> Option<usize> {
+    pub fn select1(&self, n: usize) -> Option<usize> {
         if n >= self.num_ones {
             return None;
         }
@@ -196,7 +196,7 @@ impl DenseBitVector {
         Some(block_bits + bit_offset)
     }
 
-    fn select0(&self, _i: usize) -> Option<usize> {
+    pub fn select0(&self, _i: usize) -> Option<usize> {
         todo!()
     }
 }
