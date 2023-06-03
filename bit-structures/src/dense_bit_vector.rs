@@ -147,22 +147,6 @@ impl DenseBitVector {
         i - self.rank1(i)
     }
 
-    /// Return the number of ones represented by an s1 sample
-    fn s1_sample(&self, n: usize) -> (usize, usize) {
-        // A select sample consists of two parts:
-        // 1. The cumulative bits preceding this raw block.
-        // 2. The bit offset of the (ss * i + 1)-th 1-bit within this raw block
-        let sample_index = self.s1_index(n);
-        let sample = self.s1[sample_index];
-        let total_ones = sample_index << self.ss_pow2;
-
-        // The raw block index of the preceding block, and the number of 1-bits
-        // on hte current block to reach the total_ones'th one
-        let (raw_index, correction) = self.raw.bit_split(sample as usize);
-        let preceding_ones = total_ones - correction;
-        (raw_index, preceding_ones)
-    }
-
     fn select1(&self, n: usize) -> Option<usize> {
         if n >= self.num_ones {
             return None;
@@ -176,28 +160,40 @@ impl DenseBitVector {
         // 5. Return the target bit position within the byte
         // debug_assert!(usize::BITS >= u32::BITS);
 
-        let (raw_start, mut prev_ones) = self.s1_sample(n);
-        let raw_blocks = self.raw.blocks()[raw_start..].iter().copied();
+        // note: we may go past the last rank block, but never past the last raw block
+        // (unless n >= self.num_ones)
+
+        let sample_index = self.s1_index(n);
+        let sample = self.s1[sample_index];
+        // The raw block index of the preceding block, and the number of 1-bits
+        // on the current block to reach the select_ones'th one
+        // A select sample consists of two parts:
+        // 1. The cumulative bits preceding this raw block. Since these are shifted down,
+        //    they represent the raw block index.
+        // 2. The bit offset of the (ss * i + 1)-th 1-bit within this raw block
+        let (raw_start, correction) = self.raw.bit_split(sample as usize);
+        let select_ones = sample_index << self.ss_pow2; // num. of ones represented by this sample
 
         // want: next block value and index, and the preceding one count up to that block.
+        let mut prev_ones = select_ones - correction;
         let mut cur_ones = prev_ones;
-        let partial_block = raw_blocks.enumerate().find(|(_, block)| {
-            prev_ones = cur_ones;
-            cur_ones += block.count_ones() as usize;
-            cur_ones > n
-        });
+        let raw_blocks = self.raw.blocks()[raw_start..].iter().copied();
+        let (count, mut block) = raw_blocks
+            .enumerate()
+            .find(|(_, block)| {
+                prev_ones = cur_ones;
+                cur_ones += block.count_ones() as usize;
+                cur_ones > n
+            })
+            .unwrap();
 
         let shift = raw_bit_vector::BT::bits().ilog2() as usize;
-        if let Some((count, mut block)) = partial_block {
-            for _ in prev_ones..n {
-                block &= block - 1; // unset extra zeros
-            }
-            let block_bits = (raw_start + count) << shift;
-            let bit_offset = block.trailing_zeros() as usize;
-            Some(block_bits + bit_offset)
-        } else {
-            Some(raw_start << shift)
+        for _ in prev_ones..n {
+            block &= block - 1; // unset extra zeros
         }
+        let block_bits = (raw_start + count) << shift;
+        let bit_offset = block.trailing_zeros() as usize;
+        Some(block_bits + bit_offset)
     }
 
     fn select0(&self, _i: usize) -> Option<usize> {
