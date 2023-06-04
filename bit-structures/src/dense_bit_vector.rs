@@ -269,13 +269,15 @@ mod tests {
 
     #[test]
     fn test_bitvector() {
-        bitvector::test_bitvector_vs_naive(|ones, len| {
+        let f = |ones: &[usize], len| {
             let mut raw = RawBitVector::new(len);
             for one in ones.iter().copied() {
                 raw.set(one);
             }
             DenseBitVector::new(raw, 5, 5)
-        });
+        };
+        bitvector::test_bitvector(f);
+        bitvector::test_bitvector_vs_naive(f);
     }
 
     #[test]

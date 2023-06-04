@@ -165,50 +165,9 @@ mod tests {
 
     #[test]
     fn test_bitvector() {
+        bitvector::test_bitvector(SparseBitVector::new);
         bitvector::test_bitvector_vs_naive(SparseBitVector::new);
     }
 
-    #[test]
-    fn test_rank1() {
-        // todo: rewrite into a more compact and less arbitrary test case
-        let ones = [1, 2, 5, 10, 32];
-        let universe = ones.iter().max().copied().unwrap() + 1;
-        let bv = SparseBitVector::new(&ones, universe);
-
-        assert_eq!(bv.rank1(0), 0);
-        assert_eq!(bv.rank1(1), 0);
-        assert_eq!(bv.rank1(2), 1);
-        assert_eq!(bv.rank1(3), 2);
-        assert_eq!(bv.rank1(4), 2);
-        assert_eq!(bv.rank1(5), 2);
-        assert_eq!(bv.rank1(9), 3);
-        assert_eq!(bv.rank1(10), 3);
-        assert_eq!(bv.rank1(31), 4);
-        assert_eq!(bv.rank1(32), 4);
-
-        assert_eq!(bv.rank0(0), 0);
-        assert_eq!(bv.rank0(1), 1);
-        assert_eq!(bv.rank0(2), 1);
-        assert_eq!(bv.rank0(3), 1);
-        assert_eq!(bv.rank0(4), 2);
-        assert_eq!(bv.rank0(5), 3);
-        assert_eq!(bv.rank0(9), 6);
-        assert_eq!(bv.rank0(10), 7);
-        assert_eq!(bv.rank0(31), 27);
-        assert_eq!(bv.rank0(32), 28);
-        assert_eq!(bv.rank0(320), 28);
-    }
-    #[test]
-    fn test_select1() {
-        // todo: rewrite into a more compact and less arbitrary test case
-        let ones = [1, 2, 5, 10, 32];
-        let universe = ones.iter().max().copied().unwrap() + 1;
-        let bv = SparseBitVector::new(&ones, universe);
-        assert_eq!(bv.select1(0), Some(1));
-        assert_eq!(bv.select1(1), Some(2));
-        assert_eq!(bv.select1(2), Some(5));
-        assert_eq!(bv.select1(3), Some(10));
-        assert_eq!(bv.select1(4), Some(32));
-        assert_eq!(bv.select1(5), None);
-    }
+    // todo: sparse-specific tests
 }

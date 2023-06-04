@@ -4,3 +4,8 @@
 //   - .to_dense() .to_sparse()
 // - dense EF-compressed static histogram with repetitions for zero buckets
 // - sparse EF-compressed static histogram with a dense bitvector marking nonzero buckets (essentially a compact weighted multiset representation)
+
+struct Histogram {
+    a: u32,
+    b: u32,
+}

@@ -8,13 +8,10 @@
 use crate::utils::partition_point;
 
 // You should implement:
-// - rank1 + num_ones, or rank0 + num_zeros
+// - rank1 or rank0
+// - num_ones or num_zeros
 // - len
 
-//
-// todo: test these impls
-// - SparseBitVector uses select0 and get
-// - does anyone use select1?
 pub trait BitVector {
     // note: could provide an impl in terms of rank0
     fn rank1(&self, index: usize) -> usize {
@@ -37,8 +34,6 @@ pub trait BitVector {
         default_get(self, index)
     }
 
-    fn len(&self) -> usize;
-
     fn num_ones(&self) -> usize {
         self.len() - self.num_zeros()
     }
@@ -46,6 +41,8 @@ pub trait BitVector {
     fn num_zeros(&self) -> usize {
         self.len() - self.num_ones()
     }
+
+    fn len(&self) -> usize;
 }
 
 pub fn default_rank1<T: BitVector + ?Sized>(bv: &T, index: usize) -> usize {
@@ -87,24 +84,80 @@ pub fn default_get<T: BitVector + ?Sized>(bv: &T, index: usize) -> bool {
 }
 
 #[cfg(test)]
-// todo: split into rank1/select1/rank0/select0 so we can check the 1 functions
-// on EF vectors with multiplicity
-// special cases:
-// - length-1 bitvectors
+pub fn test_bitvector<T: BitVector>(new: impl Fn(&[usize], usize) -> T) {
+    let bv = new(&[1, 2, 3], 4);
+    assert_eq!(bv.len(), 4);
+    assert_eq!(bv.num_ones(), 3);
+    assert_eq!(bv.num_zeros(), 1);
+    assert_eq!(bv.rank0(0), 0);
+    assert_eq!(bv.rank0(1), 1);
+    assert_eq!(bv.rank0(2), 1);
+    assert_eq!(bv.rank0(3), 1);
+    assert_eq!(bv.rank0(4), 1);
+    assert_eq!(bv.rank0(5), 1);
+
+    assert_eq!(bv.rank1(0), 0);
+    assert_eq!(bv.rank1(1), 0);
+    assert_eq!(bv.rank1(2), 1);
+    assert_eq!(bv.rank1(3), 2);
+    assert_eq!(bv.rank1(4), 3);
+    assert_eq!(bv.rank1(5), 3);
+
+    assert_eq!(bv.select0(0), Some(0));
+    assert_eq!(bv.select0(1), None);
+    assert_eq!(bv.select0(2), None);
+
+    assert_eq!(bv.select1(0), Some(1));
+    assert_eq!(bv.select1(1), Some(2));
+    assert_eq!(bv.select1(2), Some(3));
+    assert_eq!(bv.select1(3), None);
+    assert_eq!(bv.select1(4), None);
+}
 
 pub fn test_bitvector_vs_naive<T: BitVector>(new: impl Fn(&[usize], usize) -> T) {
+    use exhaustigen::Gen;
+
     use crate::naive_bit_vector::NaiveBitVector;
 
     struct TestCase(Vec<usize>, usize);
 
-    let test_cases = [
+    // we use a length larger than what we assume is
+    // the largest RawBitVector block size (128)
+    let len = 150;
+    let mut test_cases = vec![
         TestCase(vec![], 0),
-        TestCase(vec![], 100),
-        TestCase(vec![0, 10], 100),
-        TestCase((0..100).collect(), 100),
+        TestCase(vec![], len),
+        TestCase(vec![0], len),
+        TestCase(vec![len - 1], len),
+        TestCase(vec![0, 10], len),
+        TestCase((0..len).collect(), len),
+        TestCase((10..len).collect(), len),
+        TestCase((0..len - 10).collect(), len),
         TestCase(vec![1, 2, 5, 10, 32], 33),
         TestCase(vec![1, 2, 5, 10, 32], 33),
     ];
+
+    {
+        // add test cases with a sparser bit pattern
+        let input = vec![0, 10, 20, len - 1];
+        let mut gen = Gen::new();
+        while !gen.done() {
+            let ones = gen.gen_subset(&input);
+            test_cases.push(TestCase(ones.copied().collect(), len));
+        }
+    }
+
+    {
+        // Generate all 2^k subsets of the elements 0..k and
+        // use them as the bitvector one positions
+        let k = 10;
+        let input: Vec<_> = (0..k).collect();
+        let mut gen = Gen::new();
+        while !gen.done() {
+            let ones = gen.gen_subset(&input);
+            test_cases.push(TestCase(ones.copied().collect(), k));
+        }
+    }
 
     for TestCase(ones, len) in test_cases {
         dbg!("test case", &ones, &len);
