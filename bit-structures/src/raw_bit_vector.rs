@@ -44,7 +44,7 @@ impl RawBitVector {
     }
 
     /// Return the bool value of the bit at index `i`
-    pub fn get(&mut self, i: usize) -> bool {
+    pub fn get(&self, i: usize) -> bool {
         let block = self.blocks[BT::block_index(i)];
         let bit = block & (1 << BT::bit_offset(i));
         bit != 0

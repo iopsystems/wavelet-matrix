@@ -1,7 +1,7 @@
 // For now.
 #![allow(dead_code)]
 
-/// Bitwise binary search the range [0, n] based on lower_bound_pad from this article:
+/// Bitwise binary search the range 0..n based on lower_bound_pad from this article:
 ///   https://orlp.net/blog/bitwise-binary-search/
 ///
 /// Returns the index of the partition point according to the given predicate
@@ -76,6 +76,9 @@ mod tests {
         let target = 60;
         assert_eq!(partition_point(n, |i| i < target), target);
         assert_eq!(partition_point(target - 1, |i| i < target), target - 1);
+
+        assert_eq!(partition_point(0, |_| true), 0);
+        assert_eq!(partition_point(1, |_| true), 1);
     }
 }
 

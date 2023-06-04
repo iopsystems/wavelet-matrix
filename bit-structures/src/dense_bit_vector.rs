@@ -10,7 +10,7 @@
 //   x we can possibly reuse the rank block indexing check
 // - is 'dense' the right name for this? the raw one is dense, this just adds rank/select support.
 
-use crate::bit_block::BitBlock;
+use crate::{bit_block::BitBlock, bitvector::BitVector};
 use std::debug_assert;
 
 use crate::{
@@ -24,6 +24,7 @@ pub struct DenseBitVector {
     sr_pow2: u32,      //
     ss_pow2: u32,      //
     r: Box<[u32]>,     // rank samples
+    s0: Box<[u32]>,    // select0 samples
     s1: Box<[u32]>,    // select1 samples
     num_ones: usize,
 }
@@ -39,11 +40,13 @@ impl DenseBitVector {
         let sr = 1 << sr_pow2; // Rank sampling rate: sample every `sr` bits
 
         let mut r = vec![]; // rank samples
+        let mut s0 = vec![]; // select0 samples
         let mut s1 = vec![]; // select1 samples
 
         let mut cumulative_ones = 0; // 1-bits preceding the current raw block
         let mut cumulative_bits = 0; // bits preceding the current raw block
-        let mut threshold = 0; // take a select sample at the (threshold+1)th 1-bit
+        let mut zeros_threshold = 0; // take a select0 sample at the (zeros_threshold+1)th 1-bit
+        let mut ones_threshold = 0; // take a select1 sample at the (ones_threshold+1)th 1-bit
 
         // Raw blocks per rank block
         let raw_block_sr = sr >> raw_block_bits.ilog2();
@@ -53,18 +56,33 @@ impl DenseBitVector {
             r.push(cumulative_ones); // Take a rank sample
             for block in blocks.iter() {
                 let block_ones = block.count_ones();
-                if cumulative_ones + block_ones >= threshold {
+                if cumulative_ones + block_ones > ones_threshold {
                     // Take a select sample, which consists of two parts:
                     // 1. The cumulative bits preceding this raw block
                     let high = cumulative_bits;
-                    // 2. The bit offset of the (ss * i + 1)-th 1-bit within this raw block
-                    let low = threshold - cumulative_ones;
+                    // 2. The number of 1-bits before the (ss * i + 1)-th 1-bit within this raw block
+                    let low = ones_threshold - cumulative_ones;
                     // High is a multiple of the raw block size so these
                     // two values should never overlap in their bit ranges.
                     debug_assert!(high & low == 0);
-                    // Add the select sample and bump the threshold.
+                    // Add the select sample and bump the ones_threshold.
                     s1.push(high + low);
-                    threshold += ss;
+                    ones_threshold += ss;
+                }
+                let block_zeros = raw_block_bits - block_ones;
+                let cumulative_zeros = cumulative_bits - cumulative_ones;
+                if cumulative_zeros + block_zeros > zeros_threshold {
+                    // Take a select sample, which consists of two parts:
+                    // 1. The cumulative bits preceding this raw block
+                    let high = cumulative_bits;
+                    // 2. The number of 0-bits before (ss * i + 1)-th 0-bit within this raw block
+                    let low = zeros_threshold - cumulative_zeros;
+                    // High is a multiple of the raw block size so these
+                    // two values should never overlap in their bit ranges.
+                    debug_assert!(high & low == 0);
+                    // Add the select sample and bump the ones_threshold.
+                    s0.push(high + low);
+                    zeros_threshold += ss;
                 }
                 cumulative_ones += block_ones;
                 cumulative_bits += raw_block_bits;
@@ -76,13 +94,14 @@ impl DenseBitVector {
             sr_pow2,
             ss_pow2,
             r: r.into_boxed_slice(),
+            s0: s0.into_boxed_slice(),
             s1: s1.into_boxed_slice(),
             num_ones: cumulative_ones as usize,
         }
     }
 
     /// Return a select1 block index for a given 1-bit index
-    fn s1_index(&self, n: usize) -> usize {
+    fn s_index(&self, n: usize) -> usize {
         n >> self.ss_pow2
     }
 
@@ -105,10 +124,12 @@ impl DenseBitVector {
     fn raw_offset(&self, i: usize) -> usize {
         self.raw.bit_offset(i)
     }
+}
 
-    pub fn rank1(&self, i: usize) -> usize {
-        if i >= self.raw.len() {
-            return self.num_ones;
+impl BitVector for DenseBitVector {
+    fn rank1(&self, i: usize) -> usize {
+        if i >= self.len() {
+            return self.num_ones();
         }
 
         // Start with the prefix count from the rank block
@@ -139,15 +160,7 @@ impl DenseBitVector {
         rank as usize
     }
 
-    pub fn rank0(&self, i: usize) -> usize {
-        let len = self.raw.len();
-        if i > len {
-            return len - self.num_ones;
-        }
-        i - self.rank1(i)
-    }
-
-    pub fn select1(&self, n: usize) -> Option<usize> {
+    fn select1(&self, n: usize) -> Option<usize> {
         if n >= self.num_ones {
             return None;
         }
@@ -163,7 +176,7 @@ impl DenseBitVector {
         // note: we may go past the last rank block, but never past the last raw block
         // (unless n >= self.num_ones)
 
-        let sample_index = self.s1_index(n);
+        let sample_index = self.s_index(n);
         let sample = self.s1[sample_index];
         // The raw block index of the preceding block, and the number of 1-bits
         // on the current block to reach the select_ones'th one
@@ -196,8 +209,48 @@ impl DenseBitVector {
         Some(block_bits + bit_offset)
     }
 
-    pub fn select0(&self, _i: usize) -> Option<usize> {
-        todo!()
+    fn select0(&self, n: usize) -> Option<usize> {
+        if n >= self.num_zeros() {
+            return None;
+        }
+        let sample_index = self.s_index(n);
+        let sample = self.s0[sample_index];
+        let (raw_start, correction) = self.raw.bit_split(sample as usize);
+        let select_zeros = sample_index << self.ss_pow2; // num. of zeros represented by this sample
+        let mut prev_zeros = select_zeros - correction;
+        let mut cur_zeros = prev_zeros;
+        let raw_blocks = self.raw.blocks()[raw_start..].iter().copied();
+        let (count, mut block) = raw_blocks
+            .enumerate()
+            .find(|(_, block)| {
+                prev_zeros = cur_zeros;
+                cur_zeros += block.count_zeros() as usize;
+                cur_zeros > n
+            })
+            .unwrap();
+        let shift = raw_bit_vector::BT::bits().ilog2() as usize;
+
+        block = !block;
+        for _ in prev_zeros..n {
+            block &= block - 1; // unset extra zeros
+        }
+        block = !block;
+
+        let block_bits = (raw_start + count) << shift;
+        let bit_offset = block.trailing_ones() as usize;
+        Some(block_bits + bit_offset)
+    }
+
+    fn num_ones(&self) -> usize {
+        self.num_ones
+    }
+
+    fn len(&self) -> usize {
+        self.raw.len()
+    }
+
+    fn get(&self, i: usize) -> bool {
+        self.raw.get(i)
     }
 }
 
@@ -205,8 +258,25 @@ impl DenseBitVector {
 mod tests {
     use super::*;
     use crate::bit_block::BitBlock;
-    use crate::raw_bit_vector;
+    use crate::{bitvector, raw_bit_vector};
     use rand::Rng;
+
+    #[test]
+    fn test_new() {
+        let raw = RawBitVector::new(100);
+        let _ = DenseBitVector::new(raw, 5, 5);
+    }
+
+    #[test]
+    fn test_bitvector() {
+        bitvector::test_bitvector(|ones, len| {
+            let mut raw = RawBitVector::new(len);
+            for one in ones.iter().copied() {
+                raw.set(one);
+            }
+            DenseBitVector::new(raw, 5, 5)
+        });
+    }
 
     #[test]
     fn test_ranks() {
@@ -260,6 +330,26 @@ mod tests {
         assert_eq!(bv.select1(3), Some(10));
         assert_eq!(bv.select1(4), Some(32));
         assert_eq!(bv.select1(5), None);
+    }
+
+    #[test]
+    fn test_select0() {
+        // todo: rewrite into a more compact and less arbitrary test case
+        let ones = [1, 2, 5, 10];
+        let mut raw = RawBitVector::new(ones.iter().max().unwrap() + 1);
+        for i in ones {
+            raw.set(i);
+        }
+        let bv = DenseBitVector::new(raw, 5, 5);
+        assert_eq!(bv.select0(0), Some(0));
+        assert_eq!(bv.select0(1), Some(3));
+        assert_eq!(bv.select0(2), Some(4));
+        assert_eq!(bv.select0(3), Some(6));
+        assert_eq!(bv.select0(4), Some(7));
+        assert_eq!(bv.select0(5), Some(8));
+        assert_eq!(bv.select0(6), Some(9));
+        assert_eq!(bv.select0(7), None);
+        assert_eq!(bv.select0(8), None);
     }
 
     #[test]

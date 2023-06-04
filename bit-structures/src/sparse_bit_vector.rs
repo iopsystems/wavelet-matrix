@@ -1,47 +1,46 @@
 // Elias-Fano-encoded sparse bitvector
 
-use std::{debug_assert, todo};
+use std::debug_assert;
 
+use crate::bitvector::BitVector;
 use crate::dense_bit_vector::DenseBitVector;
 use crate::int_vector::IntVector;
 use crate::raw_bit_vector::RawBitVector;
 use crate::utils::{one_mask, partition_point};
 
 struct SparseBitVector {
-    high: DenseBitVector,
-    low: IntVector,
-    // Number of elements
-    // In the sparse vector interpretation this is the number of ones (incl. multiplicities)
-    len: usize,
-    // Maximum representable integer
-    universe: usize,
-    low_bits: usize, // number of low bits
-    low_mask: usize, // mask of low_bits 1s
-    has_multiplicity: bool,
+    high: DenseBitVector,   // High bit buckets in unary encoding
+    low: IntVector,         // Low bits in fixed-width encoding
+    len: usize,             // Number of elements
+    universe: usize,        // Maximum representable integer
+    low_bits: usize,        // Number of low bits per element
+    low_mask: usize,        // Mask with the low_bits lowest bits set to 1
+    has_multiplicity: bool, // Whether any element is repeated more than once
 }
 
 impl SparseBitVector {
-    // todo: consider non-u32 value and universe
     pub fn new(len: usize, universe: usize, values: impl Iterator<Item = usize>) -> Self {
         // todo: understand the comments in the paper "On Elias-Fano for Rank Queries in FM-Indexes"
         // but for now do the more obvious thing. todo: explain.
         // this is nice because we don't need the number of high bits explicitly so can avoid computing them
         let low_bits = (universe / len).max(1).ilog2() as usize;
+        let low_mask = one_mask(low_bits) as usize;
 
         // unary coding; 1 denotes values and 0 denotes separators
         let high_len = len + (universe >> low_bits);
         let mut high = RawBitVector::new(high_len);
         let mut low = IntVector::new(len, low_bits);
-        let low_mask = one_mask(low_bits) as usize;
         let mut prev = 0;
         let mut has_multiplicity = false;
         for (n, value) in values.into_iter().enumerate() {
             debug_assert!(prev <= value);
             debug_assert!(value <= universe);
 
+            // Track whether any element is repeated
             has_multiplicity |= n > 0 && value == prev;
             prev = value;
 
+            // Encode element
             let quotient = value >> low_bits;
             let remainder = value & low_mask;
             high.set(n + quotient);
@@ -70,27 +69,25 @@ impl SparseBitVector {
     fn remainder(&self, value: usize) -> usize {
         value & self.low_mask
     }
+}
 
-    // ooo|oooo|oo|ooooo|
-    pub fn rank1(&self, i: usize) -> usize {
-        if i > self.universe {
-            return self.len;
+impl BitVector for SparseBitVector {
+    //     3: index of the first guy of the next group
+    //  1: index of the first guy of this group
+    // -1--33----7
+    // 01234567890
+    // o|oo||oooo|oo|ooooo|
+    // 0 12  3456 78
+    fn rank1(&self, i: usize) -> usize {
+        if i >= self.len() {
+            return self.num_ones();
         }
 
         let quotient = self.quotient(i);
-
-        // todo: make sure the lower bound is inclusive and upper is exclusive in both branches.
-
-        // todo: explain the idea behind these bounds; the summary in "On Elias-Fano for Rank Queries in FM-Indexes" is
-        // To perform rank(i,1) on X, we first find the id of the bucket i lies in,
-        // and then perform two select operations on U, with consecutive arguments.
-        // The first one gives the count of 1s up to the start of the bucket that xi lies in.
-        // The second one tells us the size and endpoints of the subarray of L comprising this bucket.
-        // Finally, we perform a rank operation within the bucket.
         let (lower_bound, upper_bound) = if quotient == 0 {
             (0, self.high.select0(0).unwrap_or(self.len))
         } else {
-            // subtract the index to arrive at the actual value indices in the lower bits
+            // compute the lower..upper range to search within the low bits
             let i = quotient - 1;
             let lower_bound = self.high.select0(i).map(|x| x - i).unwrap_or(0);
 
@@ -100,15 +97,7 @@ impl SparseBitVector {
             (lower_bound, upper_bound)
         };
 
-        // todo: think through the edge conditions - i think this isn't quite right
-        // todo: remember, compensate for the marker elements...
-
-        // no elements in this bucket; count all elements preceding it
-        if lower_bound + 1 == upper_bound {
-            return self.high.rank1(quotient);
-        }
-
-        // count the number of elements strictly below i using just the low bits
+        // count the number of elements in this bucket that are strictly below i, using just the low bits
         let remainder = self.remainder(i) as u32;
         let bucket_count = partition_point(upper_bound - lower_bound, |n| {
             let index = lower_bound + n;
@@ -119,22 +108,114 @@ impl SparseBitVector {
         lower_bound + bucket_count
     }
 
-    pub fn rank0(&self, i: usize) -> usize {
+    fn rank0(&self, i: usize) -> usize {
         debug_assert!(!self.has_multiplicity);
-        if i > self.universe {
-            return self.universe - self.len;
+        if i >= self.len() {
+            return self.num_zeros();
         }
         i - self.rank1(i)
     }
 
-    pub fn select1(&self, n: usize) -> Option<usize> {
+    fn select1(&self, n: usize) -> Option<usize> {
         let quotient = self.high.rank0(self.high.select1(n)?);
         let remainder = self.low.get(n) as usize;
         Some((quotient << self.low_bits) + remainder)
     }
 
-    pub fn select0(&self, _n: usize) -> Option<usize> {
+    fn select0(&self, n: usize) -> Option<usize> {
         debug_assert!(!self.has_multiplicity);
-        todo!();
+        if n >= self.num_zeros() {
+            return None;
+        }
+        // Binary search over ranks for select0.
+        // Note: an alternative strategy that involves identifying the 0-run
+        // containing the n-th 0-bit is used by simple-sds and may be more efficient.
+        let index = partition_point(self.len(), |i| self.rank0(i) <= n);
+        Some(index - 1)
+    }
+
+    fn num_zeros(&self) -> usize {
+        self.len() - self.num_ones()
+    }
+
+    fn num_ones(&self) -> usize {
+        self.len
+    }
+
+    fn len(&self) -> usize {
+        // note: can overflow if usize == u32 and the universe is the max.
+        //       but we want to be able to represent the max value for eg.
+        //       morton-order things.
+        // todo: should we therefore use u64 for these properties?
+        debug_assert!(self.universe < usize::MAX);
+        self.universe + 1
+    }
+
+    fn get(&self, i: usize) -> bool {
+        // Only allow direct access to the i-th bit if this vector does not have multiplicity.
+        debug_assert!(!self.has_multiplicity);
+        // Quick hack. Can do better.
+        let ones_count = self.rank1(i) - self.rank1(i - 1);
+        ones_count == 1
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::bitvector;
+
+    use super::*;
+
+    #[test]
+    fn test_bitvector() {
+        bitvector::test_bitvector(|ones, len| {
+            SparseBitVector::new(ones.len(), len.saturating_sub(1), ones.iter().copied())
+        });
+    }
+
+    #[test]
+    fn test_rank1() {
+        // todo: rewrite into a more compact and less arbitrary test case
+        let ones = [1, 2, 5, 10, 32];
+        let len = ones.len();
+        let universe = ones.iter().max().copied().unwrap();
+        let bv = SparseBitVector::new(len, universe, ones.iter().copied());
+
+        assert_eq!(bv.rank1(0), 0);
+        assert_eq!(bv.rank1(1), 0);
+        assert_eq!(bv.rank1(2), 1);
+        assert_eq!(bv.rank1(3), 2);
+        assert_eq!(bv.rank1(4), 2);
+        assert_eq!(bv.rank1(5), 2);
+        assert_eq!(bv.rank1(9), 3);
+        assert_eq!(bv.rank1(10), 3);
+        assert_eq!(bv.rank1(31), 4);
+        assert_eq!(bv.rank1(32), 4);
+
+        assert_eq!(bv.rank0(0), 0);
+        assert_eq!(bv.rank0(1), 1);
+        assert_eq!(bv.rank0(2), 1);
+        assert_eq!(bv.rank0(3), 1);
+        assert_eq!(bv.rank0(4), 2);
+        assert_eq!(bv.rank0(5), 3);
+        assert_eq!(bv.rank0(9), 6);
+        assert_eq!(bv.rank0(10), 7);
+        assert_eq!(bv.rank0(31), 27);
+        assert_eq!(bv.rank0(32), 28);
+        assert_eq!(bv.rank0(320), 28);
+    }
+    #[test]
+    fn test_select1() {
+        // todo: rewrite into a more compact and less arbitrary test case
+        let ones = [1, 2, 5, 10, 32];
+        let len = ones.len();
+        let universe = ones.iter().max().copied().unwrap();
+        let bv = SparseBitVector::new(len, universe, ones.iter().copied());
+        assert_eq!(bv.select1(0), Some(1));
+        assert_eq!(bv.select1(1), Some(2));
+        assert_eq!(bv.select1(2), Some(5));
+        assert_eq!(bv.select1(3), Some(10));
+        assert_eq!(bv.select1(4), Some(32));
+        assert_eq!(bv.select1(5), None);
     }
 }

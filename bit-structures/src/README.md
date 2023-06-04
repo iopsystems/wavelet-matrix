@@ -30,5 +30,5 @@ The lowest-level bitvector types (`FixedWidthIntVector`, `RawBitVector`) assume 
 - Consider a simple impl of Roaring as an elegant proof of concept, with just rank/select. Maybe this can be our 'compressed' variant.
 - Implement a simple array-backed sparse bitvec
 - Implement a 'dense multiset' where the universe is dense but each entry can be weighted, backed by a dense + sparse – dense to store nonzeros, sparse to store cumulative weights. Not a bitvector so can have different funcs than rank/select. This can then be the rezolus histogram repr. I think this was described in the RRR paper, and I originally implemented it with some "zero-compressed bitmap" scheme, but can now do it with EF.
-
-
+- implement set ops (and, or, not) on raw bitvectors
+- implement a general mechanism for constructing a bitvector of arbitrary type, accepting a sorted iterator of ones (sorted because some, eg. sparse, require it). Maybe part of the bitvector trait.
