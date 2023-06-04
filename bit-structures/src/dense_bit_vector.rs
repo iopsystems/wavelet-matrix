@@ -106,42 +106,42 @@ impl DenseBitVector {
     }
 
     /// Return a rank block index for a given bit index
-    fn r_index(&self, i: usize) -> usize {
-        i >> self.sr_pow2
+    fn r_index(&self, index: usize) -> usize {
+        index >> self.sr_pow2
     }
 
     /// Return a rank-block-aligned bit index for a given bit index
-    fn rank_aligned_bit_index(&self, i: usize) -> usize {
-        self.r_index(i) << self.sr_pow2
+    fn rank_aligned_bit_index(&self, index: usize) -> usize {
+        self.r_index(index) << self.sr_pow2
     }
 
     /// Return a raw block index for a given bit index
-    fn raw_index(&self, i: usize) -> usize {
-        self.raw.block_index(i)
+    fn raw_index(&self, index: usize) -> usize {
+        self.raw.block_index(index)
     }
 
     /// Return the bit offset within the raw block
-    fn raw_offset(&self, i: usize) -> usize {
-        self.raw.bit_offset(i)
+    fn raw_offset(&self, index: usize) -> usize {
+        self.raw.bit_offset(index)
     }
 }
 
 impl BitVector for DenseBitVector {
-    fn rank1(&self, i: usize) -> usize {
-        if i >= self.len() {
+    fn rank1(&self, index: usize) -> usize {
+        if index >= self.len() {
             return self.num_ones();
         }
 
         // Start with the prefix count from the rank block
-        let mut rank = self.r[self.r_index(i)];
+        let mut rank = self.r[self.r_index(index)];
 
-        // // self.s[select_index] points somewhere before i
+        // // self.s[select_index] points somewhere before index
         // let select_index = self.select_index(rank);
 
         // Sequentially scan raw blocks from raw_start onwards
         // todo: use select blocks to increase raw_start by hopping through select blocks
-        let raw_start = self.raw_index(self.rank_aligned_bit_index(i));
-        let raw_end = self.raw_index(i);
+        let raw_start = self.raw_index(self.rank_aligned_bit_index(index));
+        let raw_end = self.raw_index(index);
         let raw_slice = &self.raw.blocks()[raw_start..=raw_end];
         if let Some((last_block, blocks)) = raw_slice.split_last() {
             // Add the ones in fully-covered raw blocks
@@ -150,7 +150,7 @@ impl BitVector for DenseBitVector {
             }
 
             // Add any ones in the final partly-covered raw block
-            let raw_bit_offset = self.raw_offset(i);
+            let raw_bit_offset = self.raw_offset(index);
             if raw_bit_offset > 0 {
                 let mask = one_mask(raw_bit_offset);
                 rank += (last_block & mask).count_ones();
@@ -249,8 +249,8 @@ impl BitVector for DenseBitVector {
         self.raw.len()
     }
 
-    fn get(&self, i: usize) -> bool {
-        self.raw.get(i)
+    fn get(&self, index: usize) -> bool {
+        self.raw.get(index)
     }
 }
 
@@ -269,7 +269,7 @@ mod tests {
 
     #[test]
     fn test_bitvector() {
-        bitvector::test_bitvector(|ones, len| {
+        bitvector::test_bitvector_vs_naive(|ones, len| {
             let mut raw = RawBitVector::new(len);
             for one in ones.iter().copied() {
                 raw.set(one);

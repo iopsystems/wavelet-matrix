@@ -2,6 +2,7 @@
 
 use std::debug_assert;
 
+use crate::bitvector;
 use crate::bitvector::BitVector;
 use crate::dense_bit_vector::DenseBitVector;
 use crate::int_vector::IntVector;
@@ -19,6 +20,10 @@ struct SparseBitVector {
 }
 
 impl SparseBitVector {
+    // note: get, select0, rank0 will be incorrect when there is multiplicity.
+    // because we rely on default impls, there is no room fo
+    // debug_assert!(!self.has_multiplicity);
+
     pub fn new(len: usize, universe: usize, values: impl Iterator<Item = usize>) -> Self {
         // todo: understand the comments in the paper "On Elias-Fano for Rank Queries in FM-Indexes"
         // but for now do the more obvious thing. todo: explain.
@@ -78,12 +83,12 @@ impl BitVector for SparseBitVector {
     // 01234567890
     // o|oo||oooo|oo|ooooo|
     // 0 12  3456 78
-    fn rank1(&self, i: usize) -> usize {
-        if i >= self.len() {
+    fn rank1(&self, index: usize) -> usize {
+        if index >= self.len() {
             return self.num_ones();
         }
 
-        let quotient = self.quotient(i);
+        let quotient = self.quotient(index);
         let (lower_bound, upper_bound) = if quotient == 0 {
             (0, self.high.select0(0).unwrap_or(self.len))
         } else {
@@ -98,7 +103,7 @@ impl BitVector for SparseBitVector {
         };
 
         // count the number of elements in this bucket that are strictly below i, using just the low bits
-        let remainder = self.remainder(i) as u32;
+        let remainder = self.remainder(index) as u32;
         let bucket_count = partition_point(upper_bound - lower_bound, |n| {
             let index = lower_bound + n;
             let value = self.low.get(index);
@@ -108,12 +113,9 @@ impl BitVector for SparseBitVector {
         lower_bound + bucket_count
     }
 
-    fn rank0(&self, i: usize) -> usize {
+    fn rank0(&self, index: usize) -> usize {
         debug_assert!(!self.has_multiplicity);
-        if i >= self.len() {
-            return self.num_zeros();
-        }
-        i - self.rank1(i)
+        bitvector::default_rank0(self, index)
     }
 
     fn select1(&self, n: usize) -> Option<usize> {
@@ -134,6 +136,11 @@ impl BitVector for SparseBitVector {
         Some(index - 1)
     }
 
+    fn get(&self, index: usize) -> bool {
+        debug_assert!(!self.has_multiplicity);
+        bitvector::default_get(self, index)
+    }
+
     fn num_zeros(&self) -> usize {
         self.len() - self.num_ones()
     }
@@ -150,14 +157,6 @@ impl BitVector for SparseBitVector {
         debug_assert!(self.universe < usize::MAX);
         self.universe + 1
     }
-
-    fn get(&self, i: usize) -> bool {
-        // Only allow direct access to the i-th bit if this vector does not have multiplicity.
-        debug_assert!(!self.has_multiplicity);
-        // Quick hack. Can do better.
-        let ones_count = self.rank1(i) - self.rank1(i - 1);
-        ones_count == 1
-    }
 }
 
 #[cfg(test)]
@@ -168,7 +167,7 @@ mod tests {
 
     #[test]
     fn test_bitvector() {
-        bitvector::test_bitvector(|ones, len| {
+        bitvector::test_bitvector_vs_naive(|ones, len| {
             SparseBitVector::new(ones.len(), len.saturating_sub(1), ones.iter().copied())
         });
     }

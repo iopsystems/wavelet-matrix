@@ -51,8 +51,8 @@ impl IntVector {
         self.write_cursor += self.bit_width;
     }
 
-    pub fn get(&self, i: usize) -> BT {
-        let bit_index = i * self.bit_width;
+    pub fn get(&self, index: usize) -> BT {
+        let bit_index = index * self.bit_width;
         let block_index = BT::block_index(bit_index);
         let offset = BT::bit_offset(bit_index);
 
@@ -88,8 +88,8 @@ mod tests {
         for n in seq {
             bv.write_int(n);
         }
-        for (i, n) in seq.iter().copied().enumerate() {
-            assert_eq!(bv.get(i), n);
+        for (index, n) in seq.iter().copied().enumerate() {
+            assert_eq!(bv.get(index), n);
         }
     }
 

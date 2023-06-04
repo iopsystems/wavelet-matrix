@@ -43,18 +43,18 @@ impl RawBitVector {
         Self { blocks: data, len }
     }
 
-    /// Return the bool value of the bit at index `i`
-    pub fn get(&self, i: usize) -> bool {
-        let block = self.blocks[BT::block_index(i)];
-        let bit = block & (1 << BT::bit_offset(i));
+    /// Return the bool value of the bit at index `index`
+    pub fn get(&self, index: usize) -> bool {
+        let block = self.blocks[BT::block_index(index)];
+        let bit = block & (1 << BT::bit_offset(index));
         bit != 0
     }
 
-    /// Write a 1-bit to index `i`.
+    /// Write a 1-bit to index `index`.
     // Since the data buffer is initialized to its final size at construction time
     // bits may be set in any order.
-    pub fn set(&mut self, i: usize) {
-        self.blocks[BT::block_index(i)] |= 1 << BT::bit_offset(i);
+    pub fn set(&mut self, index: usize) {
+        self.blocks[BT::block_index(index)] |= 1 << BT::bit_offset(index);
     }
 
     /// Return an immutable reference to the underlying data as a slice
@@ -75,15 +75,15 @@ impl RawBitVector {
         BT::bits()
     }
 
-    pub fn block_index(&self, i: usize) -> usize {
-        BT::block_index(i)
+    pub fn block_index(&self, index: usize) -> usize {
+        BT::block_index(index)
     }
 
-    pub fn bit_offset(&self, i: usize) -> usize {
-        BT::bit_offset(i)
+    pub fn bit_offset(&self, index: usize) -> usize {
+        BT::bit_offset(index)
     }
 
-    pub fn bit_split(&self, i: usize) -> (usize, usize) {
-        BT::bit_split(i)
+    pub fn bit_split(&self, index: usize) -> (usize, usize) {
+        BT::bit_split(index)
     }
 }
