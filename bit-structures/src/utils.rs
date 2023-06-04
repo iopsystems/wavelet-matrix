@@ -51,8 +51,11 @@ pub fn div_ceil(n: usize, m: usize) -> usize {
 // todo: can we do it without branches?
 pub fn one_mask(num_bits: usize) -> u32 {
     // `(1 << num_bits) - 1` works for [0, 32)
+    // debug_assert!(num_bits > 0);
+    if num_bits == 0 {
+        return 0;
+    }
     // the approach below works for (0, 32]
-    debug_assert!(num_bits > 0);
     u32::MAX.wrapping_shr(u32::BITS - num_bits as u32)
 }
 

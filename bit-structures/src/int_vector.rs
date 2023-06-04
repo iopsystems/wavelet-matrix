@@ -37,6 +37,13 @@ impl IntVector {
             value < (1 << self.bit_width),
             "int value cannot exceed the maximum value representable by the bit width"
         );
+
+        // If we have zero bit width, only allow writing zeros (and there's no need to write them!)
+        if self.bit_width == 0 {
+            assert!(value == 0);
+            return;
+        }
+
         let index = BT::block_index(self.write_cursor);
         let offset = BT::bit_offset(self.write_cursor);
         self.data[index] |= value << offset;
@@ -52,6 +59,13 @@ impl IntVector {
     }
 
     pub fn get(&self, index: usize) -> BT {
+        assert!(index < self.len);
+
+        // If we have zero bit width, our vector is entirely full of zeros.
+        if self.bit_width == 0 {
+            return 0;
+        }
+
         let bit_index = index * self.bit_width;
         let block_index = BT::block_index(bit_index);
         let offset = BT::bit_offset(bit_index);
@@ -105,4 +119,5 @@ mod tests {
     // - test that 64-bit blocks (and other bit widths) all work
     // - test sequences with repeating elements, etc.
     // - test multi-block sequences
+    // - test zero-bit-width entries
 }

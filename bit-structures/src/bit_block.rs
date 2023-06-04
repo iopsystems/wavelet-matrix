@@ -23,6 +23,9 @@ pub trait BitBlock {
     }
 }
 
+// Maybe this should be its own type?
+// struct Block<T>(T);
+
 impl BitBlock for u8 {
     fn bits() -> u32 {
         Self::BITS

@@ -91,19 +91,23 @@ pub fn default_get<T: BitVector + ?Sized>(bv: &T, index: usize) -> bool {
 // on EF vectors with multiplicity
 // special cases:
 // - length-1 bitvectors
-//
+
 pub fn test_bitvector_vs_naive<T: BitVector>(new: impl Fn(&[usize], usize) -> T) {
     use crate::naive_bit_vector::NaiveBitVector;
 
     struct TestCase(Vec<usize>, usize);
 
     let test_cases = [
+        TestCase(vec![], 0),
+        TestCase(vec![], 100),
         TestCase(vec![0, 10], 100),
+        TestCase((0..100).collect(), 100),
         TestCase(vec![1, 2, 5, 10, 32], 33),
         TestCase(vec![1, 2, 5, 10, 32], 33),
     ];
 
     for TestCase(ones, len) in test_cases {
+        dbg!("test case", &ones, &len);
         let bv = new(&ones, len);
         let nv = NaiveBitVector::new(&ones, len);
 
@@ -111,7 +115,7 @@ pub fn test_bitvector_vs_naive<T: BitVector>(new: impl Fn(&[usize], usize) -> T)
         assert_eq!(bv.num_ones(), bv.rank1(bv.len()));
         assert_eq!(bv.num_zeros(), bv.rank0(bv.len()));
         assert_eq!(bv.num_zeros() + bv.num_ones(), bv.len());
-        assert_eq!(bv.len(), nv.len());
+        assert_eq!(bv.len(), nv.len(), "unequal lengths");
 
         // test rank0 and rank1
         for i in 0..bv.len() + 2 {

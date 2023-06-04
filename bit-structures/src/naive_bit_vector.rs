@@ -52,8 +52,8 @@ impl BitVector for NaiveBitVector {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use crate::bitvector;
+    // use super::*;
+    // use crate::bitvector;
 
     #[test]
     fn test_bitvector() {

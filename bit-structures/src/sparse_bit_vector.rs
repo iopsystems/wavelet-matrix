@@ -12,8 +12,8 @@ use crate::utils::{one_mask, partition_point};
 struct SparseBitVector {
     high: DenseBitVector,   // High bit buckets in unary encoding
     low: IntVector,         // Low bits in fixed-width encoding
-    len: usize,             // Number of elements
-    universe: usize,        // Maximum representable integer
+    num_ones: usize,        // Number of elements (n)
+    len: usize,             // Maximum representable integer (u + 1)
     low_bits: usize,        // Number of low bits per element
     low_mask: usize,        // Mask with the low_bits lowest bits set to 1
     has_multiplicity: bool, // Whether any element is repeated more than once
@@ -23,32 +23,35 @@ impl SparseBitVector {
     // note: get, select0, rank0 will be incorrect when there is multiplicity.
     // because we rely on default impls, there is no room fo
     // debug_assert!(!self.has_multiplicity);
-
-    pub fn new(len: usize, universe: usize, values: impl Iterator<Item = usize>) -> Self {
+    // todo: figure out how to store all u32 elements including u32::MAX
+    pub fn new(ones: &[usize], len: usize) -> Self {
         // todo: understand the comments in the paper "On Elias-Fano for Rank Queries in FM-Indexes"
         // but for now do the more obvious thing. todo: explain.
         // this is nice because we don't need the number of high bits explicitly so can avoid computing them
-        let low_bits = (universe / len).max(1).ilog2() as usize;
+        let num_ones = ones.len();
+        let bits_per_one = if num_ones == 0 { 0 } else { len / num_ones };
+        let low_bits = bits_per_one.max(1).ilog2() as usize;
         let low_mask = one_mask(low_bits) as usize;
 
         // unary coding; 1 denotes values and 0 denotes separators
-        let high_len = len + (universe >> low_bits);
+        let high_len = num_ones + (len >> low_bits);
         let mut high = RawBitVector::new(high_len);
-        let mut low = IntVector::new(len, low_bits);
+        let mut low = IntVector::new(num_ones, low_bits);
         let mut prev = 0;
         let mut has_multiplicity = false;
-        for (n, value) in values.into_iter().enumerate() {
-            debug_assert!(prev <= value);
-            debug_assert!(value <= universe);
+
+        for (n, one) in ones.iter().copied().enumerate() {
+            debug_assert!(prev <= one);
+            debug_assert!(one < len);
 
             // Track whether any element is repeated
-            has_multiplicity |= n > 0 && value == prev;
-            prev = value;
+            has_multiplicity |= n > 0 && one == prev;
+            prev = one;
 
             // Encode element
-            let quotient = value >> low_bits;
-            let remainder = value & low_mask;
+            let quotient = one >> low_bits;
             high.set(n + quotient);
+            let remainder = one & low_mask;
             low.write_int(remainder as u32);
         }
 
@@ -58,8 +61,8 @@ impl SparseBitVector {
         Self {
             high,
             low,
+            num_ones,
             len,
-            universe,
             low_bits,
             low_mask,
             has_multiplicity,
@@ -90,14 +93,14 @@ impl BitVector for SparseBitVector {
 
         let quotient = self.quotient(index);
         let (lower_bound, upper_bound) = if quotient == 0 {
-            (0, self.high.select0(0).unwrap_or(self.len))
+            (0, self.high.select0(0).unwrap_or(self.num_ones))
         } else {
             // compute the lower..upper range to search within the low bits
             let i = quotient - 1;
             let lower_bound = self.high.select0(i).map(|x| x - i).unwrap_or(0);
 
             let i = quotient;
-            let upper_bound = self.high.select0(i).map(|x| x - i).unwrap_or(self.len);
+            let upper_bound = self.high.select0(i).map(|x| x - i).unwrap_or(self.num_ones);
 
             (lower_bound, upper_bound)
         };
@@ -146,16 +149,11 @@ impl BitVector for SparseBitVector {
     }
 
     fn num_ones(&self) -> usize {
-        self.len
+        self.num_ones
     }
 
     fn len(&self) -> usize {
-        // note: can overflow if usize == u32 and the universe is the max.
-        //       but we want to be able to represent the max value for eg.
-        //       morton-order things.
-        // todo: should we therefore use u64 for these properties?
-        debug_assert!(self.universe < usize::MAX);
-        self.universe + 1
+        self.len
     }
 }
 
@@ -167,18 +165,15 @@ mod tests {
 
     #[test]
     fn test_bitvector() {
-        bitvector::test_bitvector_vs_naive(|ones, len| {
-            SparseBitVector::new(ones.len(), len.saturating_sub(1), ones.iter().copied())
-        });
+        bitvector::test_bitvector_vs_naive(SparseBitVector::new);
     }
 
     #[test]
     fn test_rank1() {
         // todo: rewrite into a more compact and less arbitrary test case
         let ones = [1, 2, 5, 10, 32];
-        let len = ones.len();
-        let universe = ones.iter().max().copied().unwrap();
-        let bv = SparseBitVector::new(len, universe, ones.iter().copied());
+        let universe = ones.iter().max().copied().unwrap() + 1;
+        let bv = SparseBitVector::new(&ones, universe);
 
         assert_eq!(bv.rank1(0), 0);
         assert_eq!(bv.rank1(1), 0);
@@ -207,9 +202,8 @@ mod tests {
     fn test_select1() {
         // todo: rewrite into a more compact and less arbitrary test case
         let ones = [1, 2, 5, 10, 32];
-        let len = ones.len();
-        let universe = ones.iter().max().copied().unwrap();
-        let bv = SparseBitVector::new(len, universe, ones.iter().copied());
+        let universe = ones.iter().max().copied().unwrap() + 1;
+        let bv = SparseBitVector::new(&ones, universe);
         assert_eq!(bv.select1(0), Some(1));
         assert_eq!(bv.select1(1), Some(2));
         assert_eq!(bv.select1(2), Some(5));
