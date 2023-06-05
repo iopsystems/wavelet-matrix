@@ -3,6 +3,7 @@
 
 mod bit_block;
 mod bitvector;
+mod compressed_bit_vector;
 mod dense_bit_vector;
 mod int_vector;
 mod naive_bit_vector;

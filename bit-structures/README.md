@@ -1,6 +1,11 @@
 # Bit Structures
 
-Simple implementations of some fundamental bit-based data structures, favoring simplicity and low abstraction.
+Simple implementations of basic bit-based data structures. Designed for use with static data (construct once, query many times)
+
+# Questions
+
+- This is intended for wasm use. So why not just specialize to u32 values everywhere?
+
 
 ## Potential future optimizations
 
@@ -17,6 +22,8 @@ The lowest-level bitvector types (`FixedWidthIntVector`, `RawBitVector`) assume 
 
 ## To do
 
+- Optimize raw bitvector to allow for leading and trailing zeros
+- Create a `FlippedBitVector<T>` that corresponds to the negated version of a bitvector; 1-bits become 0-bits and vice versa. Essentially, reroute select0/1 to 1/0 and the same for rank and count ones/zeros, and negate `get`.
 - Port relevant tests from simple-sds, which is MIT-licensed
 - make EF split point configurable
 - prototype the sparse representation of a Rezolus histogram: store the cumulative weights for nonzero buckets in an EF vector + the indices of nonzero buckets in a dense bitvector.
