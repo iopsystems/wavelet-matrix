@@ -8,7 +8,6 @@ use std::ops::Range;
 
 #[derive(Debug)]
 enum Container {
-    Empty, // We already have a 2-bit tag for this enum so we might as well add an explicit 'empty' representation.
     Runs(Box<[Range<u16>]>), // Ranges representing runs of ones: start..start+length. We could actually use our RLE bitvector here.
     Sparse(Box<[u16]>), // lowest 16 bits of one positions. We could actually use our naïve bitvector here, if we parameterize the element type.
     Dense(Box<DenseBitVector>), // dense bit representation. We use our dense bitvector.
