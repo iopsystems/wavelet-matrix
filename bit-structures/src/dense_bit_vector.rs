@@ -14,32 +14,31 @@ use crate::bit_block::BitBlock;
 use crate::bit_vector::BitVector;
 use std::debug_assert;
 
-use crate::{
-    raw_bit_vector::{self, RawBitVector},
-    utils::one_mask,
-};
+use crate::{bit_buffer::BitBuffer, utils::one_mask};
+
+type RawBlock = u32;
 
 #[derive(Debug)]
 pub struct DenseBitVector {
-    raw: RawBitVector, // bit data
-    sr_pow2: u32,      //
-    ss_pow2: u32,      //
-    r: Box<[u32]>,     // rank samples
-    s0: Box<[u32]>,    // select0 samples
-    s1: Box<[u32]>,    // select1 samples
+    raw: BitBuffer<RawBlock>, // bit data
+    sr_pow2: u32,             //
+    ss_pow2: u32,             //
+    r: Box<[u32]>,            // rank samples
+    s0: Box<[u32]>,           // select0 samples
+    s1: Box<[u32]>,           // select1 samples
     num_ones: usize,
 }
 
 impl DenseBitVector {
-    pub fn new(data: RawBitVector, sr_pow2: u32, ss_pow2: u32) -> Self {
+    pub fn new(data: BitBuffer<RawBlock>, sr_log2: u32, ss_log2: u32) -> Self {
         let raw = data;
-        let raw_block_bits = raw_bit_vector::Block::BITS;
-        let raw_block_pow2 = raw_bit_vector::Block::bits_pow2();
-        debug_assert!(sr_pow2 >= raw_block_pow2);
-        debug_assert!(ss_pow2 >= raw_block_pow2);
+        let raw_block_bits = RawBlock::BITS;
+        let raw_block_pow2 = RawBlock::bits_log2();
+        debug_assert!(sr_log2 >= raw_block_pow2);
+        debug_assert!(ss_log2 >= raw_block_pow2);
 
-        let ss = 1 << ss_pow2; // Select sampling rate: sample every `ss` 1-bits
-        let sr = 1 << sr_pow2; // Rank sampling rate: sample every `sr` bits
+        let ss = 1 << ss_log2; // Select sampling rate: sample every `ss` 1-bits
+        let sr = 1 << sr_log2; // Rank sampling rate: sample every `sr` bits
 
         let mut r = vec![]; // rank samples
         let mut s0 = vec![]; // select0 samples
@@ -93,8 +92,8 @@ impl DenseBitVector {
 
         Self {
             raw,
-            sr_pow2,
-            ss_pow2,
+            sr_pow2: sr_log2,
+            ss_pow2: ss_log2,
             r: r.into_boxed_slice(),
             s0: s0.into_boxed_slice(),
             s1: s1.into_boxed_slice(),
@@ -119,12 +118,12 @@ impl DenseBitVector {
 
     /// Return a raw block index for a given bit index
     fn raw_index(&self, index: usize) -> usize {
-        raw_bit_vector::Block::block_index(index)
+        RawBlock::block_index(index)
     }
 
     /// Return the bit offset within the raw block
     fn raw_offset(&self, index: usize) -> usize {
-        raw_bit_vector::Block::bit_offset(index)
+        RawBlock::bit_offset(index)
     }
 }
 
@@ -154,7 +153,7 @@ impl BitVector for DenseBitVector {
             // Add any ones in the final partly-covered raw block
             let raw_bit_offset = self.raw_offset(index);
             if raw_bit_offset > 0 {
-                let mask: raw_bit_vector::Block = one_mask(raw_bit_offset);
+                let mask: RawBlock = one_mask(raw_bit_offset);
                 rank += (last_block & mask).count_ones();
             }
         }
@@ -186,7 +185,7 @@ impl BitVector for DenseBitVector {
         // 1. The cumulative bits preceding this raw block. Since these are shifted down,
         //    they represent the raw block index.
         // 2. The bit offset of the (ss * i + 1)-th 1-bit within this raw block
-        let (raw_start, correction) = raw_bit_vector::Block::index_offset(sample as usize);
+        let (raw_start, correction) = RawBlock::index_offset(sample as usize);
         let select_ones = sample_index << self.ss_pow2; // num. of ones represented by this sample
 
         // want: next block value and index, and the preceding one count up to that block.
@@ -202,7 +201,7 @@ impl BitVector for DenseBitVector {
             })
             .unwrap();
 
-        let shift = raw_bit_vector::Block::BITS.ilog2() as usize;
+        let shift = RawBlock::bits_log2() as usize;
         for _ in prev_ones..n {
             block &= block - 1; // unset extra zeros
         }
@@ -218,7 +217,7 @@ impl BitVector for DenseBitVector {
         let sample_index = self.s_index(n);
         let sample = self.s0[sample_index];
 
-        let (raw_start, correction) = raw_bit_vector::Block::index_offset(sample as usize);
+        let (raw_start, correction) = RawBlock::index_offset(sample as usize);
         let select_zeros = sample_index << self.ss_pow2; // num. of zeros represented by this sample
         let mut prev_zeros = select_zeros - correction;
         let mut cur_zeros = prev_zeros;
@@ -231,7 +230,7 @@ impl BitVector for DenseBitVector {
                 cur_zeros > n
             })
             .unwrap();
-        let shift = raw_bit_vector::Block::BITS.ilog2() as usize;
+        let shift = RawBlock::bits_log2() as usize;
 
         block = !block;
         for _ in prev_zeros..n {
@@ -261,31 +260,23 @@ impl BitVector for DenseBitVector {
 mod tests {
     use super::*;
     // use crate::bit_block::BitBlock;
-    use crate::{bit_vector, raw_bit_vector};
+    use crate::bit_vector;
     use rand::Rng;
 
     #[test]
     fn test_new() {
-        let raw = RawBitVector::new(100);
-        let _ = DenseBitVector::new(
-            raw,
-            raw_bit_vector::Block::BITS.ilog2(),
-            raw_bit_vector::Block::BITS.ilog2(),
-        );
+        let raw = BitBuffer::new(100);
+        let _ = DenseBitVector::new(raw, RawBlock::bits_log2(), RawBlock::bits_log2());
     }
 
     #[test]
     fn test_bitvector() {
         let f = |ones: &[usize], len| {
-            let mut raw = RawBitVector::new(len);
+            let mut raw = BitBuffer::new(len);
             for one in ones.iter().copied() {
                 raw.set(one);
             }
-            DenseBitVector::new(
-                raw,
-                raw_bit_vector::Block::BITS.ilog2(),
-                raw_bit_vector::Block::BITS.ilog2(),
-            )
+            DenseBitVector::new(raw, RawBlock::bits_log2(), RawBlock::bits_log2())
         };
         bit_vector::test_bitvector(f);
         bit_vector::test_bitvector_vs_naive(f);
@@ -295,15 +286,11 @@ mod tests {
     fn test_ranks() {
         // todo: rewrite into a more compact and less arbitrary test case
         let ones = [1, 2, 5, 10, 32];
-        let mut raw = RawBitVector::new(ones.iter().max().unwrap() + 1);
+        let mut raw = BitBuffer::new(ones.iter().max().unwrap() + 1);
         for i in ones {
             raw.set(i);
         }
-        let bv = DenseBitVector::new(
-            raw,
-            raw_bit_vector::Block::BITS.ilog2(),
-            raw_bit_vector::Block::BITS.ilog2(),
-        );
+        let bv = DenseBitVector::new(raw, RawBlock::bits_log2(), RawBlock::bits_log2());
         // for b in bv.raw.blocks() {
         //     println!("{:b}", b);
         // }
@@ -336,15 +323,11 @@ mod tests {
     fn test_select1() {
         // todo: rewrite into a more compact and less arbitrary test case
         let ones = [1, 2, 5, 10, 32];
-        let mut raw = RawBitVector::new(ones.iter().max().unwrap() + 1);
+        let mut raw = BitBuffer::new(ones.iter().max().unwrap() + 1);
         for i in ones {
             raw.set(i);
         }
-        let bv = DenseBitVector::new(
-            raw,
-            raw_bit_vector::Block::BITS.ilog2(),
-            raw_bit_vector::Block::BITS.ilog2(),
-        );
+        let bv = DenseBitVector::new(raw, RawBlock::bits_log2(), RawBlock::bits_log2());
         assert_eq!(bv.select1(0), Some(1));
         assert_eq!(bv.select1(1), Some(2));
         assert_eq!(bv.select1(2), Some(5));
@@ -357,15 +340,11 @@ mod tests {
     fn test_select0() {
         // todo: rewrite into a more compact and less arbitrary test case
         let ones = [1, 2, 5, 10];
-        let mut raw = RawBitVector::new(ones.iter().max().unwrap() + 1);
+        let mut raw = BitBuffer::new(ones.iter().max().unwrap() + 1);
         for i in ones {
             raw.set(i);
         }
-        let bv = DenseBitVector::new(
-            raw,
-            raw_bit_vector::Block::BITS.ilog2(),
-            raw_bit_vector::Block::BITS.ilog2(),
-        );
+        let bv = DenseBitVector::new(raw, RawBlock::bits_log2(), RawBlock::bits_log2());
         assert_eq!(bv.select0(0), Some(0));
         assert_eq!(bv.select0(1), Some(3));
         assert_eq!(bv.select0(2), Some(4));
@@ -385,23 +364,19 @@ mod tests {
             let mut rng = rand::thread_rng();
             let mut prev = 0;
             for _ in 1..100 {
-                let one = prev + rng.gen_range(1..3 * raw_bit_vector::Block::BITS) as usize;
+                let one = prev + rng.gen_range(1..3 * RawBlock::BITS) as usize;
                 prev = one;
                 ones.push(one);
             }
 
             // let ones = vec![  9, 25, 61, 76, 96, 134, 163, 187, 265];
-            let mut raw = RawBitVector::new(ones.iter().max().unwrap() + 1);
+            let mut raw = BitBuffer::new(ones.iter().max().unwrap() + 1);
             for o in ones.iter().copied() {
                 raw.set(o);
             }
 
             println!("ones {:?}", ones);
-            let bv = DenseBitVector::new(
-                raw,
-                raw_bit_vector::Block::BITS.ilog2(),
-                raw_bit_vector::Block::BITS.ilog2(),
-            );
+            let bv = DenseBitVector::new(raw, RawBlock::bits_log2(), RawBlock::bits_log2());
             for (i, o) in ones.iter().copied().enumerate() {
                 println!("testing index {:?} with one  {:?}", i, o);
                 assert_eq!(bv.select1(i), Some(o));
