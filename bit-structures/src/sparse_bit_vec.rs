@@ -2,7 +2,7 @@
 
 use std::debug_assert;
 
-use crate::bit_buffer::BitBuffer;
+use crate::bit_buf::BitBuf;
 use crate::bit_vec;
 use crate::bit_vec::BitVec;
 use crate::dense_bit_vec::DenseBitVec;
@@ -10,8 +10,8 @@ use crate::int_vec::IntVec;
 use crate::utils::{one_mask, partition_point};
 
 pub struct SparseBitVec {
-    high: DenseBitVec,   // High bit buckets in unary encoding
-    low: IntVec,         // Low bits in fixed-width encoding
+    high: DenseBitVec,      // High bit buckets in unary encoding
+    low: IntVec,            // Low bits in fixed-width encoding
     num_ones: usize,        // Number of elements (n)
     len: usize,             // Maximum representable integer (u + 1)
     low_bits: usize,        // Number of low bits per element
@@ -35,7 +35,7 @@ impl SparseBitVec {
 
         // unary coding; 1 denotes values and 0 denotes separators
         let high_len = num_ones + (len >> low_bits);
-        let mut high = BitBuffer::new(high_len);
+        let mut high = BitBuf::new(high_len);
         let mut low = IntVec::new(num_ones, low_bits);
         let mut prev = 0;
         let mut has_multiplicity = false;

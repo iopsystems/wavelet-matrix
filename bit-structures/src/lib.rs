@@ -8,7 +8,7 @@ mod dense_bit_vec;
 mod histogram;
 mod int_vec;
 mod naive_bit_vec;
-mod bit_buffer;
+mod bit_buf;
 mod sparse_bit_vec;
 mod utils;
 

@@ -14,13 +14,13 @@ use crate::bit_block::BitBlock;
 use crate::bit_vec::BitVec;
 use std::debug_assert;
 
-use crate::{bit_buffer::BitBuffer, utils::one_mask};
+use crate::{bit_buf::BitBuf, utils::one_mask};
 
 type RawBlock = u32;
 
 #[derive(Debug)]
 pub struct DenseBitVec {
-    raw: BitBuffer<RawBlock>, // bit data
+    raw: BitBuf<RawBlock>, // bit data
     sr_pow2: u32,             //
     ss_pow2: u32,             //
     r: Box<[u32]>,            // rank samples
@@ -30,7 +30,7 @@ pub struct DenseBitVec {
 }
 
 impl DenseBitVec {
-    pub fn new(data: BitBuffer<RawBlock>, sr_log2: u32, ss_log2: u32) -> Self {
+    pub fn new(data: BitBuf<RawBlock>, sr_log2: u32, ss_log2: u32) -> Self {
         let raw = data;
         let raw_block_bits = RawBlock::BITS;
         let raw_block_pow2 = RawBlock::bits_log2();
@@ -265,14 +265,14 @@ mod tests {
 
     #[test]
     fn test_new() {
-        let raw = BitBuffer::new(100);
+        let raw = BitBuf::new(100);
         let _ = DenseBitVec::new(raw, RawBlock::bits_log2(), RawBlock::bits_log2());
     }
 
     #[test]
     fn test_bitvector() {
         let f = |ones: &[usize], len| {
-            let mut raw = BitBuffer::new(len);
+            let mut raw = BitBuf::new(len);
             for one in ones.iter().copied() {
                 raw.set(one);
             }
@@ -286,7 +286,7 @@ mod tests {
     fn test_ranks() {
         // todo: rewrite into a more compact and less arbitrary test case
         let ones = [1, 2, 5, 10, 32];
-        let mut raw = BitBuffer::new(ones.iter().max().unwrap() + 1);
+        let mut raw = BitBuf::new(ones.iter().max().unwrap() + 1);
         for i in ones {
             raw.set(i);
         }
@@ -323,7 +323,7 @@ mod tests {
     fn test_select1() {
         // todo: rewrite into a more compact and less arbitrary test case
         let ones = [1, 2, 5, 10, 32];
-        let mut raw = BitBuffer::new(ones.iter().max().unwrap() + 1);
+        let mut raw = BitBuf::new(ones.iter().max().unwrap() + 1);
         for i in ones {
             raw.set(i);
         }
@@ -340,7 +340,7 @@ mod tests {
     fn test_select0() {
         // todo: rewrite into a more compact and less arbitrary test case
         let ones = [1, 2, 5, 10];
-        let mut raw = BitBuffer::new(ones.iter().max().unwrap() + 1);
+        let mut raw = BitBuf::new(ones.iter().max().unwrap() + 1);
         for i in ones {
             raw.set(i);
         }
@@ -370,7 +370,7 @@ mod tests {
             }
 
             // let ones = vec![  9, 25, 61, 76, 96, 134, 163, 187, 265];
-            let mut raw = BitBuffer::new(ones.iter().max().unwrap() + 1);
+            let mut raw = BitBuf::new(ones.iter().max().unwrap() + 1);
             for o in ones.iter().copied() {
                 raw.set(o);
             }

@@ -32,12 +32,12 @@ use crate::utils::div_ceil;
 // todo: rename this to BitBuffer?
 
 #[derive(Debug)]
-pub struct BitBuffer<B: BitBlock> {
+pub struct BitBuf<B: BitBlock> {
     blocks: Box<[B]>,
     len: usize,
 }
 
-impl<B: BitBlock> BitBuffer<B> {
+impl<B: BitBlock> BitBuf<B> {
     pub fn new(len: usize) -> Self {
         // The number of blocks should be just enough to represent `len` bits.
         let num_blocks = div_ceil(len, B::BITS as usize);
