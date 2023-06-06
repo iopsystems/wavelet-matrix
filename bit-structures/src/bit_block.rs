@@ -1,63 +1,81 @@
 /// Trait representing an integer type that is being used as a block of bits.
 // todo: can this require and implement basic math (shift, addition, subtraction, multiplication)?
 // then we can allow generic implementations with customizable block sizes.
-pub trait BitBlock {
-    /// The number of bits in this integer representation
-    fn bits() -> u32;
-
-    /// Return a tuple consisting of the high bits (shifted down) and low bits of the bit block.
-    fn bit_split(i: usize) -> (usize, usize) {
-        (Self::block_index(i), Self::bit_offset(i))
-    }
+pub trait BitBlock: Clone {
+    const MIN: Self;
+    const MAX: Self;
+    const BITS: u32;
 
     /// Block index of the block containing the `i`-th bit
-    fn block_index(i: usize) -> usize {
-        // According to a quick Godbolt check, the call to ilog2
-        // is optimized away in release mode (-C opt-level=2).
-        i >> Self::bits().ilog2()
+    fn bit_offset(i: usize) -> usize {
+        i & (Self::BITS - 1) as usize
     }
 
     /// Bit index of the `i`-th bit within its block (mask off the high bits)
-    fn bit_offset(i: usize) -> usize {
-        i & (Self::bits() - 1) as usize
+    fn block_index(i: usize) -> usize {
+        i >> Self::bits_pow2()
+    }
+
+    /// Block index and bit offset of the `i`-th bit
+    fn index_offset(i: usize) -> (usize, usize) {
+        (Self::block_index(i), Self::bit_offset(i))
+    }
+
+    /// Power of 2 of the number of bits in this block type
+    fn bits_pow2() -> u32 {
+        Self::BITS.ilog2()
     }
 }
 
-// Maybe this should be its own type?
-// struct Block<T>(T);
-
 impl BitBlock for u8 {
-    fn bits() -> u32 {
-        Self::BITS
-    }
+    const MIN: Self = Self::MIN;
+    const MAX: Self = Self::MAX;
+    const BITS: u32 = Self::BITS;
 }
 
 impl BitBlock for u16 {
-    fn bits() -> u32 {
-        Self::BITS
-    }
+    const MIN: Self = Self::MIN;
+    const MAX: Self = Self::MAX;
+    const BITS: u32 = Self::BITS;
 }
 
 impl BitBlock for u32 {
-    fn bits() -> u32 {
-        Self::BITS
-    }
+    const MIN: Self = Self::MIN;
+    const MAX: Self = Self::MAX;
+    const BITS: u32 = Self::BITS;
 }
 
 impl BitBlock for u64 {
-    fn bits() -> u32 {
-        Self::BITS
-    }
+    const MIN: Self = Self::MIN;
+    const MAX: Self = Self::MAX;
+    const BITS: u32 = Self::BITS;
 }
 
 impl BitBlock for u128 {
-    fn bits() -> u32 {
-        Self::BITS
-    }
+    const MIN: Self = Self::MIN;
+    const MAX: Self = Self::MAX;
+    const BITS: u32 = Self::BITS;
 }
 
 impl BitBlock for usize {
-    fn bits() -> u32 {
-        Self::BITS
-    }
+    const MIN: Self = Self::MIN;
+    const MAX: Self = Self::MAX;
+    const BITS: u32 = Self::BITS;
 }
+
+// Adapter functions if we only have an instance of a block and not the type in hand
+// pub fn bit_split<B: BitBlock>(_: B, i: usize) -> (usize, usize) {
+//     B::bit_split(i)
+// }
+
+// pub fn bits_log2<B: BitBlock>(_: B) -> u32 {
+//     B::bits_log2()
+// }
+
+// pub fn block_index<B: BitBlock>(_: B, i: usize) -> usize {
+//     B::block_index(i)
+// }
+
+// pub fn bit_offset<B: BitBlock>(_: B, i: usize) -> usize {
+//     B::bit_offset(i)
+// }

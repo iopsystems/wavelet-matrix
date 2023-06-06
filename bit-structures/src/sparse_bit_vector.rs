@@ -2,8 +2,8 @@
 
 use std::debug_assert;
 
-use crate::bitvector;
-use crate::bitvector::BitVector;
+use crate::bit_vector;
+use crate::bit_vector::BitVector;
 use crate::dense_bit_vector::DenseBitVector;
 use crate::int_vector::IntVector;
 use crate::raw_bit_vector::RawBitVector;
@@ -118,7 +118,7 @@ impl BitVector for SparseBitVector {
 
     fn rank0(&self, index: usize) -> usize {
         debug_assert!(!self.has_multiplicity);
-        bitvector::default_rank0(self, index)
+        bit_vector::default_rank0(self, index)
     }
 
     fn select1(&self, n: usize) -> Option<usize> {
@@ -129,19 +129,12 @@ impl BitVector for SparseBitVector {
 
     fn select0(&self, n: usize) -> Option<usize> {
         debug_assert!(!self.has_multiplicity);
-        if n >= self.num_zeros() {
-            return None;
-        }
-        // Binary search over ranks for select0.
-        // Note: an alternative strategy that involves identifying the 0-run
-        // containing the n-th 0-bit is used by simple-sds and may be more efficient.
-        let index = partition_point(self.len(), |i| self.rank0(i) <= n);
-        Some(index - 1)
+        bit_vector::default_select0(self, n)
     }
 
     fn get(&self, index: usize) -> bool {
         debug_assert!(!self.has_multiplicity);
-        bitvector::default_get(self, index)
+        bit_vector::default_get(self, index)
     }
 
     fn num_zeros(&self) -> usize {
@@ -159,14 +152,14 @@ impl BitVector for SparseBitVector {
 
 #[cfg(test)]
 mod tests {
-    use crate::bitvector;
+    use crate::bit_vector;
 
     use super::*;
 
     #[test]
     fn test_bitvector() {
-        bitvector::test_bitvector(SparseBitVector::new);
-        bitvector::test_bitvector_vs_naive(SparseBitVector::new);
+        bit_vector::test_bitvector(SparseBitVector::new);
+        bit_vector::test_bitvector_vs_naive(SparseBitVector::new);
     }
 
     // todo: sparse-specific tests

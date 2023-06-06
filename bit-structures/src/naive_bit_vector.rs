@@ -3,7 +3,7 @@
 
 use std::debug_assert;
 
-use crate::bitvector::BitVector;
+use crate::bit_vector::BitVector;
 use crate::utils::partition_point;
 
 #[derive(Debug)]

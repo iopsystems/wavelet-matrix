@@ -19,9 +19,9 @@ pub struct IntVector {
 impl IntVector {
     // todo: test with zero bit width
     pub fn new(len: usize, bit_width: usize) -> Self {
-        assert!(bit_width <= BT::bits().try_into().unwrap());
+        assert!(bit_width <= BT::BITS.try_into().unwrap());
         // The number of blocks should be just enough to represent `len * bit_width` bits.
-        let num_blocks = div_ceil(len * bit_width, BT::bits() as usize);
+        let num_blocks = div_ceil(len * bit_width, BT::BITS as usize);
         // Initialize to zero so that any trailing bits in the last block will be zero.
         let data = vec![0; num_blocks].into_boxed_slice();
         Self {
@@ -49,7 +49,7 @@ impl IntVector {
         self.data[index] |= value << offset;
 
         // Number of available bits in the target block
-        let num_available_bits = BT::bits() as usize - offset;
+        let num_available_bits = BT::BITS as usize - offset;
 
         // If needed, write the remaining bits to the next block
         if num_available_bits < self.bit_width {
@@ -77,7 +77,7 @@ impl IntVector {
         let mut value = (self.data[block_index] & (mask << offset)) >> offset;
 
         // Number of available bits in the target block
-        let num_available_bits = BT::bits() as usize - offset;
+        let num_available_bits = BT::BITS as usize - offset;
 
         // If needed, extract the remaining bits from the bottom of the next block
         if num_available_bits < self.bit_width {

@@ -2,11 +2,12 @@
 #![allow(dead_code)]
 
 mod bit_block;
-mod bitvector;
+mod bit_vector;
 mod compressed_bit_vector;
 mod dense_bit_vector;
 mod int_vector;
 mod naive_bit_vector;
+mod new_raw_bit_vector;
 mod raw_bit_vector;
 mod sparse_bit_vector;
 mod utils;

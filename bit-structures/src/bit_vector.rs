@@ -5,6 +5,7 @@
 // eg. sample rates for rank/select samples?
 // : FromIterator<u32>
 // todo: decide whether to call these `index` and `n` or `i` and `n`
+// todo: rename this file to bit_vector.rs?
 use crate::utils::partition_point;
 
 // You should implement:
@@ -43,6 +44,11 @@ pub trait BitVector {
     }
 
     fn len(&self) -> usize;
+
+    // todo: batch_rank/select/get which collect into an existing vec (to reduce allocations)
+    // fn batch_rank1(&self, index: impl Iterator<Item=usize>, out: Vec<usize>) {
+    //     out.extend(index.map(|index| self.rank1(index)))
+    // }
 }
 
 pub fn default_rank1<T: BitVector + ?Sized>(bv: &T, index: usize) -> usize {

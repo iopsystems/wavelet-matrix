@@ -49,6 +49,7 @@ pub fn div_ceil(n: usize, m: usize) -> usize {
 // todo: how can we make this work for usize and u32?
 // todo: is there a version that works correctly for both 0 and 32?
 // todo: can we do it without branches?
+// todo: how to do this for other types, eg. u128?
 pub fn one_mask(num_bits: usize) -> u32 {
     // `(1 << num_bits) - 1` works for [0, 32)
     // debug_assert!(num_bits > 0);

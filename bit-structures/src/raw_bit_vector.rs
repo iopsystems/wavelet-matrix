@@ -17,6 +17,9 @@ use crate::utils::div_ceil;
 //     - a trim() method on RawBitVector? then we can't set beyond the trimmed after
 //     - a builder that preallocates the full thing and trims on build?
 //     - a builder that reallocates as you go?
+//     - or if the ones are sorted, can just look at the first and last.
+// - [same idea, refined] implement a "default value" that we can compress out of the top and bottom – or maybe always zero.
+//   ie., store only the middle section and return the default value outside it.
 
 // todo:
 // - is there an elegant way to generalize this to arbitrary unsigned types?
@@ -24,20 +27,20 @@ use crate::utils::div_ceil;
 // - current thoughts: we can use the BitBlock trait to centralize common functionality
 //   across block types, and type aliases to fix the individual block types for each
 //   individual bitvector type and block.
-pub type BT = u32; // Block type
+pub type Block = u32; // Block type
 
 // Raw bits represented in an array of integer blocks.
 // Immutable once constructed
 #[derive(Debug)]
 pub struct RawBitVector {
-    blocks: Box<[BT]>,
+    blocks: Box<[Block]>,
     len: usize,
 }
 
 impl RawBitVector {
     pub fn new(len: usize) -> Self {
         // The number of blocks should be just enough to represent `len` bits.
-        let num_blocks = div_ceil(len, BT::bits() as usize);
+        let num_blocks = div_ceil(len, Block::BITS as usize);
         // Initialize to zero so that any trailing bits in the last block will be zero.
         let data = vec![0; num_blocks].into_boxed_slice();
         Self { blocks: data, len }
@@ -45,8 +48,8 @@ impl RawBitVector {
 
     /// Return the bool value of the bit at index `index`
     pub fn get(&self, index: usize) -> bool {
-        let block = self.blocks[BT::block_index(index)];
-        let bit = block & (1 << BT::bit_offset(index));
+        let block = self.blocks[Block::block_index(index)];
+        let bit = block & (1 << Block::bit_offset(index));
         bit != 0
     }
 
@@ -54,36 +57,16 @@ impl RawBitVector {
     // Since the data buffer is initialized to its final size at construction time
     // bits may be set in any order.
     pub fn set(&mut self, index: usize) {
-        self.blocks[BT::block_index(index)] |= 1 << BT::bit_offset(index);
+        self.blocks[Block::block_index(index)] |= 1 << Block::bit_offset(index);
     }
 
     /// Return an immutable reference to the underlying data as a slice
-    pub fn blocks(&self) -> &[BT] {
+    pub fn blocks(&self) -> &[Block] {
         &self.blocks
     }
 
     /// Bitvector length in bits.
     pub fn len(&self) -> usize {
         self.len
-    }
-
-    // todo: is there a way to not have to re-export these functions here, and instead
-    // provide  access to an associated type or something?
-
-    /// Number of bits in a raw block.
-    pub fn block_bits(&self) -> u32 {
-        BT::bits()
-    }
-
-    pub fn block_index(&self, index: usize) -> usize {
-        BT::block_index(index)
-    }
-
-    pub fn bit_offset(&self, index: usize) -> usize {
-        BT::bit_offset(index)
-    }
-
-    pub fn bit_split(&self, index: usize) -> (usize, usize) {
-        BT::bit_split(index)
     }
 }
