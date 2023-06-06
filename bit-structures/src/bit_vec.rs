@@ -45,6 +45,14 @@ pub trait BitVec {
 
     fn len(&self) -> usize;
 
+    // todo: return the total size in bytes using std::mem::size_of plus the
+    // same recursively for all constituents behind a pointer?
+    // this note (https://doc.rust-lang.org/std/mem/fn.size_of.html#size-of-structs)
+    // seems odd since it refers to using field declaration order even though I don't think
+    // Rust actually uses that to lay things out in memory by default.
+    // See also: https://github.com/DKerp/get-size
+    // fn size_in_bytes() -> usize;
+
     // todo: batch_rank/select/get which collect into an existing vec (to reduce allocations)
     // fn batch_rank1(&self, index: impl Iterator<Item=usize>, out: Vec<usize>) {
     //     out.extend(index.map(|index| self.rank1(index)))
