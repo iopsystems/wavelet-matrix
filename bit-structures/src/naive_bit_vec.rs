@@ -3,16 +3,16 @@
 
 use std::debug_assert;
 
-use crate::bit_vector::BitVector;
+use crate::bit_vec::BitVec;
 use crate::utils::partition_point;
 
 #[derive(Debug)]
-pub struct NaiveBitVector {
+pub struct NaiveBitVec {
     ones: Box<[usize]>,
     len: usize,
 }
 
-impl NaiveBitVector {
+impl NaiveBitVec {
     pub fn new(ones: &[usize], len: usize) -> Self {
         debug_assert!(
             ones.windows(2).all(|w| w[0] < w[1]),
@@ -26,7 +26,7 @@ impl NaiveBitVector {
     }
 }
 
-impl BitVector for NaiveBitVector {
+impl BitVec for NaiveBitVec {
     fn rank1(&self, i: usize) -> usize {
         if i >= self.len() {
             return self.num_ones();

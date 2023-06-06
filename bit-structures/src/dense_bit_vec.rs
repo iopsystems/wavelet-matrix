@@ -1,6 +1,6 @@
 // Dense bit vector with rank and select, based on the ideas described
 // in the paper "Fast, Small, Simple Rank/Select on Bitmaps".
-// We use an additional level of blocks provided by the RawBitVector, but the ideas are the same.
+// We use an additional level of blocks provided by the RawBitVec, but the ideas are the same.
 // Uses a 32-bit universe size and so can store a little more than 4 billion bits.
 
 // todo:
@@ -11,7 +11,7 @@
 // - is 'dense' the right name for this? the raw one is dense, this just adds rank/select support.
 
 use crate::bit_block::BitBlock;
-use crate::bit_vector::BitVector;
+use crate::bit_vec::BitVec;
 use std::debug_assert;
 
 use crate::{bit_buffer::BitBuffer, utils::one_mask};
@@ -19,7 +19,7 @@ use crate::{bit_buffer::BitBuffer, utils::one_mask};
 type RawBlock = u32;
 
 #[derive(Debug)]
-pub struct DenseBitVector {
+pub struct DenseBitVec {
     raw: BitBuffer<RawBlock>, // bit data
     sr_pow2: u32,             //
     ss_pow2: u32,             //
@@ -29,7 +29,7 @@ pub struct DenseBitVector {
     num_ones: usize,
 }
 
-impl DenseBitVector {
+impl DenseBitVec {
     pub fn new(data: BitBuffer<RawBlock>, sr_log2: u32, ss_log2: u32) -> Self {
         let raw = data;
         let raw_block_bits = RawBlock::BITS;
@@ -127,7 +127,7 @@ impl DenseBitVector {
     }
 }
 
-impl BitVector for DenseBitVector {
+impl BitVec for DenseBitVec {
     fn rank1(&self, index: usize) -> usize {
         if index >= self.len() {
             return self.num_ones();
@@ -260,13 +260,13 @@ impl BitVector for DenseBitVector {
 mod tests {
     use super::*;
     // use crate::bit_block::BitBlock;
-    use crate::bit_vector;
+    use crate::bit_vec;
     use rand::Rng;
 
     #[test]
     fn test_new() {
         let raw = BitBuffer::new(100);
-        let _ = DenseBitVector::new(raw, RawBlock::bits_log2(), RawBlock::bits_log2());
+        let _ = DenseBitVec::new(raw, RawBlock::bits_log2(), RawBlock::bits_log2());
     }
 
     #[test]
@@ -276,10 +276,10 @@ mod tests {
             for one in ones.iter().copied() {
                 raw.set(one);
             }
-            DenseBitVector::new(raw, RawBlock::bits_log2(), RawBlock::bits_log2())
+            DenseBitVec::new(raw, RawBlock::bits_log2(), RawBlock::bits_log2())
         };
-        bit_vector::test_bitvector(f);
-        bit_vector::test_bitvector_vs_naive(f);
+        bit_vec::test_bitvector(f);
+        bit_vec::test_bitvector_vs_naive(f);
     }
 
     #[test]
@@ -290,7 +290,7 @@ mod tests {
         for i in ones {
             raw.set(i);
         }
-        let bv = DenseBitVector::new(raw, RawBlock::bits_log2(), RawBlock::bits_log2());
+        let bv = DenseBitVec::new(raw, RawBlock::bits_log2(), RawBlock::bits_log2());
         // for b in bv.raw.blocks() {
         //     println!("{:b}", b);
         // }
@@ -327,7 +327,7 @@ mod tests {
         for i in ones {
             raw.set(i);
         }
-        let bv = DenseBitVector::new(raw, RawBlock::bits_log2(), RawBlock::bits_log2());
+        let bv = DenseBitVec::new(raw, RawBlock::bits_log2(), RawBlock::bits_log2());
         assert_eq!(bv.select1(0), Some(1));
         assert_eq!(bv.select1(1), Some(2));
         assert_eq!(bv.select1(2), Some(5));
@@ -344,7 +344,7 @@ mod tests {
         for i in ones {
             raw.set(i);
         }
-        let bv = DenseBitVector::new(raw, RawBlock::bits_log2(), RawBlock::bits_log2());
+        let bv = DenseBitVec::new(raw, RawBlock::bits_log2(), RawBlock::bits_log2());
         assert_eq!(bv.select0(0), Some(0));
         assert_eq!(bv.select0(1), Some(3));
         assert_eq!(bv.select0(2), Some(4));
@@ -376,7 +376,7 @@ mod tests {
             }
 
             println!("ones {:?}", ones);
-            let bv = DenseBitVector::new(raw, RawBlock::bits_log2(), RawBlock::bits_log2());
+            let bv = DenseBitVec::new(raw, RawBlock::bits_log2(), RawBlock::bits_log2());
             for (i, o) in ones.iter().copied().enumerate() {
                 println!("testing index {:?} with one  {:?}", i, o);
                 assert_eq!(bv.select1(i), Some(o));

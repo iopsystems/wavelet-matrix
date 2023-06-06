@@ -14,7 +14,7 @@ use crate::utils::div_ceil;
 // todo:
 // - add a builder so that we can RLE the start and end of the bitvector, only storing the middle chunk.
 //   - not entirely sure how best to do this
-//     - a trim() method on RawBitVector? then we can't set beyond the trimmed after
+//     - a trim() method on RawBitVec? then we can't set beyond the trimmed after
 //     - a builder that preallocates the full thing and trims on build?
 //     - a builder that reallocates as you go?
 //     - or if the ones are sorted, can just look at the first and last.

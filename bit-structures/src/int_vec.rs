@@ -6,7 +6,7 @@ use std::debug_assert;
 
 type BT = u32; // Block type
 
-pub struct IntVector {
+pub struct IntVec {
     data: Box<[BT]>,
     /// Number of elements
     len: usize,
@@ -16,7 +16,7 @@ pub struct IntVector {
     write_cursor: usize,
 }
 
-impl IntVector {
+impl IntVec {
     // todo: test with zero bit width
     pub fn new(len: usize, bit_width: usize) -> Self {
         assert!(bit_width <= BT::BITS.try_into().unwrap());
@@ -98,7 +98,7 @@ mod tests {
         let seq = [5, 6, 2, 0, 7, 1, 11, 5, 10, 10, 2, 3, 4, 10, 20, 100, 5];
         let max = seq.iter().max().copied().unwrap();
         let n_bits = (max as f64).log2().ceil() as usize;
-        let mut bv = IntVector::new(100, n_bits);
+        let mut bv = IntVec::new(100, n_bits);
         for n in seq {
             bv.write_int(n);
         }
@@ -110,7 +110,7 @@ mod tests {
     #[test]
     #[should_panic]
     fn test_any_panic() {
-        let mut bv = IntVector::new(100, 3);
+        let mut bv = IntVec::new(100, 3);
         bv.write_int(8);
     }
 

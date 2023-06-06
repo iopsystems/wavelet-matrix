@@ -13,17 +13,17 @@
 // Of course, we should benchmark to see.
 //
 // TODO: rename this file to whatever the struct ends up being named
-// https://observablehq.com/d/2654fee8107c15ab#SimpleSelectBitVector
+// https://observablehq.com/d/2654fee8107c15ab#SimpleSelectBitVec
 
 use std::debug_assert;
 
-use crate::raw_bitvector::RawBitVector;
+use crate::raw_bitvector::RawBitVec;
 
 type BT = u32; // Block type. TODO: Should we distinguish between types for rank vs. select blocks?
 
 #[derive(Debug)]
-pub struct DenseBitVector {
-    data: RawBitVector,
+pub struct DenseBitVec {
+    data: RawBitVec,
     // Regularly spaced rank samples
     // Stores a sampling of rank answers from the beginning of B up to the end of each block: r[i] = rank1(B, i · Sr)
     r: Box<[BT]>,
@@ -41,15 +41,15 @@ pub struct DenseBitVector {
 // A builder step of some sort?
 // todo: consider not storing the prefix or suffix of zeros in the dense bitvector, keeping them notional
 // ie. start_offset
-impl DenseBitVector {
+impl DenseBitVec {
     // todo: accept a raw vector and iterate through its ones (popcount-accelerated)
     // sr_bits: power of 2 of rank sampling rate (in terms of ones)
     // ss_bits: power of 2 of select sampling rate (in terms of universe size)
-    fn new(data: RawBitVector, sr_bits: u32, ss_bits: u32) -> Self {
+    fn new(data: RawBitVec, sr_bits: u32, ss_bits: u32) -> Self {
         // todo: debug assert bounds on the sample rates
         // Assert that the sample rates must each exceed a single raw block
-        debug_assert!(sr_bits >= RawBitVector::block_bits().ilog2());
-        debug_assert!(ss_bits >= RawBitVector::block_bits().ilog2());
+        debug_assert!(sr_bits >= RawBitVec::block_bits().ilog2());
+        debug_assert!(ss_bits >= RawBitVec::block_bits().ilog2());
 
         // Select sampling rate (in terms of ones)
         let ss = 1 << ss_bits;
@@ -57,13 +57,13 @@ impl DenseBitVector {
         let sr = 1 << sr_bits;
 
         // Number of raw bitvector blocks per rank block
-        let raw_block_sr = sr >> RawBitVector::block_bits().ilog2();
+        let raw_block_sr = sr >> RawBitVec::block_bits().ilog2();
 
         let mut r = vec![]; // rank samples
         let mut s = vec![]; // select samples // todo: call this s1 in case we also want s0
 
         // we don't need to do the trailing zeros thing here (todo: make it a utility function)
-        // todo: we want s to point to the RawBitVector block containing the sampled 1-bit, plus correction information storing how many 1 bits come before it.
+        // todo: we want s to point to the RawBitVec block containing the sampled 1-bit, plus correction information storing how many 1 bits come before it.
 
         // Number of ones seen in the raw bitvector so far
         let mut cumulative_ones = 0;
@@ -93,14 +93,14 @@ impl DenseBitVector {
                     //    the lowest `log2(block_bits)` bits are zero, and used to store the
                     //    bit offset, which is a number in [0, block_bits).
                     //    The raw block index can be accessed as:
-                    //    select_sample >> RawBitVector::block_bits().
+                    //    select_sample >> RawBitVec::block_bits().
                     let a = cumulative_bits;
 
                     // 2. The bit offset inside that block of the bit of interest.
                     //    This is the number of 1-bits in this block that precede
                     //    the (j*sr + 1)-th bit.
                     //    The number of preceding bits in the raw block can be accessed as:
-                    //    select_sample & one_mask(RawBitVector::block_bits()).
+                    //    select_sample & one_mask(RawBitVec::block_bits()).
                     let b = select_threshold - cumulative_ones;
 
                     // This differs from simply storing the position of the bit of interest,
@@ -125,7 +125,7 @@ impl DenseBitVector {
                     select_threshold += ss;
                 }
                 cumulative_ones += block_ones;
-                cumulative_bits += RawBitVector::block_bits();
+                cumulative_bits += RawBitVec::block_bits();
             }
         }
 
@@ -171,11 +171,11 @@ mod tests {
     #[test]
     fn test_works() {
         let ones = [0, 1, 2, 5, 10, 32];
-        let mut raw = RawBitVector::new(ones.iter().max().unwrap() + 1);
+        let mut raw = RawBitVec::new(ones.iter().max().unwrap() + 1);
         for i in ones {
             raw.set(i);
         }
-        let bv = DenseBitVector::new(raw, 5, 5);
+        let bv = DenseBitVec::new(raw, 5, 5);
         // dbg!(bv);
         for b in bv.data.blocks() {
             println!("{:b}", b);

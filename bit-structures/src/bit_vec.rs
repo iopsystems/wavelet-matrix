@@ -5,7 +5,7 @@
 // eg. sample rates for rank/select samples?
 // : FromIterator<u32>
 // todo: decide whether to call these `index` and `n` or `i` and `n`
-// todo: rename this file to bit_vector.rs?
+// todo: rename this file to bit_vec.rs?
 use crate::utils::partition_point;
 
 // You should implement:
@@ -13,7 +13,7 @@ use crate::utils::partition_point;
 // - num_ones or num_zeros
 // - len
 
-pub trait BitVector {
+pub trait BitVec {
     // note: could provide an impl in terms of rank0
     fn rank1(&self, index: usize) -> usize {
         default_rank1(self, index)
@@ -51,14 +51,14 @@ pub trait BitVector {
     // }
 }
 
-pub fn default_rank1<T: BitVector + ?Sized>(bv: &T, index: usize) -> usize {
+pub fn default_rank1<T: BitVec + ?Sized>(bv: &T, index: usize) -> usize {
     if index >= bv.len() {
         return bv.num_ones();
     }
     index - bv.rank0(index)
 }
 
-pub fn default_rank0<T: BitVector + ?Sized>(bv: &T, index: usize) -> usize {
+pub fn default_rank0<T: BitVec + ?Sized>(bv: &T, index: usize) -> usize {
     if index >= bv.len() {
         return bv.num_zeros();
     }
@@ -66,7 +66,7 @@ pub fn default_rank0<T: BitVector + ?Sized>(bv: &T, index: usize) -> usize {
 }
 
 /// Default impl of select1 using binary search over ranks
-pub fn default_select0<T: BitVector + ?Sized>(bv: &T, n: usize) -> Option<usize> {
+pub fn default_select0<T: BitVec + ?Sized>(bv: &T, n: usize) -> Option<usize> {
     if n >= bv.num_zeros() {
         return None;
     }
@@ -75,7 +75,7 @@ pub fn default_select0<T: BitVector + ?Sized>(bv: &T, n: usize) -> Option<usize>
 }
 
 /// Default impl of select0 using binary search over ranks
-pub fn default_select1<T: BitVector + ?Sized>(bv: &T, n: usize) -> Option<usize> {
+pub fn default_select1<T: BitVec + ?Sized>(bv: &T, n: usize) -> Option<usize> {
     if n >= bv.num_ones() {
         return None;
     }
@@ -83,14 +83,14 @@ pub fn default_select1<T: BitVector + ?Sized>(bv: &T, n: usize) -> Option<usize>
     Some(index - 1)
 }
 
-pub fn default_get<T: BitVector + ?Sized>(bv: &T, index: usize) -> bool {
+pub fn default_get<T: BitVec + ?Sized>(bv: &T, index: usize) -> bool {
     // This could be done more efficiently but is a reasonable default.
     let ones_count = bv.rank1(index + 1) - bv.rank1(index);
     ones_count == 1
 }
 
 #[cfg(test)]
-pub fn test_bitvector<T: BitVector>(new: impl Fn(&[usize], usize) -> T) {
+pub fn test_bitvector<T: BitVec>(new: impl Fn(&[usize], usize) -> T) {
     let bv = new(&[1, 2, 3], 4);
     assert_eq!(bv.len(), 4);
     assert_eq!(bv.num_ones(), 3);
@@ -120,15 +120,15 @@ pub fn test_bitvector<T: BitVector>(new: impl Fn(&[usize], usize) -> T) {
     assert_eq!(bv.select1(4), None);
 }
 
-pub fn test_bitvector_vs_naive<T: BitVector>(new: impl Fn(&[usize], usize) -> T) {
+pub fn test_bitvector_vs_naive<T: BitVec>(new: impl Fn(&[usize], usize) -> T) {
     use exhaustigen::Gen;
 
-    use crate::naive_bit_vector::NaiveBitVector;
+    use crate::naive_bit_vec::NaiveBitVec;
 
     struct TestCase(Vec<usize>, usize);
 
     // we use a length larger than what we assume is
-    // the largest RawBitVector block size (128)
+    // the largest RawBitVec block size (128)
     let len = 150;
     let mut test_cases = vec![
         TestCase(vec![], 0),
@@ -168,7 +168,7 @@ pub fn test_bitvector_vs_naive<T: BitVector>(new: impl Fn(&[usize], usize) -> T)
     for TestCase(ones, len) in test_cases {
         dbg!("test case", &ones, &len);
         let bv = new(&ones, len);
-        let nv = NaiveBitVector::new(&ones, len);
+        let nv = NaiveBitVec::new(&ones, len);
 
         // test basic properties
         assert_eq!(bv.num_ones(), bv.rank1(bv.len()));

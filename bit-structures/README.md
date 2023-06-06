@@ -14,7 +14,7 @@ Simple implementations of basic bit-based data structures. Designed for use with
 
 ## Limitations
 
-The lowest-level bitvector types (`FixedWidthIntVector`, `RawBitVector`) assume that that the target architecture is little-endian.
+The lowest-level bitvector types (`FixedWidthIntVec`, `RawBitVec`) assume that that the target architecture is little-endian.
 
 ## References
 
@@ -23,15 +23,15 @@ The lowest-level bitvector types (`FixedWidthIntVector`, `RawBitVector`) assume 
 ## To do
 
 - Optimize raw bitvector to allow for leading and trailing zeros
-- Create a `FlippedBitVector<T>` that corresponds to the negated version of a bitvector; 1-bits become 0-bits and vice versa. Essentially, reroute select0/1 to 1/0 and the same for rank and count ones/zeros, and negate `get`.
+- Create a `FlippedBitVec<T>` that corresponds to the negated version of a bitvector; 1-bits become 0-bits and vice versa. Essentially, reroute select0/1 to 1/0 and the same for rank and count ones/zeros, and negate `get`.
 - Port relevant tests from simple-sds, which is MIT-licensed
 - make EF split point configurable
 - prototype the sparse representation of a Rezolus histogram: store the cumulative weights for nonzero buckets in an EF vector + the indices of nonzero buckets in a dense bitvector.
-- Consider making a PackedIntVector for fixed width integers (the lower half of EF). For now can use the bitbuffer library.
+- Consider making a PackedIntVec for fixed width integers (the lower half of EF). For now can use the bitbuffer library.
 - Write some documentation about what (if any) assumptions we make about endianness in eg. intvector and bitvector
   - https://fgiesen.wordpress.com/2018/02/19/reading-bits-in-far-too-many-ways-part-1/:
     > LSB-first natural packing gives us the same bytes as LSB-first packing into a big integer then storing it in little-endian byte order
-- Investigate whether performance is improved by making some blocks u8, eg. in `RawBitVector`. Maybe that reduces the memory bandwidth, though I'm not sure how unsafe it would be to try reinterpreting that memory into u32 or u64 or u128 blocks for popcounts/simd operations.
+- Investigate whether performance is improved by making some blocks u8, eg. in `RawBitVec`. Maybe that reduces the memory bandwidth, though I'm not sure how unsafe it would be to try reinterpreting that memory into u32 or u64 or u128 blocks for popcounts/simd operations.
 - figure out how to flexibly support any combination of select0 and select1
 - Implement an RLE bitvec (probably mine, with fast rank)
 - Consider a simple impl of Roaring as an elegant proof of concept, with just rank/select. Maybe this can be our 'compressed' variant.

@@ -3,15 +3,15 @@
 use std::debug_assert;
 
 use crate::bit_buffer::BitBuffer;
-use crate::bit_vector;
-use crate::bit_vector::BitVector;
-use crate::dense_bit_vector::DenseBitVector;
-use crate::int_vector::IntVector;
+use crate::bit_vec;
+use crate::bit_vec::BitVec;
+use crate::dense_bit_vec::DenseBitVec;
+use crate::int_vec::IntVec;
 use crate::utils::{one_mask, partition_point};
 
-pub struct SparseBitVector {
-    high: DenseBitVector,   // High bit buckets in unary encoding
-    low: IntVector,         // Low bits in fixed-width encoding
+pub struct SparseBitVec {
+    high: DenseBitVec,   // High bit buckets in unary encoding
+    low: IntVec,         // Low bits in fixed-width encoding
     num_ones: usize,        // Number of elements (n)
     len: usize,             // Maximum representable integer (u + 1)
     low_bits: usize,        // Number of low bits per element
@@ -19,7 +19,7 @@ pub struct SparseBitVector {
     has_multiplicity: bool, // Whether any element is repeated more than once
 }
 
-impl SparseBitVector {
+impl SparseBitVec {
     // note: get, select0, rank0 will be incorrect when there is multiplicity.
     // because we rely on default impls, there is no room fo
     // debug_assert!(!self.has_multiplicity);
@@ -36,7 +36,7 @@ impl SparseBitVector {
         // unary coding; 1 denotes values and 0 denotes separators
         let high_len = num_ones + (len >> low_bits);
         let mut high = BitBuffer::new(high_len);
-        let mut low = IntVector::new(num_ones, low_bits);
+        let mut low = IntVec::new(num_ones, low_bits);
         let mut prev = 0;
         let mut has_multiplicity = false;
 
@@ -56,7 +56,7 @@ impl SparseBitVector {
         }
 
         // todo: allow tuning of the block parameters
-        let high = DenseBitVector::new(high, 8, 8);
+        let high = DenseBitVec::new(high, 8, 8);
 
         Self {
             high,
@@ -79,7 +79,7 @@ impl SparseBitVector {
     }
 }
 
-impl BitVector for SparseBitVector {
+impl BitVec for SparseBitVec {
     //     3: index of the first guy of the next group
     //  1: index of the first guy of this group
     // -1--33----7
@@ -118,7 +118,7 @@ impl BitVector for SparseBitVector {
 
     fn rank0(&self, index: usize) -> usize {
         debug_assert!(!self.has_multiplicity);
-        bit_vector::default_rank0(self, index)
+        bit_vec::default_rank0(self, index)
     }
 
     fn select1(&self, n: usize) -> Option<usize> {
@@ -129,12 +129,12 @@ impl BitVector for SparseBitVector {
 
     fn select0(&self, n: usize) -> Option<usize> {
         debug_assert!(!self.has_multiplicity);
-        bit_vector::default_select0(self, n)
+        bit_vec::default_select0(self, n)
     }
 
     fn get(&self, index: usize) -> bool {
         debug_assert!(!self.has_multiplicity);
-        bit_vector::default_get(self, index)
+        bit_vec::default_get(self, index)
     }
 
     fn num_zeros(&self) -> usize {
@@ -152,14 +152,14 @@ impl BitVector for SparseBitVector {
 
 #[cfg(test)]
 mod tests {
-    use crate::bit_vector;
+    use crate::bit_vec;
 
     use super::*;
 
     #[test]
     fn test_bitvector() {
-        bit_vector::test_bitvector(SparseBitVector::new);
-        bit_vector::test_bitvector_vs_naive(SparseBitVector::new);
+        bit_vec::test_bitvector(SparseBitVec::new);
+        bit_vec::test_bitvector_vs_naive(SparseBitVec::new);
     }
 
     // todo: sparse-specific tests

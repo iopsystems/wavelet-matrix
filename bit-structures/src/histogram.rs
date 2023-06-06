@@ -5,12 +5,12 @@
 // - dense EF-compressed static histogram with repetitions for zero buckets
 // - sparse EF-compressed static histogram with a dense bitvector marking nonzero buckets (essentially a compact weighted multiset representation)
 
-use crate::sparse_bit_vector::SparseBitVector;
+use crate::sparse_bit_vec::SparseBitVec;
 
 struct Histogram {
     a: u32,
     b: u32,
-    cdf: SparseBitVector,
+    cdf: SparseBitVec,
 }
 
 struct HistogramBuilder {
@@ -21,7 +21,7 @@ struct HistogramBuilder {
 
 impl HistogramBuilder {
     // fn build() -> Histogram {
-    //     // let cdf = SparseBitVector::new(ones, len);
+    //     // let cdf = SparseBitVec::new(ones, len);
     //     Histogram { a: 0, b: 0, cdf }
     // }
 }
