@@ -1,12 +1,11 @@
 use num::traits::CheckedShr;
 use num::traits::WrappingSub;
 use num::PrimInt;
-use num::ToPrimitive;
 use num::Unsigned;
 
 /// Trait representing an unsigned integer type used as a block of bits,
 /// which allows our bit-based structures to be generic over block sizes.
-pub trait BitBlock: PrimInt + ToPrimitive + Unsigned + WrappingSub + CheckedShr + Clone {
+pub trait BitBlock: PrimInt + Unsigned + WrappingSub + CheckedShr + Clone {
     const BITS: u32;
 
     /// Block index of the block containing the `i`-th bit
