@@ -2,13 +2,13 @@
 #![allow(dead_code)]
 
 mod bit_block;
+mod bit_buf;
 mod bit_vec;
 mod compressed_bit_vec;
 mod dense_bit_vec;
 mod histogram;
 mod int_vec;
 mod naive_bit_vec;
-mod bit_buf;
 mod sparse_bit_vec;
 mod utils;
 

@@ -44,22 +44,6 @@ pub fn div_ceil(n: usize, m: usize) -> usize {
     (n + m - 1) / m
 }
 
-// Return a mask with the lowest `num_bits` bits set to 1.
-// For example, one_mask(3) == 0b111/
-// todo: how can we make this work for usize and u32?
-// todo: is there a version that works correctly for both 0 and 32?
-// todo: can we do it without branches?
-// todo: how to do this for other types, eg. u128?
-pub fn one_mask(num_bits: usize) -> u32 {
-    // `(1 << num_bits) - 1` works for [0, 32)
-    // debug_assert!(num_bits > 0);
-    if num_bits == 0 {
-        return 0;
-    }
-    // the approach below works for (0, 32]
-    u32::MAX.wrapping_shr(u32::BITS - num_bits as u32)
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;

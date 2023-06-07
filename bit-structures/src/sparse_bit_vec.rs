@@ -1,5 +1,6 @@
 // Elias-Fano-encoded sparse bitvector
 
+use crate::bit_block::BitBlock;
 use std::debug_assert;
 
 use crate::bit_buf::BitBuf;
@@ -7,7 +8,7 @@ use crate::bit_vec;
 use crate::bit_vec::BitVec;
 use crate::dense_bit_vec::DenseBitVec;
 use crate::int_vec::IntVec;
-use crate::utils::{one_mask, partition_point};
+use crate::utils::partition_point;
 
 pub struct SparseBitVec {
     high: DenseBitVec,      // High bit buckets in unary encoding
@@ -30,13 +31,13 @@ impl SparseBitVec {
         // this is nice because we don't need the number of high bits explicitly so can avoid computing them
         let num_ones = ones.len();
         let bits_per_one = if num_ones == 0 { 0 } else { len / num_ones };
-        let low_bits = bits_per_one.max(1).ilog2() as usize;
-        let low_mask = one_mask(low_bits) as usize;
+        let low_bits = bits_per_one.max(1).ilog2();
+        let low_mask = usize::one_mask(low_bits);
 
         // unary coding; 1 denotes values and 0 denotes separators
         let high_len = num_ones + (len >> low_bits);
         let mut high = BitBuf::new(high_len);
-        let mut low = IntVec::new(num_ones, low_bits);
+        let mut low = IntVec::new(num_ones, low_bits as usize);
         let mut prev = 0;
         let mut has_multiplicity = false;
 
@@ -63,7 +64,10 @@ impl SparseBitVec {
             low,
             num_ones,
             len,
-            low_bits,
+            // todo: this feels like an untidy consequences of
+            // the way we approach u32/u64/usize – maybe it can
+            // be removed through more careful use of types.
+            low_bits: low_bits.try_into().unwrap(),
             low_mask,
             has_multiplicity,
         }

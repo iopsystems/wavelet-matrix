@@ -1,7 +1,7 @@
 // Fixed-width unsigned integer vector that bit-packs fixed-width (<= 64 bits) integers into a u64 array.
 
 use crate::bit_block::BitBlock;
-use crate::utils::{div_ceil, one_mask};
+use crate::utils::div_ceil;
 use std::debug_assert;
 
 type BT = u32; // Block type
@@ -71,7 +71,7 @@ impl IntVec {
         let offset = BT::bit_offset(bit_index);
 
         // Low bit mask with a number of ones equal to self.bit_width.
-        let mask = one_mask(self.bit_width);
+        let mask = u32::one_mask(self.bit_width as u32);
 
         // Extract the bits the value that are present in the target block
         let mut value = (self.data[block_index] & (mask << offset)) >> offset;
@@ -82,7 +82,7 @@ impl IntVec {
         // If needed, extract the remaining bits from the bottom of the next block
         if num_available_bits < self.bit_width {
             let num_remaining_bits = self.bit_width - num_available_bits;
-            let high_bits = self.data[block_index + 1] & one_mask(num_remaining_bits);
+            let high_bits = self.data[block_index + 1] & u32::one_mask(num_remaining_bits as u32);
             value |= high_bits << num_available_bits;
         }
         value
