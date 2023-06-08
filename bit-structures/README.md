@@ -22,6 +22,9 @@ The lowest-level bitvector types (`FixedWidthIntVec`, `RawBitVec`) assume that t
 
 ## To do
 
+- add a column-oriented summed-area-table implementation for quick ranged access to EF- or potentially other-encoded bitvectors. This could be used for histograms if we want fast range access and don't want to use a wavelet matrix.
+- add multiset support to the naïve bitvector which would be useful for the summed-area table if we want to store zeros.
+- add a 'store the multiplicities in an EF-encoded bitvec, and the positions of nonzero elements in a dense bitvec' for relatively short sparse multisets.
 - Optimize raw bitvector to allow for leading and trailing zeros
 - Create a `FlippedBitVec<T>` that corresponds to the negated version of a bitvector; 1-bits become 0-bits and vice versa. Essentially, reroute select0/1 to 1/0 and the same for rank and count ones/zeros, and negate `get`.
 - Port relevant tests from simple-sds, which is MIT-licensed
