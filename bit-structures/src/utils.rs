@@ -1,7 +1,10 @@
 // For now.
 #![allow(dead_code)]
 
-/// Bitwise binary search the range 0..n based on lower_bound_pad from this article:
+use std::collections::VecDeque;
+
+/// Bitwise binary search the range 0..n based on the function `ower_bound_pad`
+/// from this article:
 ///   https://orlp.net/blog/bitwise-binary-search/
 ///
 /// Returns the index of the partition point according to the given predicate
@@ -31,6 +34,66 @@ pub fn partition_point(n: usize, pred: impl Fn(usize) -> bool) -> usize {
     b
 }
 
+#[derive(Debug)]
+pub enum Go<T> {
+    Left(T),
+    Right(T),
+    Both(T, T),
+}
+
+/// Multiple binary search, using a similar approach as the one outlined here:
+/// https://github.com/juliusmilan/multi_value_binary_search/
+/// Also related: "A New Algorithm for Tiered Binary Search":
+/// https://www.proquest.com/openview/9bf4d08ffb1c01d0a4854e53b87f9077/1?pq-origsite=gscholar&cbl=1976353
+pub fn test_partition_point_multi() {
+    // NOTE: just prints, does not yet test/assert.
+    let haystack = [10, 25, 30, 30, 50, 100];
+    let needles = [5, 6, 7, 11, 75].as_slice(); // results: [0, 0, 0, 1, 5]
+    let result = partition_point_multi(haystack.len(), needles, |i, v| {
+        let hay = haystack[i];
+        let split_index = partition_point(v.len(), |i| v[i] < hay);
+        let (left, right) = v.split_at(split_index);
+        match (left.len(), right.len()) {
+            (_, 0) => Go::Left(left),
+            (0, _) => Go::Right(right),
+            (_, _) => Go::Both(left, right),
+        }
+    });
+    dbg!(result);
+}
+
+/// Like partition_point but can be used to recurse in both directions at once.
+/// The return value `Left(...)` is like `false` in partition_point, `Right(...)`
+// is like `true`, and `Both(...)` is like both at once, recursing in both directions.
+pub fn partition_point_multi<T>(
+    n: usize,
+    init: T,
+    pred: impl Fn(usize, T) -> Go<T>,
+) -> Vec<(usize, T)> {
+    let mut bit = bit_floor(n);
+    // todo: pass this in as scratch space, or use the stack & arguments instead?
+    let mut deque = VecDeque::from([(0, init)]);
+    while bit != 0 {
+        for _ in 0..deque.len() {
+            let (index, v) = deque.pop_front().unwrap();
+
+            let i = (index | bit) - 1;
+            if i < n {
+                match pred(i, v) {
+                    Go::Left(value) => deque.push_back((index, value)),
+                    Go::Right(value) => deque.push_back((index | bit, value)),
+                    Go::Both(left_value, right_value) => {
+                        deque.push_back((index, left_value));
+                        deque.push_back((index | bit, right_value))
+                    }
+                }
+            }
+        }
+        bit >>= 1;
+    }
+    deque.into()
+}
+
 pub fn bit_floor(n: usize) -> usize {
     if n == 0 {
         0
@@ -47,6 +110,12 @@ pub fn div_ceil(n: usize, m: usize) -> usize {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_foo() {
+        foo();
+        panic!("aaah.");
+    }
 
     #[test]
     fn test_bit_floor() {
