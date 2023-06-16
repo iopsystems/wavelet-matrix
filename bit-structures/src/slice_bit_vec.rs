@@ -1,5 +1,5 @@
-// Naive bit vector implemented as a dense ones array.
-// Primarily used for testing purposes.
+// Simple bit vector implemented as a slice-backed dense array containing sorted indices of set bits.
+// Should allow multiplicity (if there is multiplicity then select0/rank0 should be disallowed)
 
 use std::debug_assert;
 
@@ -7,12 +7,12 @@ use crate::bit_vec::BitVec;
 use crate::utils::partition_point;
 
 #[derive(Debug)]
-pub struct NaiveBitVec {
+pub struct SliceBitVec {
     ones: Box<[usize]>,
     len: usize,
 }
 
-impl NaiveBitVec {
+impl SliceBitVec {
     pub fn new(ones: &[usize], len: usize) -> Self {
         debug_assert!(
             ones.windows(2).all(|w| w[0] < w[1]),
@@ -26,7 +26,7 @@ impl NaiveBitVec {
     }
 }
 
-impl BitVec for NaiveBitVec {
+impl BitVec for SliceBitVec {
     fn rank1(&self, i: usize) -> usize {
         if i >= self.len() {
             return self.num_ones();

@@ -164,6 +164,11 @@ impl BitVec for DenseBitVec {
         // 5. Return the target bit position within the byte
         // debug_assert!(usize::BITS >= u32::BITS);
 
+        // {
+        //     let (raw_start, correction) = self.s1_block(n);
+        //     let skipped_raw_blocks = self.raw.blocks()[raw_start..].iter().take_while(|raw_block|raw_block<n).count();
+        // }
+
         // note: we may go past the last rank block, but never past the last raw block
         // (unless n >= self.num_ones)
 

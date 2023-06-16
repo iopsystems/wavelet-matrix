@@ -14,7 +14,6 @@ use crate::utils::partition_point;
 // - len
 
 pub trait BitVec {
-    // note: could provide an impl in terms of rank0
     fn rank1(&self, index: usize) -> usize {
         default_rank1(self, index)
     }
@@ -59,6 +58,11 @@ pub trait BitVec {
     // }
 }
 
+// We export these defaults so that implementors of this trait have the option of
+// calling these functions, eg. after doing some bookkeeping work. For example,
+// the sparse bitvec checks whether it contains multiplicity before calling select0 or rank0.
+
+/// Default impl of rank1 using rank0
 pub fn default_rank1<T: BitVec + ?Sized>(bv: &T, index: usize) -> usize {
     if index >= bv.len() {
         return bv.num_ones();
@@ -66,6 +70,7 @@ pub fn default_rank1<T: BitVec + ?Sized>(bv: &T, index: usize) -> usize {
     index - bv.rank0(index)
 }
 
+/// Default impl of rank0 using rank1
 pub fn default_rank0<T: BitVec + ?Sized>(bv: &T, index: usize) -> usize {
     if index >= bv.len() {
         return bv.num_zeros();
@@ -131,7 +136,7 @@ pub fn test_bitvector<T: BitVec>(new: impl Fn(&[usize], usize) -> T) {
 pub fn test_bitvector_vs_naive<T: BitVec>(new: impl Fn(&[usize], usize) -> T) {
     use exhaustigen::Gen;
 
-    use crate::naive_bit_vec::NaiveBitVec;
+    use crate::slice_bit_vec::SliceBitVec;
 
     struct TestCase(Vec<usize>, usize);
 
@@ -176,7 +181,7 @@ pub fn test_bitvector_vs_naive<T: BitVec>(new: impl Fn(&[usize], usize) -> T) {
     for TestCase(ones, len) in test_cases {
         dbg!("test case", &ones, &len);
         let bv = new(&ones, len);
-        let nv = NaiveBitVec::new(&ones, len);
+        let nv = SliceBitVec::new(&ones, len);
 
         // test basic properties
         assert_eq!(bv.num_ones(), bv.rank1(bv.len()));
