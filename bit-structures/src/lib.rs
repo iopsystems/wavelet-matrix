@@ -10,7 +10,7 @@ mod histogram;
 mod int_vec;
 mod slice_bit_vec;
 mod sparse_bit_vec;
-mod utils;
+pub mod utils;
 
 #[cfg(test)]
 mod tests {

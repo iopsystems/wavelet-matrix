@@ -6,6 +6,16 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
+criterion = "0.5.1"
 exhaustigen = "0.1.0"
 num = "0.4.0"
 rand = "0.8.5"
+
+
+# [profile.release]
+# lto = true
+# codegen-units = 1
+
+[[bench]]
+name = "binary_search_benchmark"
+harness = false

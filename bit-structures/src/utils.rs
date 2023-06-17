@@ -4,7 +4,7 @@
 use std::collections::VecDeque;
 use std::ops::Range;
 
-/// Bitwise binary search the range 0..n based on the function `ower_bound_pad`
+/// Bitwise binary search the range 0..n based on the function `lower_bound_pad`
 /// from this article:
 ///   https://orlp.net/blog/bitwise-binary-search/
 ///
@@ -35,13 +35,6 @@ pub fn partition_point(n: usize, pred: impl Fn(usize) -> bool) -> usize {
     b
 }
 
-#[derive(Debug)]
-pub enum Go<T> {
-    Left(T),
-    Right(T),
-    Both(T, T),
-}
-
 /// Multiple binary search, using a similar approach as the one outlined here:
 /// https://github.com/juliusmilan/multi_value_binary_search/
 /// Also related: "A New Algorithm for Tiered Binary Search":
@@ -51,61 +44,21 @@ pub enum Go<T> {
 /// partition point, recursing into either one (or both) when they are nonempty.
 /// This approach is nice when accessing a needle is cheap and accessing a haystack is expensive.
 /// It also works well if lots of needles end up pointing to the same place, ie. with count zero between them.
-pub fn test_partition_point_multi() {
-    // NOTE: just prints, does not yet test/assert.
-    let haystack = [10, 25, 30, 30, 50, 100];
-    let needles = [5, 6, 7, 11, 75].as_slice(); // results: [0, 0, 0, 1, 5]
-    let result = batch_partition_point(
-        haystack.len(),
-        needles.len(),
-        |i, r| {
-            let value = haystack[i];
-            needles[r].partition_point(|&x| x < value) // todo: < or <=?
-        },
-        Vec::new(),
-    );
-    dbg!(result);
-}
-
-// fn search(haystack: &[u32], needles: &[u32], results: &mut [usize]) {
-//     let mid = haystack.len() / 2;
-//     let value = haystack[mid];
-//     let (left, right) = needles.split_at(needles.partition_point(|&x| x < value));
-//     // (value, left)
-//     // todo: < or <=?
-//     // haystack.binary_search(x)
+// pub fn test_partition_point_multi() {
+//     // NOTE: just prints, does not yet test/assert.
+//     let haystack = [10, 25, 30, 30, 50, 100];
+//     let needles = [5, 6, 7, 11, 75].as_slice(); // results: [0, 0, 0, 1, 5]
+//     let result = batch_partition_point(
+//         haystack.len(),
+//         needles.len(),
+//         |i, r| {
+//             let value = haystack[i];
+//             needles[r].partition_point(|&x| x < value) // todo: < or <=?
+//         },
+//         Vec::new(),
+//     );
+//     dbg!(result);
 // }
-
-/// Like partition_point but can be used to recurse in both directions at once.
-/// The return value `Left(...)` is like `false` in partition_point, `Right(...)`
-// is like `true`, and `Both(...)` is like both at once, recursing in both directions.
-pub fn partition_point_multi<T>(
-    n: usize,
-    init: T,
-    pred: impl Fn(usize, T) -> Go<T>,
-) -> Vec<(usize, T)> {
-    let mut bit = bit_floor(n);
-    // todo: pass this in as scratch space, or use the stack & arguments instead?
-    let mut deque = VecDeque::from([(0, init)]);
-    while bit != 0 {
-        for _ in 0..deque.len() {
-            let (index, v) = deque.pop_front().unwrap();
-            let i = (index | bit) - 1;
-            if i < n {
-                match pred(i, v) {
-                    Go::Left(value) => deque.push_back((index, value)),
-                    Go::Right(value) => deque.push_back((index | bit, value)),
-                    Go::Both(left_value, right_value) => {
-                        deque.push_back((index, left_value));
-                        deque.push_back((index | bit, right_value))
-                    }
-                }
-            }
-        }
-        bit >>= 1;
-    }
-    deque.into()
-}
 
 // uses the same idea as partition_point_multi, but abstracts it differently.
 // given the sizes of the haystack and needlestack, it will iteratively probe
@@ -115,6 +68,8 @@ pub fn partition_point_multi<T>(
 // The predicate should return the partition point of the corresponding needlestack slice,
 // ie. the number of elements that should "go left" in the recursion. Based on this, we
 // recurse into one or both halves of the haystack.
+// Note that bitwise binary search as per `lower_bound_pad` in the article does 0.2 more
+// comparisons than is optimal (on average, assuming a uniform query distribution).
 pub fn batch_partition_point(
     n: usize, // size of haystack
     m: usize, // number of needles
@@ -122,35 +77,39 @@ pub fn batch_partition_point(
     // which tells us how many of the needles should "go left" in the binary search.
     pred: impl Fn(usize, Range<usize>) -> usize,
     // used as the temporary storage for processing
-    workspace: Vec<(usize, Range<usize>)>,
-) -> Vec<(usize, Range<usize>)> {
-    let mut deque = VecDeque::from(workspace);
-    deque.clear();
-    deque.push_back((0, 0..m));
+    results: &mut VecDeque<(usize, usize)>,
+) {
+    results.clear();
+    results.push_back((0, m));
 
+    // Bitwise binary search over the haystack.
+    // Since we're searching for multiple needles, the search may
+    // descend into both partitions, depending on the result of `pred`.
     let mut bit = bit_floor(n);
     while bit != 0 {
-        // For each tree level, iterate through the current contents of the deque
-        for _ in 0..deque.len() {
-            // an (i, r) entry represents the partial haystack index i covering
-            // the needle range r.
-            // Based on these, we're going to evaluate the predicate with the next
-            // index we'd like to check, then split the needle range at that split point.
-            let (i, r) = deque.pop_front().unwrap();
+        // The deque entries store the `hi` of each needle range.
+        // The corresponding `lo` is always either zero or the `hi`
+        // of the previous range.
+        let mut lo = 0;
+        // Iterate through the current contents of the deque. Since
+        // the deque is mutated inside this loop we use an unsightly
+        // approach of looping a fixed number of times.
+        for _ in 0..results.len() {
+            let (i, hi) = results.pop_front().unwrap();
             let index = (i | bit) - 1;
             if index < n {
-                let split = pred(index, r.clone());
+                let split = pred(index, lo..hi);
                 if split > 0 {
-                    deque.push_back((i, r.start..r.start + split));
+                    results.push_back((i, lo + split));
                 }
-                if split < r.len() {
-                    deque.push_back((i | bit, r.start + split..r.end));
+                if lo + split < hi {
+                    results.push_back((i | bit, hi));
                 }
             }
+            lo = hi;
         }
         bit >>= 1;
     }
-    deque.into()
 }
 
 pub fn bit_floor(n: usize) -> usize {
