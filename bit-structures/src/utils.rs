@@ -1,8 +1,7 @@
 // For now.
 #![allow(dead_code)]
 
-use std::collections::VecDeque;
-use std::ops::Range;
+use std::{collections::VecDeque, debug_assert};
 
 /// Bitwise binary search the range 0..n based on the function `lower_bound_pad`
 /// from this article:
@@ -44,21 +43,6 @@ pub fn partition_point(n: usize, pred: impl Fn(usize) -> bool) -> usize {
 /// partition point, recursing into either one (or both) when they are nonempty.
 /// This approach is nice when accessing a needle is cheap and accessing a haystack is expensive.
 /// It also works well if lots of needles end up pointing to the same place, ie. with count zero between them.
-// pub fn test_partition_point_multi() {
-//     // NOTE: just prints, does not yet test/assert.
-//     let haystack = [10, 25, 30, 30, 50, 100];
-//     let needles = [5, 6, 7, 11, 75].as_slice(); // results: [0, 0, 0, 1, 5]
-//     let result = batch_partition_point(
-//         haystack.len(),
-//         needles.len(),
-//         |i, r| {
-//             let value = haystack[i];
-//             needles[r].partition_point(|&x| x < value) // todo: < or <=?
-//         },
-//         Vec::new(),
-//     );
-//     dbg!(result);
-// }
 
 // uses the same idea as partition_point_multi, but abstracts it differently.
 // given the sizes of the haystack and needlestack, it will iteratively probe
@@ -75,8 +59,8 @@ pub fn batch_partition_point(
     m: usize, // number of needles
     // pred(index, needle_lo..needle_hi) -> needle partition point in lo..hi
     // which tells us how many of the needles should "go left" in the binary search.
-    pred: impl Fn(usize, Range<usize>) -> usize,
-    // used as the temporary storage for processing
+    pred: impl Fn(usize, usize, usize) -> usize,
+    // also used as the temporary storage for processing
     results: &mut VecDeque<(usize, usize)>,
 ) {
     results.clear();
@@ -98,11 +82,15 @@ pub fn batch_partition_point(
             let (i, hi) = results.pop_front().unwrap();
             let index = (i | bit) - 1;
             if index < n {
-                let split = pred(index, lo..hi);
-                if split > 0 {
-                    results.push_back((i, lo + split));
+                let split = pred(index, lo, hi);
+                debug_assert!(lo <= split);
+                debug_assert!(split <= hi);
+                dbg!(bit, index, lo, hi, split);
+
+                if split > lo {
+                    results.push_back((i, split));
                 }
-                if lo + split < hi {
+                if split < hi {
                     results.push_back((i | bit, hi));
                 }
             }
@@ -130,9 +118,33 @@ mod tests {
     use super::*;
 
     #[test]
+    pub fn test_partition_point_multi() {
+        // NOTE: just prints, does not yet test/assert.
+        let haystack = [10, 100];
+        let needles = [1, 2, 11, 12, 101, 102].as_slice();
+        let mut results = VecDeque::new();
+        batch_partition_point(
+            haystack.len(),
+            needles.len(),
+            |i, lo, hi| {
+                let value = haystack[i];
+                lo + needles[lo..hi].partition_point(|&x| x < value)
+            },
+            &mut results,
+        );
+        dbg!(results);
+        panic!("nooo");
+    }
+
+    #[test]
     fn test_foo() {
-        test_partition_point_multi();
-        panic!("aaah.");
+        // let haystack = vec![0, 10, 20, len - 1];
+        // let needles = vec![0, 10, 20, len - 1];
+        // let mut gen = Gen::new();
+        // while !gen.done() {
+        //     let ones = gen.gen_subset(&input);
+        //     test_cases.push(TestCase(ones.copied().collect(), len));
+        // }
     }
 
     #[test]
