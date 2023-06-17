@@ -90,7 +90,6 @@ pub fn partition_point_multi<T>(
     while bit != 0 {
         for _ in 0..deque.len() {
             let (index, v) = deque.pop_front().unwrap();
-
             let i = (index | bit) - 1;
             if i < n {
                 match pred(i, v) {
@@ -108,6 +107,14 @@ pub fn partition_point_multi<T>(
     deque.into()
 }
 
+// uses the same idea as partition_point_multi, but abstracts it differently.
+// given the sizes of the haystack and needlestack, it will iteratively probe
+// the haystack using bitwise binary search (https://orlp.net/blog/bitwise-binary-search/)
+// and at each probe, will partition the needlestack into two sub-needlestacks by calling
+// the predicate with the probed haystack sample and the needle range to search.
+// The predicate should return the partition point of the corresponding needlestack slice,
+// ie. the number of elements that should "go left" in the recursion. Based on this, we
+// recurse into one or both halves of the haystack.
 pub fn batch_partition_point(
     n: usize, // size of haystack
     m: usize, // number of needles
