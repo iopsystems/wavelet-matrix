@@ -141,12 +141,10 @@ pub fn batch_partition_point(
             if index < n {
                 let split = pred(index, r.clone());
                 if split > 0 {
-                    let next = (i, r.start..r.start + split);
-                    deque.push_back(next);
+                    deque.push_back((i, r.start..r.start + split));
                 }
                 if split < r.len() {
-                    let next = (i | bit, r.start + split..r.end);
-                    deque.push_back(next);
+                    deque.push_back((i | bit, r.start + split..r.end));
                 }
             }
         }
