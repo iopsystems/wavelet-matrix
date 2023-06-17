@@ -45,14 +45,18 @@ pub enum Go<T> {
 /// https://github.com/juliusmilan/multi_value_binary_search/
 /// Also related: "A New Algorithm for Tiered Binary Search":
 /// https://www.proquest.com/openview/9bf4d08ffb1c01d0a4854e53b87f9077/1?pq-origsite=gscholar&cbl=1976353
+/// Works by searching the haystack for all needles simultaneously. When a partitioning index is sampled
+/// from the haystack, we use it to split the needles into those to the left and right of the
+/// partition point, recursing into either one (or both) when they are nonempty.
+/// This approach is nice when accessing a needle is cheap and accessing a haystack is expensive.
+/// It also works well if lots of needles end up pointing to the same place, ie. with count zero between them.
 pub fn test_partition_point_multi() {
     // NOTE: just prints, does not yet test/assert.
     let haystack = [10, 25, 30, 30, 50, 100];
     let needles = [5, 6, 7, 11, 75].as_slice(); // results: [0, 0, 0, 1, 5]
-    let result = partition_point_multi(haystack.len(), needles, |i, v| {
-        let hay = haystack[i];
-        let split_index = partition_point(v.len(), |i| v[i] < hay);
-        let (left, right) = v.split_at(split_index);
+    let result = partition_point_multi(haystack.len(), needles, |i, ns| {
+        let value = haystack[i];
+        let (left, right) = ns.split_at(ns.partition_point(|&x| x < value)); // todo: < or <=?
         match (left.len(), right.len()) {
             (_, 0) => Go::Left(left),
             (0, _) => Go::Right(right),
@@ -61,6 +65,15 @@ pub fn test_partition_point_multi() {
     });
     dbg!(result);
 }
+
+// fn search(haystack: &[u32], needles: &[u32], results: &mut [usize]) {
+//     let mid = haystack.len() / 2;
+//     let value = haystack[mid];
+//     let (left, right) = needles.split_at(needles.partition_point(|&x| x < value));
+//     // (value, left)
+//     // todo: < or <=?
+//     // haystack.binary_search(x)
+// }
 
 /// Like partition_point but can be used to recurse in both directions at once.
 /// The return value `Left(...)` is like `false` in partition_point, `Right(...)`
@@ -113,7 +126,7 @@ mod tests {
 
     #[test]
     fn test_foo() {
-        foo();
+        test_partition_point_multi();
         panic!("aaah.");
     }
 
