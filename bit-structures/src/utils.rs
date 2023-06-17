@@ -2,6 +2,7 @@
 #![allow(dead_code)]
 
 use std::collections::VecDeque;
+use std::ops::Range;
 
 /// Bitwise binary search the range 0..n based on the function `ower_bound_pad`
 /// from this article:
@@ -54,15 +55,15 @@ pub fn test_partition_point_multi() {
     // NOTE: just prints, does not yet test/assert.
     let haystack = [10, 25, 30, 30, 50, 100];
     let needles = [5, 6, 7, 11, 75].as_slice(); // results: [0, 0, 0, 1, 5]
-    let result = partition_point_multi(haystack.len(), needles, |i, ns| {
-        let value = haystack[i];
-        let (left, right) = ns.split_at(ns.partition_point(|&x| x < value)); // todo: < or <=?
-        match (left.len(), right.len()) {
-            (_, 0) => Go::Left(left),
-            (0, _) => Go::Right(right),
-            (_, _) => Go::Both(left, right),
-        }
-    });
+    let result = batch_partition_point(
+        haystack.len(),
+        needles.len(),
+        |i, r| {
+            let value = haystack[i];
+            needles[r].partition_point(|&x| x < value) // todo: < or <=?
+        },
+        Vec::new(),
+    );
     dbg!(result);
 }
 
@@ -99,6 +100,46 @@ pub fn partition_point_multi<T>(
                         deque.push_back((index, left_value));
                         deque.push_back((index | bit, right_value))
                     }
+                }
+            }
+        }
+        bit >>= 1;
+    }
+    deque.into()
+}
+
+pub fn batch_partition_point(
+    n: usize, // size of haystack
+    m: usize, // number of needles
+    // pred(index, needle_lo..needle_hi) -> needle partition point in lo..hi
+    // which tells us how many of the needles should "go left" in the binary search.
+    pred: impl Fn(usize, Range<usize>) -> usize,
+    // used as the temporary storage for processing
+    workspace: Vec<(usize, Range<usize>)>,
+) -> Vec<(usize, Range<usize>)> {
+    let mut deque = VecDeque::from(workspace);
+    deque.clear();
+    deque.push_back((0, 0..m));
+
+    let mut bit = bit_floor(n);
+    while bit != 0 {
+        // For each tree level, iterate through the current contents of the deque
+        for _ in 0..deque.len() {
+            // an (i, r) entry represents the partial haystack index i covering
+            // the needle range r.
+            // Based on these, we're going to evaluate the predicate with the next
+            // index we'd like to check, then split the needle range at that split point.
+            let (i, r) = deque.pop_front().unwrap();
+            let index = (i | bit) - 1;
+            if index < n {
+                let split = pred(index, r.clone());
+                if split > 0 {
+                    let next = (i, r.start..r.start + split);
+                    deque.push_back(next);
+                }
+                if split < r.len() {
+                    let next = (i | bit, r.start + split..r.end);
+                    deque.push_back(next);
                 }
             }
         }
