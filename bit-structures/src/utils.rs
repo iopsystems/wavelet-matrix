@@ -72,31 +72,38 @@ pub fn batch_partition_point(
     n: usize,                                    // size of haystack
     m: usize,                                    // number of needles
     pred: impl Fn(usize, usize, usize) -> usize, // (index, lo, hi)
-    results: &mut VecDeque<(usize, usize)>,      // (index, hi)
+    result: &mut VecDeque<(usize, usize)>,       // (index, hi)
 ) {
-    results.clear();
-    results.push_back((0, m));
+    result.clear();
+    result.push_back((0, m));
 
     // this is complicated because we are tracking indices into both `0..n` and `0..m`.
     // i also wonder whether there is any way to remove the outer loop, replacing it by a conditional
     // increment of bit at the right moment...
     let mut bit = bit_floor(n);
-    while bit != 0 {
-        let mut lo = 0;
-        for _ in 0..results.len() {
-            let (i, hi) = results.pop_front().unwrap();
-            let mid = i | bit; // one past the midpoint of the haystack (insertion point)
-            let split = if mid <= n { pred(mid - 1, lo, hi) } else { hi };
-            debug_assert!(lo < hi && lo <= split && split <= hi);
-            if split > lo {
-                results.push_back((i, split));
-            }
-            if split < hi {
-                results.push_back((mid, hi));
-            }
-            lo = hi;
+    let mut watermark = result.len();
+    let mut lo = 0;
+
+    while bit != 0 && !result.is_empty() {
+        if watermark == 0 {
+            watermark = result.len();
+            lo = 0;
+            bit >>= 1;
+        } else {
+            watermark -= 1;
         }
-        bit >>= 1;
+
+        let (i, hi) = result.pop_front().unwrap();
+        let mid = i | bit; // one past the midpoint of the haystack (insertion point)
+        let split = if mid <= n { pred(mid - 1, lo, hi) } else { hi };
+        debug_assert!(lo < hi && lo <= split && split <= hi);
+        if split > lo {
+            result.push_back((i, split));
+        }
+        if split < hi {
+            result.push_back((mid, hi));
+        }
+        lo = hi;
     }
 }
 
@@ -109,7 +116,7 @@ mod tests {
         // NOTE: just prints, does not yet test/assert.
         let haystack = [10, 100];
         let needles = [1, 2, 11, 12, 111, 112].as_slice();
-        let mut results = VecDeque::new();
+        let mut result = VecDeque::new();
         batch_partition_point(
             haystack.len(),
             needles.len(),
@@ -117,9 +124,9 @@ mod tests {
                 let value = haystack[i];
                 lo + needles[lo..hi].partition_point(|&x| x < value)
             },
-            &mut results,
+            &mut result,
         );
-        dbg!(results);
+        dbg!(result);
         panic!("nooo");
     }
 
