@@ -54,6 +54,20 @@ pub fn partition_point(n: usize, pred: impl Fn(usize) -> bool) -> usize {
 // recurse into one or both halves of the haystack.
 // Note that bitwise binary search as per `lower_bound_pad` in the article does 0.2 more
 // comparisons than is optimal (on average, assuming a uniform query distribution).
+
+pub fn bit_floor(n: usize) -> usize {
+    if n == 0 {
+        0
+    } else {
+        let msb = usize::BITS - 1 - n.leading_zeros();
+        1 << msb
+    }
+}
+
+pub fn div_ceil(n: usize, m: usize) -> usize {
+    (n + m - 1) / m
+}
+
 pub fn batch_partition_point(
     n: usize, // size of haystack
     m: usize, // number of needles
@@ -81,36 +95,21 @@ pub fn batch_partition_point(
         for _ in 0..results.len() {
             let (i, hi) = results.pop_front().unwrap();
             let index = (i | bit) - 1;
-            if index < n {
-                let split = pred(index, lo, hi);
-                debug_assert!(lo <= split);
-                debug_assert!(split <= hi);
-                dbg!(bit, index, lo, hi, split);
-
-                if split > lo {
-                    results.push_back((i, split));
-                }
-                if split < hi {
-                    results.push_back((i | bit, hi));
-                }
+            // if the index is beyond the end of the array, send all needles to the left
+            let split = if index < n { pred(index, lo, hi) } else { hi };
+            debug_assert!(lo <= split);
+            debug_assert!(split <= hi);
+            debug_assert!(lo < hi);
+            if split > lo {
+                results.push_back((i, split));
+            }
+            if split < hi {
+                results.push_back((i | bit, hi));
             }
             lo = hi;
         }
         bit >>= 1;
     }
-}
-
-pub fn bit_floor(n: usize) -> usize {
-    if n == 0 {
-        0
-    } else {
-        let msb = usize::BITS - 1 - n.leading_zeros();
-        1 << msb
-    }
-}
-
-pub fn div_ceil(n: usize, m: usize) -> usize {
-    (n + m - 1) / m
 }
 
 #[cfg(test)]
@@ -121,7 +120,7 @@ mod tests {
     pub fn test_partition_point_multi() {
         // NOTE: just prints, does not yet test/assert.
         let haystack = [10, 100];
-        let needles = [1, 2, 11, 12, 101, 102].as_slice();
+        let needles = [1, 2, 11, 12, 13, 111, 112].as_slice();
         let mut results = VecDeque::new();
         batch_partition_point(
             haystack.len(),
