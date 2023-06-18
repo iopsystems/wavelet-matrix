@@ -71,39 +71,24 @@ pub fn div_ceil(n: usize, m: usize) -> usize {
 pub fn batch_partition_point(
     n: usize, // size of haystack
     m: usize, // number of needles
-    // pred(index, needle_lo..needle_hi) -> needle partition point in lo..hi
-    // which tells us how many of the needles should "go left" in the binary search.
     pred: impl Fn(usize, usize, usize) -> usize,
-    // also used as the temporary storage for processing
     results: &mut VecDeque<(usize, usize)>,
 ) {
     results.clear();
     results.push_back((0, m));
 
-    // Bitwise binary search over the haystack.
-    // Since we're searching for multiple needles, the search may
-    // descend into both partitions, depending on the result of `pred`.
     let mut bit = bit_floor(n);
     while bit != 0 {
-        // The deque entries store the `hi` of each needle range.
-        // The corresponding `lo` is always either zero or the `hi`
-        // of the previous range.
         let mut lo = 0;
-        // Iterate through the current contents of the deque. Since
-        // the deque is mutated inside this loop we use an unsightly
-        // approach of looping a fixed number of times.
         for _ in 0..results.len() {
             let (i, hi) = results.pop_front().unwrap();
             let index = (i | bit) - 1;
-            // if the index is beyond the end of the array, send all needles to the left
-            let split = if index < n { pred(index, lo, hi) } else { hi };
-            debug_assert!(lo <= split);
-            debug_assert!(split <= hi);
-            debug_assert!(lo < hi);
-            if split > lo {
-                results.push_back((i, split));
+            let mid = if index < n { pred(index, lo, hi) } else { hi };
+            debug_assert!(lo < hi && lo <= mid && mid <= hi);
+            if mid > lo {
+                results.push_back((i, mid));
             }
-            if split < hi {
+            if mid < hi {
                 results.push_back((i | bit, hi));
             }
             lo = hi;
