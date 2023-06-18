@@ -38,18 +38,18 @@ fn bench_binary_search(c: &mut Criterion) {
         let n = haystack.len();
         let m = needles.len();
 
-        // group.bench_function(
-        //     BenchmarkId::new("slice.partition_point", needles.len()),
-        //     |b| {
-        //         b.iter(|| {
-        //             let mut ret = 0;
-        //             for needle in needles.iter().copied() {
-        //                 ret += haystack.partition_point(|&x| x < needle);
-        //             }
-        //             ret
-        //         })
-        //     },
-        // );
+        group.bench_function(
+            BenchmarkId::new("slice.partition_point", needles.len()),
+            |b| {
+                b.iter(|| {
+                    let mut ret = 0;
+                    for needle in needles.iter().copied() {
+                        ret += haystack.partition_point(|&x| x < needle);
+                    }
+                    ret
+                })
+            },
+        );
 
         // group.bench_function(BenchmarkId::new("partition_point", needles.len()), |b| {
         //     b.iter(|| {

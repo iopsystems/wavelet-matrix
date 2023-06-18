@@ -68,42 +68,37 @@ pub fn div_ceil(n: usize, m: usize) -> usize {
     (n + m - 1) / m
 }
 
+// note: can perform worse than independent calls to partition_point because
+// the big win comes when multiple needles are partitioned identically.
+// there is also a theoretical savings of "reusing" the higher-level predicate
+// evaluations, but I guess the downside of reading and writing the deque costs
+// outweigh the savings.
 pub fn batch_partition_point(
     n: usize,                                    // size of haystack
     m: usize,                                    // number of needles
-    pred: impl Fn(usize, usize, usize) -> usize, // (index, lo, hi)
-    result: &mut VecDeque<(usize, usize)>,       // (index, hi)
+    pred: impl Fn(usize, usize, usize) -> usize, // (haystack index, needle lo, needle hi)
+    result: &mut VecDeque<(usize, usize)>,       // (haystack index, needle hi)
 ) {
     result.clear();
     result.push_back((0, m));
 
-    // this is complicated because we are tracking indices into both `0..n` and `0..m`.
-    // i also wonder whether there is any way to remove the outer loop, replacing it by a conditional
-    // increment of bit at the right moment...
     let mut bit = bit_floor(n);
-    let mut watermark = result.len();
-    let mut lo = 0;
-
-    while bit != 0 && !result.is_empty() {
-        if watermark == 0 {
-            watermark = result.len();
-            lo = 0;
-            bit >>= 1;
-        } else {
-            watermark -= 1;
+    while bit != 0 {
+        let mut lo = 0; // (lo, hi] is the active needle index range
+        for _ in 0..result.len() {
+            let (index, hi) = result.pop_front().unwrap();
+            let p = index | bit; // potential haystack partition point
+            let split = if p <= n { pred(p - 1, lo, hi) } else { hi };
+            debug_assert!(lo < hi && lo <= split && split <= hi);
+            if split > lo {
+                result.push_back((index, split));
+            }
+            if split < hi {
+                result.push_back((index | bit, hi));
+            }
+            lo = hi;
         }
-
-        let (i, hi) = result.pop_front().unwrap();
-        let mid = i | bit; // one past the midpoint of the haystack (insertion point)
-        let split = if mid <= n { pred(mid - 1, lo, hi) } else { hi };
-        debug_assert!(lo < hi && lo <= split && split <= hi);
-        if split > lo {
-            result.push_back((i, split));
-        }
-        if split < hi {
-            result.push_back((mid, hi));
-        }
-        lo = hi;
+        bit >>= 1;
     }
 }
 
@@ -116,7 +111,7 @@ mod tests {
         // NOTE: just prints, does not yet test/assert.
         let haystack = [10, 100];
         let needles = [1, 2, 11, 12, 111, 112].as_slice();
-        let mut result = VecDeque::new();
+        let mut results = VecDeque::new();
         batch_partition_point(
             haystack.len(),
             needles.len(),
@@ -124,9 +119,9 @@ mod tests {
                 let value = haystack[i];
                 lo + needles[lo..hi].partition_point(|&x| x < value)
             },
-            &mut result,
+            &mut results,
         );
-        dbg!(result);
+        dbg!(results);
         panic!("nooo");
     }
 
