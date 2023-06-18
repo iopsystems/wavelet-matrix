@@ -30,36 +30,72 @@ fn bench_binary_search(c: &mut Criterion) {
     let mut group = c.benchmark_group("group a");
     for num_needles in [10_000, 100_000] {
         let rng = rand::thread_rng();
-        // generate needles
+        // generate needles at uniform random
         let unif = Uniform::new(0, haystack.last().unwrap() + 1);
-        // let unif = Uniform::new(100_000, 1_000_000); // or, generate needles in a narrow range
+        // or, generate needles in a narrow range
+        // let unif = Uniform::new(100_000, 1_000_000);
         let mut needles: Vec<_> = unif.sample_iter(rng).take(num_needles).collect();
         needles.sort();
         let n = haystack.len();
         let m = needles.len();
 
+        // group.bench_function(
+        //     BenchmarkId::new("slice.partition_point", needles.len()),
+        //     |b| {
+        //         b.iter(|| {
+        //             let mut ret = 0;
+        //             for needle in needles.iter().copied() {
+        //                 ret += haystack.partition_point(|&x| x < needle);
+        //             }
+        //             ret
+        //         })
+        //     },
+        // );
+
+        group.bench_function(BenchmarkId::new("partition_point", needles.len()), |b| {
+            b.iter(|| {
+                let mut ret = 0;
+                for needle in needles.iter().copied() {
+                    ret += bit_structures::utils::partition_point(n, |i| haystack[i] < needle);
+                }
+                ret
+            })
+        });
+
+        let mut workspace_new = Vec::new();
+        workspace_new.reserve(needles.len());
+
         group.bench_function(
-            BenchmarkId::new("slice.partition_point", needles.len()),
+            BenchmarkId::new("new_batch_partition_point", needles.len()),
             |b| {
                 b.iter(|| {
-                    let mut ret = 0;
-                    for needle in needles.iter().copied() {
-                        ret += haystack.partition_point(|&x| x < needle);
-                    }
-                    ret
+                    bit_structures::utils::new_batch_partition_point(
+                        n,
+                        m,
+                        |i, j| haystack[i] < needles[j],
+                        &mut workspace_new,
+                    );
+                    workspace_new.len()
                 })
             },
         );
 
-        // group.bench_function(BenchmarkId::new("partition_point", needles.len()), |b| {
-        //     b.iter(|| {
-        //         let mut ret = 0;
-        //         for needle in needles.iter().copied() {
-        //             ret += bit_structures::utils::partition_point(n, |i| haystack[i] < needle);
-        //         }
-        //         ret
-        //     })
-        // });
+        let mut workspace_new_2 = Vec::new();
+        workspace_new_2.reserve(needles.len());
+
+        group.bench_function(
+            BenchmarkId::new("new_batch_partition_point_slice", needles.len()),
+            |b| {
+                b.iter(|| {
+                    bit_structures::utils::new_batch_partition_point_slice(
+                        &haystack,
+                        &needles,
+                        &mut workspace_new_2,
+                    );
+                    workspace_new_2.len()
+                })
+            },
+        );
 
         let mut workspace = VecDeque::new();
         // if we don't reserve space, then the initial
@@ -68,7 +104,7 @@ fn bench_binary_search(c: &mut Criterion) {
         workspace.reserve(needles.len());
 
         group.bench_function(
-            BenchmarkId::new("multi_partition_point", needles.len()),
+            BenchmarkId::new("batch_partition_point", needles.len()),
             |b| {
                 b.iter(|| {
                     bit_structures::utils::batch_partition_point(
@@ -94,6 +130,16 @@ fn bench_binary_search(c: &mut Criterion) {
         let l =
             bit_structures::utils::partition_point(n, |i| haystack[i] < needles[needles.len() - 1]);
         dbg!(f, l);
+
+        dbg!(
+            workspace_new.first().unwrap(),
+            workspace_new.last().unwrap()
+        );
+
+        dbg!(
+            workspace_new_2.first().unwrap(),
+            workspace_new_2.last().unwrap()
+        );
 
         let s = workspace.make_contiguous();
         dbg!(s.first().unwrap().0, s.last().unwrap().0);

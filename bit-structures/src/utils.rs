@@ -34,6 +34,65 @@ pub fn partition_point(n: usize, pred: impl Fn(usize) -> bool) -> usize {
     b
 }
 
+// trying out an implementation of multiple binary search that independently tracks each needle.
+// the predicate abstraction causes multiple lookups of the same haystack value in a row.
+// i'm not sure how much better it would be if we were to cache it.
+pub fn new_batch_partition_point(
+    n: usize,                            // size of haystack
+    m: usize,                            // number of needles
+    pred: impl Fn(usize, usize) -> bool, // tuple of (haystack index, needle index)
+    result: &mut Vec<usize>,             // haystack index for each needle
+) {
+    result.clear();
+    result.resize(m, 0);
+    let mut bit = bit_floor(n);
+    while bit != 0 {
+        for (j, b) in result.iter_mut().enumerate() {
+            let i = (*b | bit) - 1;
+            if i < n && pred(i, j) {
+                *b |= bit
+            }
+        }
+        bit >>= 1;
+    }
+}
+
+// same as new_batch_partition_point but caches the haystack value.
+// prompts a thought: since in the needle and the result each bit is monotonic
+// when the parent bit is fixed, could we strategically skip runs of needles
+// rather than having to write the full result to each value? ie. iterating the
+// results, reset all lower bits whenever a higher bit flips.
+// Maybe this could be done with a "find the highest differing bit, and zero the
+// bits below it using a mask" set of bitwise ops.
+// Similar to https://matklad.github.io/2021/11/07/generate-all-the-things.html
+pub fn new_batch_partition_point_slice<T: Copy + std::cmp::PartialOrd<T>>(
+    haystack: &[T],          // size of haystack
+    needles: &[T],           // number of needles
+    result: &mut Vec<usize>, // haystack index for each needle
+) {
+    let n = haystack.len();
+    let m = needles.len();
+    result.clear();
+    result.resize(m, 0);
+    let mut bit = bit_floor(n);
+    while bit != 0 {
+        let mut i_prev = 0;
+        let mut haystack_i = haystack[i_prev];
+        for (&needle, b) in needles.iter().zip(result.iter_mut()) {
+            let i = (*b | bit) - 1;
+            if i < n {
+                if i != i_prev {
+                    (i_prev, haystack_i) = (i, haystack[i]);
+                }
+                if haystack_i < needle {
+                    *b |= bit
+                }
+            }
+        }
+        bit >>= 1;
+    }
+}
+
 /// Multiple binary search, using a similar approach as the one outlined here:
 /// https://github.com/juliusmilan/multi_value_binary_search/
 /// Also related: "A New Algorithm for Tiered Binary Search":
@@ -70,6 +129,7 @@ pub fn div_ceil(n: usize, m: usize) -> usize {
 
 // note: can perform worse than independent calls to partition_point because
 // the big win comes when multiple needles are partitioned identically.
+// ie. low-cardinality output.
 // there is also a theoretical savings of "reusing" the higher-level predicate
 // evaluations, but I guess the downside of reading and writing the deque costs
 // outweigh the savings.
@@ -111,16 +171,29 @@ mod tests {
         // NOTE: just prints, does not yet test/assert.
         let haystack = [10, 100];
         let needles = [1, 2, 11, 12, 111, 112].as_slice();
-        let mut results = VecDeque::new();
-        batch_partition_point(
-            haystack.len(),
-            needles.len(),
-            |i, lo, hi| {
-                let value = haystack[i];
-                lo + needles[lo..hi].partition_point(|&x| x < value)
-            },
-            &mut results,
-        );
+
+        // let mut results = VecDeque::new();
+        // batch_partition_point(
+        //     haystack.len(),
+        //     needles.len(),
+        //     |i, lo, hi| {
+        //         let value = haystack[i];
+        //         lo + needles[lo..hi].partition_point(|&x| x < value)
+        //     },
+        //     &mut results,
+        // );
+
+        // let mut results = Vec::new();
+        // new_batch_partition_point(
+        //     haystack.len(),
+        //     needles.len(),
+        //     |i, j| haystack[i] < needles[j],
+        //     &mut results,
+        // );
+
+        let mut results = Vec::new();
+        new_batch_partition_point_slice(&haystack, needles, &mut results);
+
         dbg!(results);
         panic!("nooo");
     }
