@@ -69,27 +69,30 @@ pub fn div_ceil(n: usize, m: usize) -> usize {
 }
 
 pub fn batch_partition_point(
-    n: usize, // size of haystack
-    m: usize, // number of needles
-    pred: impl Fn(usize, usize, usize) -> usize,
-    results: &mut VecDeque<(usize, usize)>,
+    n: usize,                                    // size of haystack
+    m: usize,                                    // number of needles
+    pred: impl Fn(usize, usize, usize) -> usize, // (index, lo, hi)
+    results: &mut VecDeque<(usize, usize)>,      // (index, hi)
 ) {
     results.clear();
     results.push_back((0, m));
 
+    // this is complicated because we are tracking indices into both `0..n` and `0..m`.
+    // i also wonder whether there is any way to remove the outer loop, replacing it by a conditional
+    // increment of bit at the right moment...
     let mut bit = bit_floor(n);
     while bit != 0 {
         let mut lo = 0;
         for _ in 0..results.len() {
             let (i, hi) = results.pop_front().unwrap();
-            let index = (i | bit) - 1;
-            let mid = if index < n { pred(index, lo, hi) } else { hi };
-            debug_assert!(lo < hi && lo <= mid && mid <= hi);
-            if mid > lo {
-                results.push_back((i, mid));
+            let mid = i | bit; // one past the midpoint of the haystack (insertion point)
+            let split = if mid <= n { pred(mid - 1, lo, hi) } else { hi };
+            debug_assert!(lo < hi && lo <= split && split <= hi);
+            if split > lo {
+                results.push_back((i, split));
             }
-            if mid < hi {
-                results.push_back((i | bit, hi));
+            if split < hi {
+                results.push_back((mid, hi));
             }
             lo = hi;
         }
@@ -105,7 +108,7 @@ mod tests {
     pub fn test_partition_point_multi() {
         // NOTE: just prints, does not yet test/assert.
         let haystack = [10, 100];
-        let needles = [1, 2, 11, 12, 13, 111, 112].as_slice();
+        let needles = [1, 2, 11, 12, 111, 112].as_slice();
         let mut results = VecDeque::new();
         batch_partition_point(
             haystack.len(),
