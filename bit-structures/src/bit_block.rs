@@ -7,6 +7,7 @@ use num::Unsigned;
 /// which allows our bit-based structures to be generic over block sizes.
 pub trait BitBlock: PrimInt + Unsigned + WrappingSub + CheckedShr + Clone {
     const BITS: u32;
+    const BIT_WIDTH: u32 = Self::BITS.ilog2();
 
     /// Block index of the block containing the `i`-th bit
     fn bit_offset(i: usize) -> usize {
@@ -15,19 +16,13 @@ pub trait BitBlock: PrimInt + Unsigned + WrappingSub + CheckedShr + Clone {
 
     /// Bit index of the `i`-th bit within its block (mask off the high bits)
     fn block_index(i: usize) -> usize {
-        i >> Self::bits_log2()
+        i >> Self::BIT_WIDTH
     }
 
     /// Block index and bit offset of the `i`-th bit
     fn index_offset(i: usize) -> (usize, usize) {
         (Self::block_index(i), Self::bit_offset(i))
     }
-
-    /// Power of 2 of the number of bits in this block type
-    fn bits_log2() -> u32 {
-        Self::BITS.ilog2()
-    }
-
     /// Return a bit mask with `n` 1-bits set in the low bits.
     fn one_mask(n: impl Into<u32>) -> Self {
         let max = Self::zero().wrapping_sub(&Self::one());
