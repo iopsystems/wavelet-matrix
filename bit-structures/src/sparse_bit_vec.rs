@@ -11,7 +11,7 @@ use crate::int_vec::IntVec;
 use crate::utils::partition_point;
 
 pub struct SparseBitVec {
-    high: DenseBitVec,      // High bit buckets in unary encoding
+    high: DenseBitVec<u8>,  // High bit buckets in unary encoding
     low: IntVec,            // Low bits in fixed-width encoding
     num_ones: usize,        // Number of elements (n)
     len: usize,             // Maximum representable integer (u + 1)

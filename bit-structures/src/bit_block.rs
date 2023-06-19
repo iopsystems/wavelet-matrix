@@ -1,13 +1,17 @@
+use core::ops::BitAndAssign;
 use num::traits::CheckedShr;
 use num::traits::WrappingSub;
 use num::PrimInt;
 use num::Unsigned;
+use std::ops::BitAnd;
 
 /// Trait representing an unsigned integer type used as a block of bits,
 /// which allows our bit-based structures to be generic over block sizes.
-pub trait BitBlock: PrimInt + Unsigned + WrappingSub + CheckedShr + Clone {
+pub trait BitBlock:
+    PrimInt + Unsigned + WrappingSub + CheckedShr + BitAndAssign + BitAnd + Clone
+{
     const BITS: u32; // number of bits in the representation of this type
-    const WIDTH: u32 = Self::BITS.ilog2(); // bit width
+    const BIT_WIDTH: u32 = Self::BITS.ilog2(); // bit width
 
     /// Block index of the block containing the `i`-th bit
     fn bit_offset(i: usize) -> usize {
@@ -16,7 +20,7 @@ pub trait BitBlock: PrimInt + Unsigned + WrappingSub + CheckedShr + Clone {
 
     /// Bit index of the `i`-th bit within its block (mask off the high bits)
     fn block_index(i: usize) -> usize {
-        i >> Self::WIDTH
+        i >> Self::BIT_WIDTH
     }
 
     /// Block index and bit offset of the `i`-th bit

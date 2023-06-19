@@ -11,7 +11,7 @@ use std::ops::Range;
 enum Container {
     Runs(Box<[Range<u16>]>), // Ranges representing runs of ones: start..start+length. We could actually use our RLE bitvector here.
     Sparse(Box<[u16]>), // lowest 16 bits of one positions. We could actually use our naïve bitvector here, if we parameterize the element type.
-    Dense(Box<DenseBitVec>), // dense bit representation. We use our dense bitvector.
+    Dense(Box<DenseBitVec<u32>>), // dense bit representation. We use our dense bitvector.
 }
 
 // Implement rank and select on each conatiner by delegating to its inner type in a match statement.
