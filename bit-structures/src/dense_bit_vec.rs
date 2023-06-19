@@ -16,7 +16,7 @@ use std::debug_assert;
 
 use crate::bit_buf::BitBuf;
 
-type RawBlock = u32;
+type RawBlock = u8;
 
 // todo: describe what each rank/select sample holds.
 
@@ -35,7 +35,7 @@ impl DenseBitVec {
     pub fn new(data: BitBuf<RawBlock>, sr_log2: u32, ss_log2: u32) -> Self {
         let raw = data;
         let raw_block_bits = RawBlock::BITS;
-        let raw_block_pow2 = RawBlock::BIT_WIDTH;
+        let raw_block_pow2 = RawBlock::WIDTH;
         debug_assert!(sr_log2 >= raw_block_pow2);
         debug_assert!(ss_log2 >= raw_block_pow2);
 
@@ -194,14 +194,20 @@ impl BitVec for DenseBitVec {
         // Convert the raw block index into a rank block index
         // note: we could do this all in one swoop by finding the last valid rank block
         // and using the number of blocks traversed and the final value of the block.
-        let preceding_rank_block = (raw_start << RawBlock::BIT_WIDTH) >> self.sr_pow2;
-        let rank_iter = self.r[preceding_rank_block + 1..].iter().copied();
-        let raw_blocks_per_rank_block = 1 << (self.sr_pow2 - RawBlock::BIT_WIDTH);
-        for r in rank_iter {
+        // of course, only do that if the number of skipped rank blocks is greater than 0.
+        // note: all these 'pow2's are misleading - this is the log2/bitwidth...
+        let raw_blocks_per_rank_block_pow2 = self.sr_pow2 - RawBlock::WIDTH;
+        // convert raw index -> rank index
+        let preceding_rank_block = raw_start >> raw_blocks_per_rank_block_pow2;
+        let rank_start = preceding_rank_block + 1; // start from the next block
+        let rank_iter = self.r[rank_start..].iter().copied();
+
+        for (i, r) in rank_iter.enumerate() {
             let r = r as usize;
             if r < n {
                 preceding_ones = r;
-                raw_start += raw_blocks_per_rank_block
+                // convert rank index -> raw index
+                raw_start = (rank_start + i) << raw_blocks_per_rank_block_pow2;
             } else {
                 break;
             }
@@ -219,7 +225,7 @@ impl BitVec for DenseBitVec {
             })
             .unwrap();
 
-        let shift = RawBlock::BIT_WIDTH as usize;
+        let shift = RawBlock::WIDTH as usize;
         for _ in preceding_ones..n {
             block &= block - 1; // unset extra zeros
         }
@@ -248,7 +254,7 @@ impl BitVec for DenseBitVec {
                 cur_zeros > n
             })
             .unwrap();
-        let shift = RawBlock::BIT_WIDTH as usize;
+        let shift = RawBlock::WIDTH as usize;
 
         block = !block;
         for _ in prev_zeros..n {
@@ -284,7 +290,7 @@ mod tests {
     #[test]
     fn test_new() {
         let raw = BitBuf::new(100);
-        let _ = DenseBitVec::new(raw, RawBlock::BIT_WIDTH, RawBlock::BIT_WIDTH);
+        let _ = DenseBitVec::new(raw, RawBlock::WIDTH, RawBlock::WIDTH);
     }
 
     #[test]
@@ -294,7 +300,7 @@ mod tests {
             for one in ones.iter().copied() {
                 raw.set(one);
             }
-            DenseBitVec::new(raw, RawBlock::BIT_WIDTH, RawBlock::BIT_WIDTH)
+            DenseBitVec::new(raw, RawBlock::WIDTH, RawBlock::WIDTH)
         };
         bit_vec::test_bitvector(f);
         bit_vec::test_bitvector_vs_naive(f);
@@ -308,7 +314,7 @@ mod tests {
         for i in ones {
             raw.set(i);
         }
-        let bv = DenseBitVec::new(raw, RawBlock::BIT_WIDTH, RawBlock::BIT_WIDTH);
+        let bv = DenseBitVec::new(raw, RawBlock::WIDTH, RawBlock::WIDTH);
         // for b in bv.raw.blocks() {
         //     println!("{:b}", b);
         // }
@@ -345,7 +351,7 @@ mod tests {
         for i in ones {
             raw.set(i);
         }
-        let bv = DenseBitVec::new(raw, RawBlock::BIT_WIDTH, RawBlock::BIT_WIDTH);
+        let bv = DenseBitVec::new(raw, RawBlock::WIDTH, RawBlock::WIDTH);
         assert_eq!(bv.select1(0), Some(1));
         assert_eq!(bv.select1(1), Some(2));
         assert_eq!(bv.select1(2), Some(5));
@@ -362,7 +368,7 @@ mod tests {
         for i in ones {
             raw.set(i);
         }
-        let bv = DenseBitVec::new(raw, RawBlock::BIT_WIDTH, RawBlock::BIT_WIDTH);
+        let bv = DenseBitVec::new(raw, RawBlock::WIDTH, RawBlock::WIDTH);
         assert_eq!(bv.select0(0), Some(0));
         assert_eq!(bv.select0(1), Some(3));
         assert_eq!(bv.select0(2), Some(4));
@@ -394,7 +400,7 @@ mod tests {
             }
 
             println!("ones {:?}", ones);
-            let bv = DenseBitVec::new(raw, RawBlock::BIT_WIDTH, RawBlock::BIT_WIDTH);
+            let bv = DenseBitVec::new(raw, RawBlock::WIDTH, RawBlock::WIDTH);
             for (i, o) in ones.iter().copied().enumerate() {
                 println!("testing index {:?} with one  {:?}", i, o);
                 assert_eq!(bv.select1(i), Some(o));

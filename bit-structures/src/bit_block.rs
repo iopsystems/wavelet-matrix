@@ -6,8 +6,8 @@ use num::Unsigned;
 /// Trait representing an unsigned integer type used as a block of bits,
 /// which allows our bit-based structures to be generic over block sizes.
 pub trait BitBlock: PrimInt + Unsigned + WrappingSub + CheckedShr + Clone {
-    const BITS: u32;
-    const BIT_WIDTH: u32 = Self::BITS.ilog2();
+    const BITS: u32; // number of bits in the representation of this type
+    const WIDTH: u32 = Self::BITS.ilog2(); // bit width
 
     /// Block index of the block containing the `i`-th bit
     fn bit_offset(i: usize) -> usize {
@@ -16,7 +16,7 @@ pub trait BitBlock: PrimInt + Unsigned + WrappingSub + CheckedShr + Clone {
 
     /// Bit index of the `i`-th bit within its block (mask off the high bits)
     fn block_index(i: usize) -> usize {
-        i >> Self::BIT_WIDTH
+        i >> Self::WIDTH
     }
 
     /// Block index and bit offset of the `i`-th bit
