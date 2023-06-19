@@ -18,12 +18,14 @@ use crate::bit_buf::BitBuf;
 
 type RawBlock = u32;
 
+// todo: describe what each rank/select sample holds.
+
 #[derive(Debug)]
 pub struct DenseBitVec {
     raw: BitBuf<RawBlock>, // bit data
     sr_pow2: u32,          //
     ss_pow2: u32,          //
-    r: Box<[u32]>,         // rank samples
+    r: Box<[u32]>,         // rank samples holding the number of preceding 1-bits
     s0: Box<[u32]>,        // select0 samples
     s1: Box<[u32]>,        // select1 samples
     num_ones: usize,
@@ -152,6 +154,9 @@ impl BitVec for DenseBitVec {
     }
 
     fn select1(&self, n: usize) -> Option<usize> {
+        // our rank blocks hold u32 indices and it seems odd for us to support larger array sizes...
+        debug_assert!(n <= u32::MAX as usize);
+
         if n >= self.num_ones {
             return None;
         }
@@ -180,24 +185,42 @@ impl BitVec for DenseBitVec {
         // 1. The cumulative bits preceding this raw block. Since these are shifted down,
         //    they represent the raw block index.
         // 2. The bit offset of the (ss * i + 1)-th 1-bit within this raw block
-        let (raw_start, correction) = RawBlock::index_offset(sample as usize);
+        let (mut raw_start, correction) = RawBlock::index_offset(sample as usize);
         let select_ones = sample_index << self.ss_pow2; // num. of ones represented by this sample
 
-        // want: next block value and index, and the preceding one count up to that block.
-        let mut prev_ones = select_ones - correction;
-        let mut cur_ones = prev_ones;
+        let mut preceding_ones = select_ones - correction;
+
+        // Speed past multiple raw blocks using rank blocks.
+        // Convert the raw block index into a rank block index
+        // note: we could do this all in one swoop by finding the last valid rank block
+        // and using the number of blocks traversed and the final value of the block.
+        let preceding_rank_block = (raw_start << RawBlock::bits_log2()) >> self.sr_pow2;
+        let rank_iter = self.r[preceding_rank_block + 1..].iter().copied();
+        let raw_blocks_per_rank_block = 1 << (self.sr_pow2 - RawBlock::bits_log2());
+        for r in rank_iter {
+            let r = r as usize;
+            if r < n {
+                preceding_ones = r;
+                raw_start += raw_blocks_per_rank_block
+            } else {
+                break;
+            }
+        }
+
+        // want: the next raw block value and index, and the preceding one count up to that block.
+        let mut cur_ones = preceding_ones;
         let raw_blocks = self.raw.blocks()[raw_start..].iter().copied();
         let (count, mut block) = raw_blocks
             .enumerate()
             .find(|(_, block)| {
-                prev_ones = cur_ones;
+                preceding_ones = cur_ones;
                 cur_ones += block.count_ones() as usize;
                 cur_ones > n
             })
             .unwrap();
 
         let shift = RawBlock::bits_log2() as usize;
-        for _ in prev_ones..n {
+        for _ in preceding_ones..n {
             block &= block - 1; // unset extra zeros
         }
         let block_bits = (raw_start + count) << shift;

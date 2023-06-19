@@ -195,7 +195,7 @@ mod tests {
         new_batch_partition_point_slice(&haystack, needles, &mut results);
 
         dbg!(results);
-        panic!("nooo");
+        // panic!("nooo");
     }
 
     #[test]
