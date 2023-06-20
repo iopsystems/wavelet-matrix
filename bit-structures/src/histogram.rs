@@ -62,10 +62,11 @@ impl HistogramBuilder {
             // The log segment containing the value
             let v = value.ilog2();
 
-            // The linear section has twice as many bins as an individual log segment above the cutoff,
-            // for a total of 2*2^b bins below the cutoff.
-            // Above the cutoff, the value is preceded by `v - c` complete log sections, and each one
-            // has 2^b bins.
+            // We want to calculate the number of bins that precede the v-th log segment.
+            // We can break this down into two components:
+            // 1. The linear section has twice as many bins as an individual log segment above the cutoff,
+            //    for a total of 2*2^b bins below the cutoff.
+            // 2. Above the cutoff, there are `v - c` log segments before the v-th log segment, each with 2^b bins.
             // Taken together, there are (v - c + 2) * 2^b bins preceding the v-th log segment.
             let preceding_bins_before_log_segment = (v - c + 2) << b;
 
