@@ -32,40 +32,40 @@ use crate::utils::div_ceil;
 // todo: rename this to BitBuffer?
 
 #[derive(Debug)]
-pub struct BitBuf<B: BitBlock> {
-    blocks: Box<[B]>,
+pub struct BitBuf<Block: BitBlock = u8> {
+    blocks: Box<[Block]>,
     len: usize,
 }
 
-impl<B: BitBlock> BitBuf<B> {
+impl<Block: BitBlock> BitBuf<Block> {
     pub fn new(len: usize) -> Self {
         // The number of blocks should be just enough to represent `len` bits.
-        let num_blocks = div_ceil(len, B::BITS as usize);
+        let num_blocks = div_ceil(len, Block::BITS as usize);
         // Initialize to zero so that any trailing bits in the last block will be zero.
-        let data = vec![B::zero(); num_blocks].into_boxed_slice();
+        let data = vec![Block::zero(); num_blocks].into_boxed_slice();
         Self { blocks: data, len }
     }
 
     // /// Return the bool value of the bit at index `index`
     pub fn get(&self, index: usize) -> bool {
-        let block = self.blocks[B::block_index(index)];
+        let block = self.blocks[Block::block_index(index)];
         // let rhs = (B::one() << B::bit_offset(index));
-        let bit = block & (B::one() << B::bit_offset(index)); // (1 << B::bit_offset(index));
-        bit != B::zero()
+        let bit = block & (Block::one() << Block::bit_offset(index)); // (1 << B::bit_offset(index));
+        bit != Block::zero()
     }
 
     /// Write a 1-bit to index `index`.
     // Since the data buffer is initialized to its final size at construction time
     // bits may be set in any order.
     pub fn set(&mut self, index: usize) {
-        let block_index = B::block_index(index);
+        let block_index = Block::block_index(index);
         let block = self.blocks[block_index];
-        let set_bit = B::one() << B::bit_offset(index);
+        let set_bit = Block::one() << Block::bit_offset(index);
         self.blocks[block_index] = block | set_bit;
     }
 
     /// Return an immutable reference to the underlying data as a slice
-    pub fn blocks(&self) -> &[B] {
+    pub fn blocks(&self) -> &[Block] {
         &self.blocks
     }
 
