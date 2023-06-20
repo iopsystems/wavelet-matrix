@@ -179,7 +179,7 @@ pub fn test_bitvector_vs_naive<T: BitVec>(new: impl Fn(&[usize], usize) -> T) {
     }
 
     for TestCase(ones, len) in test_cases {
-        dbg!("test case", &ones, &len);
+        println!("test case: ones: {:?}\nlen: {:?}", &ones, &len);
         let bv = new(&ones, len);
         let nv = SliceBitVec::new(&ones, len);
 

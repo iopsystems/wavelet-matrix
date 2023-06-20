@@ -13,12 +13,12 @@ pub trait BitBlock:
     const BITS: u32; // number of bits in the representation of this type
     const BIT_WIDTH: u32 = Self::BITS.ilog2(); // bit width
 
-    /// Block index of the block containing the `i`-th bit
+    /// Bit index of the `i`-th bit within its block (mask off the high bits)
     fn bit_offset(i: usize) -> usize {
         i & (Self::BITS - 1) as usize
     }
 
-    /// Bit index of the `i`-th bit within its block (mask off the high bits)
+    /// Block index of the block containing the `i`-th bit
     fn block_index(i: usize) -> usize {
         i >> Self::BIT_WIDTH
     }

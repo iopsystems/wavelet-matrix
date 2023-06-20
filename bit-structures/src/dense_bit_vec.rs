@@ -115,6 +115,26 @@ impl<RawBlock: BitBlock> DenseBitVec<RawBlock> {
     fn rank_aligned_bit_index(&self, index: usize) -> usize {
         self.r_index(index) << self.sr_bit_width
     }
+
+    fn select_sample(s: &[u32], ss_bit_width: u32, n: u32) -> (usize, u32) {
+        let sample_index = n >> ss_bit_width;
+        let sample = s[sample_index as usize];
+
+        // 1. The cumulative bits preceding this raw block. Since these are shifted down,
+        //    they represent the raw block index.
+        // 2. The bit offset of the (ss * i + 1)-th 1-bit within this raw block
+        let mask = RawBlock::BITS - 1; // bitmask with 1-bits at the RawBlock::BIT_WIDTH bottommost bits
+        let bit_pos = sample & !mask;
+        let correction = sample & mask;
+
+        // num. of ones represented by this sample, up to the raw block boundary
+        let num_ones = (sample_index << ss_bit_width) - correction;
+
+        // assert that bit pos is rawblock-aligned
+        debug_assert!(RawBlock::bit_offset(bit_pos as usize) == 0);
+
+        (bit_pos as usize, num_ones)
+    }
 }
 
 impl<RawBlock: BitBlock> BitVec for DenseBitVec<RawBlock> {
@@ -152,12 +172,12 @@ impl<RawBlock: BitBlock> BitVec for DenseBitVec<RawBlock> {
     }
 
     fn select1(&self, n: usize) -> Option<usize> {
-        // our rank blocks hold u32 indices and it seems odd for us to support larger array sizes...
-        debug_assert!(n <= u32::MAX as usize);
-
         if n >= self.num_ones {
             return None;
         }
+
+        debug_assert!(n <= u32::MAX as usize);
+        let n = n as u32;
 
         // Steps (todo):
         // 1. Use the select block for an initial position
@@ -165,64 +185,39 @@ impl<RawBlock: BitBlock> BitVec for DenseBitVec<RawBlock> {
         // 3. Use raw blocks to hop over many bytes
         // 4. Use bytes to hop over many bits
         // 5. Return the target bit position within the byte
-        // debug_assert!(usize::BITS >= u32::BITS);
 
-        // {
-        //     let (raw_start, correction) = self.s1_block(n);
-        //     let skipped_raw_blocks = self.raw.blocks()[raw_start..].iter().take_while(|raw_block|raw_block<n).count();
-        // }
+        let (mut bit_pos, mut preceding_ones) = Self::select_sample(&self.s1, self.ss_bit_width, n);
 
-        // note: we may go past the last rank block, but never past the last raw block
-        // (unless n >= self.num_ones)
-
-        let sample_index = self.s_index(n);
-        let sample = self.s1[sample_index];
-        // The raw block index of the preceding block, and the number of 1-bits
-        // on the current block to reach the select_ones'th one
-        // A select sample consists of two parts:
-        // 1. The cumulative bits preceding this raw block. Since these are shifted down,
-        //    they represent the raw block index.
-        // 2. The bit offset of the (ss * i + 1)-th 1-bit within this raw block
-        let (mut raw_start, correction) = RawBlock::index_offset(sample as usize);
-        let select_ones = sample_index << self.ss_bit_width; // num. of ones represented by this sample
-
-        let mut preceding_ones = select_ones - correction;
-
-        // Speed past multiple raw blocks using rank blocks.
-        // Convert the raw block index into a rank block index
-        // note: we could do this all in one swoop by finding the last valid rank block
-        // and using the number of blocks traversed and the final value of the block.
-        // of course, only do that if the number of skipped rank blocks is greater than 0.
-        // note: all these 'pow2's are misleading - this is the log2/bitwidth...
-        let raw_blocks_per_rank_block_bit_width = self.sr_bit_width - RawBlock::BIT_WIDTH;
-        // convert raw index -> rank index
-        let preceding_rank_block = raw_start >> raw_blocks_per_rank_block_bit_width;
-        let rank_start = preceding_rank_block + 1; // start from the next block
-        let rank_iter = self.r[rank_start..].iter().copied();
-
-        for (i, r) in rank_iter.enumerate() {
-            let r = r as usize;
-            if r < n {
-                preceding_ones = r;
-                // convert rank index -> raw index
-                raw_start = (rank_start + i) << raw_blocks_per_rank_block_bit_width;
-            } else {
-                break;
-            }
+        let r_start = self.r_index(bit_pos); // index of the preceding rank block
+        let r_block = self.r[r_start + 1..]
+            .iter()
+            .copied()
+            .take_while(|&x| x < n)
+            .enumerate()
+            .last();
+        if let Some((i, ones)) = r_block {
+            // if we used any rank blocks to skip ahead, derive the new bitpos from the
+            // index of the last rank block. i is a zero-based index, so add one.
+            bit_pos = (r_start + i + 1) << self.sr_bit_width;
+            preceding_ones = ones;
         }
 
-        // want: the next raw block value and index, and the preceding one count up to that block.
+        // we want the next raw block value and index, and the preceding one count up to that block.
         let mut cur_ones = preceding_ones;
-        let raw_blocks = self.raw.blocks()[raw_start..].iter().copied();
-        let (count, mut block) = raw_blocks
+        let raw_start = RawBlock::block_index(bit_pos);
+        let (count, block) = self.raw.blocks()[raw_start..]
+            .iter()
+            .copied()
             .enumerate()
             .find(|(_, block)| {
                 preceding_ones = cur_ones;
-                cur_ones += block.count_ones() as usize;
+                cur_ones += block.count_ones();
                 cur_ones > n
             })
             .unwrap();
 
+        // clear the bottom 1-bits
+        let mut block = block;
         let shift = RawBlock::BIT_WIDTH as usize;
         for _ in preceding_ones..n {
             block &= block - RawBlock::one(); // unset extra zeros
