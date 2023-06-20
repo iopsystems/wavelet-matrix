@@ -21,8 +21,8 @@ use crate::bit_buf::BitBuf;
 #[derive(Debug)]
 pub struct DenseBitVec<RawBlock: BitBlock> {
     raw: BitBuf<RawBlock>, // bit data
-    sr_bit_width: u32,     //
-    ss_bit_width: u32,     //
+    sr_pow2: u32,          // power of 2 of the rank sampling rate
+    ss_pow2: u32,          // power of 2 of the select sampling rate
     r: Box<[u32]>,         // rank samples holding the number of preceding 1-bits
     s0: Box<[u32]>,        // select0 samples
     s1: Box<[u32]>,        // select1 samples
@@ -30,15 +30,15 @@ pub struct DenseBitVec<RawBlock: BitBlock> {
 }
 
 impl<RawBlock: BitBlock> DenseBitVec<RawBlock> {
-    pub fn new(data: BitBuf<RawBlock>, sr_bit_width: u32, ss_bit_width: u32) -> Self {
+    pub fn new(data: BitBuf<RawBlock>, sr_pow2: u32, ss_pow2: u32) -> Self {
         let raw = data;
         let raw_block_bits = RawBlock::BITS;
-        let raw_block_bit_width = RawBlock::BIT_WIDTH;
-        debug_assert!(sr_bit_width >= raw_block_bit_width);
-        debug_assert!(ss_bit_width >= raw_block_bit_width);
+        let raw_block_pow2 = RawBlock::BIT_WIDTH;
+        debug_assert!(sr_pow2 >= raw_block_pow2);
+        debug_assert!(ss_pow2 >= raw_block_pow2);
 
-        let ss = 1 << ss_bit_width; // Select sampling rate: sample every `ss` 1-bits
-        let sr = 1 << sr_bit_width; // Rank sampling rate: sample every `sr` bits
+        let ss = 1 << ss_pow2; // Select sampling rate: sample every `ss` 1-bits
+        let sr = 1 << sr_pow2; // Rank sampling rate: sample every `sr` bits
 
         let mut r = vec![]; // rank samples
         let mut s0 = vec![]; // select0 samples
@@ -50,7 +50,7 @@ impl<RawBlock: BitBlock> DenseBitVec<RawBlock> {
         let mut ones_threshold = 0; // take a select1 sample at the (ones_threshold+1)th 1-bit
 
         // Raw blocks per rank block
-        let raw_block_sr = sr >> raw_block_bit_width;
+        let raw_block_sr = sr >> raw_block_pow2;
 
         // Iterate one rank block at a time for convenient rank sampling
         for blocks in raw.blocks().chunks(raw_block_sr) {
@@ -92,46 +92,54 @@ impl<RawBlock: BitBlock> DenseBitVec<RawBlock> {
 
         Self {
             raw,
-            sr_bit_width,
-            ss_bit_width,
+            sr_pow2,
+            ss_pow2,
             r: r.into_boxed_slice(),
             s0: s0.into_boxed_slice(),
             s1: s1.into_boxed_slice(),
+            // num_ones is always <= u32::MAX by construction
             num_ones: cumulative_ones as usize,
         }
     }
 
     /// Return a select1 block index for a given 1-bit index
     fn s_index(&self, n: usize) -> usize {
-        n >> self.ss_bit_width
+        n >> self.ss_pow2
     }
 
     /// Return a rank block index for a given bit index
     fn r_index(&self, index: usize) -> usize {
-        index >> self.sr_bit_width
+        index >> self.sr_pow2
     }
 
     /// Return a rank-block-aligned bit index for a given bit index
     fn rank_aligned_bit_index(&self, index: usize) -> usize {
-        self.r_index(index) << self.sr_bit_width
+        self.r_index(index) << self.sr_pow2
     }
 
-    fn select_sample(s: &[u32], ss_bit_width: u32, n: u32) -> (usize, u32) {
-        let sample_index = n >> ss_bit_width;
+    fn select_sample(s: &[u32], ss_pow2: u32, n: u32) -> (usize, u32) {
+        // Select samples are sampled every j*2^ss_pow2 1-bits and stores
+        // a value related to the bit position of the 2^ss_pow2-th bit.
+        // For improved performance, rather than storing the position of
+        // that bit directly, each select sample holds two separate values:
+        // 1. The raw-block-aligned bit position of that bit, ie. the number
+        // of bits preceding the raw block containing the 2^ss-pow2_th bit.
+        // 2. The bit position of the (ss * i + 1)-th 1-bit within that raw block,
+        //    which we can subtract from j*2^ss_pow2 to tell the number of 1-bits
+        //    up to the raw-block-aligned bit position.
+        let sample_index = n >> ss_pow2;
         let sample = s[sample_index as usize];
 
-        // 1. The cumulative bits preceding this raw block. Since these are shifted down,
-        //    they represent the raw block index.
-        // 2. The bit offset of the (ss * i + 1)-th 1-bit within this raw block
-        let mask = RawBlock::BITS - 1; // bitmask with 1-bits at the RawBlock::BIT_WIDTH bottommost bits
+        // bitmask with the RawBlock::BIT_WIDTH bottom bits set.
+        let mask = RawBlock::BITS - 1;
         let bit_pos = sample & !mask;
         let correction = sample & mask;
 
-        // num. of ones represented by this sample, up to the raw block boundary
-        let num_ones = (sample_index << ss_bit_width) - correction;
-
         // assert that bit pos is rawblock-aligned
         debug_assert!(RawBlock::bit_offset(bit_pos as usize) == 0);
+
+        // num. of ones represented by this sample, up to the raw block boundary
+        let num_ones = (sample_index << ss_pow2) - correction;
 
         (bit_pos as usize, num_ones)
     }
@@ -171,43 +179,32 @@ impl<RawBlock: BitBlock> BitVec for DenseBitVec<RawBlock> {
         rank as usize
     }
 
+    // Steps (todo):
+    // 1. Use the select block for an initial position
+    // 2. Use rank blocks to hop over many raw blocks
+    // 3. Use raw blocks to hop over many bytes (or individual bytes, if raw block = u8)
+    // 5. Return the target bit position within the raw block
+
     fn select1(&self, n: usize) -> Option<usize> {
         if n >= self.num_ones {
             return None;
         }
-
-        debug_assert!(n <= u32::MAX as usize);
         let n = n as u32;
 
-        // Steps (todo):
-        // 1. Use the select block for an initial position
-        // 2. Use rank blocks to hop over many raw blocks
-        // 3. Use raw blocks to hop over many bytes
-        // 4. Use bytes to hop over many bits
-        // 5. Return the target bit position within the byte
-
-        let (mut bit_pos, mut preceding_ones) = Self::select_sample(&self.s1, self.ss_bit_width, n);
-
+        let (mut bit_pos, mut preceding_ones) = Self::select_sample(&self.s1, self.ss_pow2, n);
         let r_start = self.r_index(bit_pos); // index of the preceding rank block
-        let r_block = self.r[r_start + 1..]
-            .iter()
-            .copied()
-            .take_while(|&x| x < n)
-            .enumerate()
-            .last();
+        let r_blocks = self.r[r_start + 1..].iter().copied();
+        let r_block = r_blocks.take_while(|&x| x < n).enumerate().last();
         if let Some((i, ones)) = r_block {
-            // if we used any rank blocks to skip ahead, derive the new bitpos from the
-            // index of the last rank block. i is a zero-based index, so add one.
-            bit_pos = (r_start + i + 1) << self.sr_bit_width;
+            bit_pos = (r_start + i + 1) << self.sr_pow2; // bit pos depends on the index of the rank block
             preceding_ones = ones;
         }
 
         // we want the next raw block value and index, and the preceding one count up to that block.
         let mut cur_ones = preceding_ones;
         let raw_start = RawBlock::block_index(bit_pos);
-        let (count, block) = self.raw.blocks()[raw_start..]
-            .iter()
-            .copied()
+        let raw_blocks = self.raw.blocks()[raw_start..].iter().copied();
+        let (count, block) = raw_blocks
             .enumerate()
             .find(|(_, block)| {
                 preceding_ones = cur_ones;
@@ -235,7 +232,7 @@ impl<RawBlock: BitBlock> BitVec for DenseBitVec<RawBlock> {
         let sample = self.s0[sample_index];
 
         let (raw_start, correction) = RawBlock::index_offset(sample as usize);
-        let select_zeros = sample_index << self.ss_bit_width; // num. of zeros represented by this sample
+        let select_zeros = sample_index << self.ss_pow2; // num. of zeros represented by this sample
         let mut prev_zeros = select_zeros - correction;
         let mut cur_zeros = prev_zeros;
         let raw_blocks = self.raw.blocks()[raw_start..].iter().copied();
