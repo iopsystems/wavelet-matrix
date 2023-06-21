@@ -4,7 +4,7 @@ use crate::bit_block::BitBlock;
 use std::debug_assert;
 
 use crate::bit_buf::BitBuf;
-use crate::bit_vec;
+
 use crate::bit_vec::BitVec;
 use crate::dense_bit_vec::DenseBitVec;
 use crate::int_vec::IntVec;
@@ -122,7 +122,7 @@ impl BitVec for SparseBitVec {
 
     fn rank0(&self, index: usize) -> usize {
         debug_assert!(!self.has_multiplicity);
-        bit_vec::default_rank0(self, index)
+        self.default_rank0(index)
     }
 
     fn select1(&self, n: usize) -> Option<usize> {
@@ -133,12 +133,12 @@ impl BitVec for SparseBitVec {
 
     fn select0(&self, n: usize) -> Option<usize> {
         debug_assert!(!self.has_multiplicity);
-        bit_vec::default_select0(self, n)
+        self.default_select0(n)
     }
 
     fn get(&self, index: usize) -> bool {
         debug_assert!(!self.has_multiplicity);
-        bit_vec::default_get(self, index)
+        self.default_get(index)
     }
 
     fn num_zeros(&self) -> usize {

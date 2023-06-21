@@ -70,7 +70,7 @@ impl HistogramBuilder {
             acc += *x;
             *x = acc;
         }
-        let cdf = SliceBitVec::new(&*pdf, 10);
+        let cdf = SliceBitVec::new(&[], 10); // &*pdf
         Histogram { h: self.h, cdf }
     }
 }
