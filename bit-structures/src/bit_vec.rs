@@ -13,6 +13,14 @@ use crate::utils::partition_point;
 // - num_ones or num_zeros
 // - len
 
+// Allows bit vectors up to 2^64, which implies allowing up to 2^64 1-bits.
+// Use case: HDR Histogram with more than u32::MAX samples.
+// In the EF-compressed representation, this requires that the maximum 1-bit
+// be at an index beyond u32::MAX.
+// We could technically still support only u32 1-bits by making select return u64.
+// That would imply being able to ask for rank1(u64) and get a usize or u32 back.
+// And would mean num_ones would be u32 and num_zeros would be u64...
+//
 pub trait BitVec {
     fn rank1(&self, index: usize) -> usize {
         default_rank1(self, index)
@@ -179,7 +187,7 @@ pub fn test_bitvector_vs_naive<T: BitVec>(new: impl Fn(&[usize], usize) -> T) {
     }
 
     for TestCase(ones, len) in test_cases {
-        println!("test case: ones: {:?}\nlen: {:?}", &ones, &len);
+        println!("test case: usize: {:?}\nlen: {:?}", &ones, &len);
         let bv = new(&ones, len);
         let nv = SliceBitVec::new(&ones, len);
 

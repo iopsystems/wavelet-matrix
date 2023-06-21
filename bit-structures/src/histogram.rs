@@ -47,7 +47,7 @@ struct HistogramBuilder {
 impl HistogramBuilder {
     pub fn new(a: u32, b: u32, n: u32) -> HistogramBuilder {
         let h = HistogramHelper::new(a, b, n);
-        let pdf = vec![h.num_bins(); 0].into_boxed_slice();
+        let pdf = vec![0; h.num_bins() as usize].into_boxed_slice();
         HistogramBuilder { h, pdf }
     }
 
@@ -105,7 +105,7 @@ struct HistogramHelper {
     // with a = 0, that is not a use case this library is designed to support
     // and so we limit the maximum number of bins to roughly 4 billion.
     // update: that's not true at the moment; should figure out the approach here.
-    num_bins: u64,
+    num_bins: u32,
 }
 
 impl HistogramHelper {
@@ -125,7 +125,7 @@ impl HistogramHelper {
     // returns the number of bins up to the start of the seg-th log segment.
     // ie. if seg = n, returns the number of bins in the histogram (since
     // (the max value is 2^n-1 and the start of the n-th seg is at 2^n)
-    fn bins_before_seg(seg: u32, c: u32, b: u32) -> u64 {
+    fn bins_before_seg(seg: u32, c: u32, b: u32) -> u32 {
         // We want to calculate the number of bins that precede the v-th log segment.
         // We can break this down into two components:
         // 1. The linear section has twice as many bins as an individual log segment above the cutoff,
@@ -133,7 +133,7 @@ impl HistogramHelper {
         // 2. Above the cutoff, there are `v - c` log segments before the v-th log segment, each with 2^b bins.
         // Taken together, there are (v - c + 2) * 2^b bins preceding the v-th log segment.
         // Note: if we knew there are less than 2^32 bins, we could use `((seg - c + 2) << b) as u64`
-        ((seg - c + 2) as u64) << b as u64
+        (seg - c + 2) << b
     }
 
     pub fn max_value(&self) -> u64 {
@@ -144,7 +144,7 @@ impl HistogramHelper {
         }
     }
 
-    pub fn high(&self, i: u64) -> u64 {
+    pub fn high(&self, i: u32) -> u64 {
         if i == self.num_bins {
             self.max_value()
         } else {
@@ -154,11 +154,11 @@ impl HistogramHelper {
         }
     }
 
-    pub fn bin_index(&self, value: u64) -> u64 {
+    pub fn bin_index(&self, value: u64) -> u32 {
         let Self { a, b, c, .. } = *self;
         if value < (1 << c) {
             // the bin width below the cutoff is 1 << a
-            value >> a
+            (value >> a) as u32
         } else {
             // The log segment containing the value
             // Equivalent to value.ilog2() but compatible with traits from the Num crate
@@ -173,26 +173,26 @@ impl HistogramHelper {
 
             // there are 2^(b+1) = 2*2^b bins below the cutoff, and (v-c)*2^b bins between the cutoff
             // and v-th log segment.
-            Self::bins_before_seg(v, c, b) + bins_within_seg
+            Self::bins_before_seg(v, c, b) + bins_within_seg as u32
         }
     }
 
     // given a bin index, returns the lowest value that bin can contain.
-    pub fn low(&self, i: u64) -> u64 {
+    pub fn low(&self, i: u32) -> u64 {
         let Self { a, b, c, .. } = *self;
 
         let bins_below_cutoff = 2 << b;
         if i < bins_below_cutoff {
-            i << a
+            (i << a) as u64
         } else {
             // the number of bins in 0..i that are above the cutoff point
             let n = i - bins_below_cutoff;
             // the index of the log segment we're in: there are `c` log
             // segments below the cutoff and `n >> b` above, since each
             // one is divided into 2^b bins.
-            let seg = c as u64 + (n >> b);
+            let seg = c + (n >> b);
             // by definition, the lowest value in a log segment is 2^seg
-            let seg_start = 1 << seg;
+            let seg_start = 1u64 << seg;
             // the bin we're in within that segment, given by the low bits of n:
             // the bit shifts remove the `b` lowest bits, leaving only the high
             // bits, which we then subtract from `n` to keep only the low bits.
@@ -202,7 +202,7 @@ impl HistogramHelper {
             // the lowest value represented by this bin is simple to compute:
             // start where the logarithmic segment begins, and increment by the
             // linear bin index within the segment times the bin width.
-            seg_start + bin * bin_width
+            seg_start + bin as u64 * bin_width
         }
     }
 
@@ -218,7 +218,7 @@ impl HistogramHelper {
         self.c
     }
 
-    pub fn num_bins(&self) -> u64 {
+    pub fn num_bins(&self) -> u32 {
         self.num_bins
     }
 }

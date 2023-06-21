@@ -6,7 +6,9 @@ use num::traits::WrappingSub;
 use num::PrimInt;
 use num::Unsigned;
 use std::ops::BitAnd;
+use std::ops::BitOrAssign;
 use std::ops::Shl;
+use std::ops::ShrAssign;
 use std::ops::Sub;
 
 /// Trait representing an unsigned integer type used as a block of bits,
@@ -22,6 +24,8 @@ pub trait BitBlock:
     + Clone
     + Shl<Output = Self>
     + Shr<Output = Self>
+    + BitOrAssign
+    + ShrAssign
     + AsPrimitive<u32>
 {
     const BITS: u32; // number of bits in the representation of this type
