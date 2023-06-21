@@ -6,7 +6,9 @@
 // : FromIterator<u32>
 // todo: decide whether to call these `index` and `n` or `i` and `n`
 // todo: rename this file to bit_vec.rs?
-use crate::utils::{partition_point, PartitionPoint};
+use crate::bit_vec;
+use crate::utils::PartitionPoint;
+
 // You should implement:
 // - rank1 or rank0
 // - num_ones or num_zeros
@@ -21,38 +23,41 @@ use crate::utils::{partition_point, PartitionPoint};
 // And would mean num_ones would be u32 and num_zeros would be u64...
 // Should we even encourage usize, which can be dynamic? What if we had two traits,
 // BitVec32 and BitVec64?
-type Ones = u64;
+pub type Ones = usize;
+
+// Note: We want to avoid usize since it is architecture-dependent and we want to
+// serialize from 64-bit to 32-bit environments (eg. webassembly)
 
 pub trait BitVec {
-    fn rank1(&self, index: usize) -> usize {
+    fn rank1(&self, index: Ones) -> Ones {
         self.default_rank1(index)
     }
 
-    fn rank0(&self, index: usize) -> usize {
+    fn rank0(&self, index: Ones) -> Ones {
         self.default_rank0(index)
     }
 
-    fn select1(&self, n: usize) -> Option<usize> {
+    fn select1(&self, n: Ones) -> Option<Ones> {
         self.default_select1(n)
     }
 
-    fn select0(&self, n: usize) -> Option<usize> {
+    fn select0(&self, n: Ones) -> Option<Ones> {
         self.default_select0(n)
     }
 
-    fn get(&self, index: usize) -> bool {
+    fn get(&self, index: Ones) -> bool {
         self.default_get(index)
     }
 
-    fn num_ones(&self) -> usize {
+    fn num_ones(&self) -> Ones {
         self.len() - self.num_zeros()
     }
 
-    fn num_zeros(&self) -> usize {
+    fn num_zeros(&self) -> Ones {
         self.len() - self.num_ones()
     }
 
-    fn len(&self) -> usize;
+    fn len(&self) -> Ones;
 
     // todo: return the total size in bytes using std::mem::size_of plus the
     // same recursively for all constituents behind a pointer?
@@ -60,15 +65,15 @@ pub trait BitVec {
     // seems odd since it refers to using field declaration order even though I don't think
     // Rust actually uses that to lay things out in memory by default.
     // See also: https://github.com/DKerp/get-size
-    // fn size_in_bytes() -> usize;
+    // fn size_in_bytes() -> Ones;
 
     // todo: batch_rank/select/get which collect into an existing vec (to reduce allocations)
-    // fn batch_rank1(&self, index: impl Iterator<Item=usize>, out: Vec<usize>) {
+    // fn batch_rank1(&self, index: impl Iterator<Item=Ones>, out: Vec<Ones>) {
     //     out.extend(index.map(|index| self.rank1(index)))
     // }
 
     /// Default impl of rank1 using rank0
-    fn default_rank1(&self, index: usize) -> usize {
+    fn default_rank1(&self, index: Ones) -> Ones {
         if index >= self.len() {
             return self.num_ones();
         }
@@ -76,7 +81,7 @@ pub trait BitVec {
     }
 
     /// Default impl of rank0 using rank1
-    fn default_rank0(&self, index: usize) -> usize {
+    fn default_rank0(&self, index: Ones) -> Ones {
         if index >= self.len() {
             return self.num_zeros();
         }
@@ -84,7 +89,7 @@ pub trait BitVec {
     }
 
     /// Default impl of select1 using binary search over ranks
-    fn default_select0(&self, n: usize) -> Option<usize> {
+    fn default_select0(&self, n: Ones) -> Option<Ones> {
         if n >= self.num_zeros() {
             return None;
         }
@@ -93,7 +98,7 @@ pub trait BitVec {
     }
 
     /// Default impl of select0 using binary search over ranks
-    fn default_select1(&self, n: usize) -> Option<usize> {
+    fn default_select1(&self, n: Ones) -> Option<Ones> {
         if n >= self.num_ones() {
             return None;
         }
@@ -101,7 +106,7 @@ pub trait BitVec {
         Some(index - 1)
     }
 
-    fn default_get(&self, index: usize) -> bool {
+    fn default_get(&self, index: Ones) -> bool {
         // This could be done more efficiently but is a reasonable default.
         let ones_count = self.rank1(index + 1) - self.rank1(index);
         ones_count == 1
@@ -143,12 +148,12 @@ pub fn test_bitvector<T: BitVec>(new: impl Fn(&[usize], usize) -> T) {
     assert_eq!(bv.select1(4), None);
 }
 
-pub fn test_bitvector_vs_naive<T: BitVec>(new: impl Fn(&[usize], usize) -> T) {
+pub fn test_bitvector_vs_naive<T: BitVec>(new: impl Fn(&[Ones], Ones) -> T) {
     use exhaustigen::Gen;
 
     use crate::slice_bit_vec::SliceBitVec;
 
-    struct TestCase(Vec<usize>, usize);
+    struct TestCase(Vec<bit_vec::Ones>, Ones);
 
     // we use a length larger than what we assume is
     // the largest RawBitVec block size (128)
@@ -189,7 +194,7 @@ pub fn test_bitvector_vs_naive<T: BitVec>(new: impl Fn(&[usize], usize) -> T) {
     }
 
     for TestCase(ones, len) in test_cases {
-        println!("test case: usize: {:?}\nlen: {:?}", &ones, &len);
+        println!("test case: ones: {:?}\nlen: {:?}", &ones, &len);
         let bv = new(&ones, len);
         let nv = SliceBitVec::new(&ones, len);
 

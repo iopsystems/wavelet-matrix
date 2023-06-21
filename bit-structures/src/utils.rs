@@ -26,6 +26,7 @@ use std::{collections::VecDeque, debug_assert};
 pub trait PartitionPoint: Sized {
     fn partition_point(self, pred: impl Fn(Self) -> bool) -> Self;
     fn bit_floor(self) -> Self;
+    fn div_ceil(self, m: Self) -> Self;
 }
 
 macro_rules! partition_point_impl {
@@ -54,6 +55,12 @@ macro_rules! partition_point_impl {
                     1 << msb
                 }
             }
+
+             fn div_ceil(self, m: Self) -> Self {
+                let n = self;
+                (n + m - 1) / m
+            }
+
 
         }
      )*)

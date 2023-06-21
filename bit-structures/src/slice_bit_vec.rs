@@ -3,22 +3,26 @@
 
 use std::debug_assert;
 
-use crate::bit_vec::BitVec;
-use crate::utils::partition_point;
+use crate::bit_vec::{BitVec, Ones};
+use crate::utils::PartitionPoint;
 
 #[derive(Debug)]
 pub struct SliceBitVec {
-    ones: Box<[usize]>,
-    len: usize,
+    ones: Box<[Ones]>,
+    len: Ones,
 }
 
 impl SliceBitVec {
-    pub fn new(ones: &[usize], len: usize) -> Self {
+    pub fn new(ones: &[Ones], len: Ones) -> Self {
+        // check that the length can be converted to usize (should we check u32 instea?)
+        let check: Result<usize, _> = len.try_into();
+        assert!(check.is_ok());
+
         debug_assert!(
             ones.windows(2).all(|w| w[0] < w[1]),
             "ones must be monotonically increasing"
         );
-        debug_assert!(ones.len() <= len);
+        // debug_assert!(ones.len() <= len); // duplicates are allowed
         Self {
             ones: ones.into(),
             len,
@@ -27,11 +31,12 @@ impl SliceBitVec {
 }
 
 impl BitVec for SliceBitVec {
-    fn rank1(&self, i: usize) -> usize {
+    fn rank1(&self, i: Ones) -> Ones {
         if i >= self.len() {
             return self.num_ones();
         }
-        partition_point(self.num_ones(), |n| self.ones[n] < i)
+        self.num_ones()
+            .partition_point(|n| self.ones[n as usize] < i)
     }
 
     fn select1(&self, n: usize) -> Option<usize> {
