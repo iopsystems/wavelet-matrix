@@ -5,8 +5,13 @@
 // - naive raw pdf histogram backed by a CDF array, with an entry per bucket; can be incremented
 //   - maybe this is a builder (though we don't have those for anything else)
 //   - .to_dense() .to_sparse()
+//     - or better, construct from another histogram w possibly different (but compatible) a, b parameters & block type
 // - dense EF-compressed static histogram with repetitions for zero buckets; ie same as above, but with a sparse bitvec
 // - sparse EF-compressed static histogram with a dense bitvector marking nonzero buckets (essentially a compact weighted multiset representation)
+// - parameterizable storage maximum - eg. u32 or u64 (bitblock?)
+// - sparse bitvec should also be parameterizable the same way so that we can store 64 or 128 bits if we want to, but not have to pay for it otherwise
+// - make the "rank" / quantile function compatible with rank1(0) being inclusive; maybe make a rank1p which is the rank of the value plus one.
+//   - like how log1p(x) = ln(x+1); rank1p(x) = rank1(x - 1) and rank0p(x) = rank0(x - 1) but will return 0 for x=0?
 
 use crate::sparse_bit_vec::SparseBitVec;
 
