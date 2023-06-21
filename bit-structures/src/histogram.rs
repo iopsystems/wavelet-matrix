@@ -190,7 +190,7 @@ impl HistogramHelper {
             // the index of the log segment we're in: there are `c` log
             // segments below the cutoff and `n >> b` above, since each
             // one is divided into 2^b bins.
-            let seg = c + (n >> b);
+            let seg = c as u64 + (n >> b);
             // by definition, the lowest value in a log segment is 2^seg
             let seg_start = 1 << seg;
             // the bin we're in within that segment, given by the low bits of n:
