@@ -23,15 +23,16 @@ use std::{collections::VecDeque, debug_assert};
 /// See the appendix (bottom of this file for a more elaborate but efficient implementation).
 
 // using a trait so we can implement this for u32, u64, and usize
-trait PartitionPoint: Sized {
-    fn partition_point(n: Self, pred: impl Fn(Self) -> bool) -> Self;
-    fn bit_floor(n: Self) -> Self;
+pub trait PartitionPoint: Sized {
+    fn partition_point(self, pred: impl Fn(Self) -> bool) -> Self;
+    fn bit_floor(self) -> Self;
 }
 
 macro_rules! partition_point_impl {
      ($($t:ty)*) => ($(
         impl PartitionPoint for $t {
-            fn partition_point(n: Self, pred: impl Fn(Self) -> bool) -> Self {
+            fn partition_point(self, pred: impl Fn(Self) -> bool) -> Self {
+                let n = self;
                 let mut b = 0;
                 let mut bit = Self::bit_floor(n);
                 while bit != 0 {
@@ -44,7 +45,8 @@ macro_rules! partition_point_impl {
                 b
             }
 
-            fn bit_floor(n: Self) -> Self {
+            fn bit_floor(self) -> Self {
+                let n = self;
                 if n == 0 {
                     0
                 } else {

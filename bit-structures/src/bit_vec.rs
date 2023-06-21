@@ -6,8 +6,7 @@
 // : FromIterator<u32>
 // todo: decide whether to call these `index` and `n` or `i` and `n`
 // todo: rename this file to bit_vec.rs?
-use crate::utils::partition_point;
-
+use crate::utils::{partition_point, PartitionPoint};
 // You should implement:
 // - rank1 or rank0
 // - num_ones or num_zeros
@@ -22,6 +21,8 @@ use crate::utils::partition_point;
 // And would mean num_ones would be u32 and num_zeros would be u64...
 // Should we even encourage usize, which can be dynamic? What if we had two traits,
 // BitVec32 and BitVec64?
+type Ones = u64;
+
 pub trait BitVec {
     fn rank1(&self, index: usize) -> usize {
         self.default_rank1(index)
@@ -87,7 +88,7 @@ pub trait BitVec {
         if n >= self.num_zeros() {
             return None;
         }
-        let index = partition_point(self.len(), |i| self.rank0(i) <= n);
+        let index = self.len().partition_point(|i| self.rank0(i) <= n);
         Some(index - 1)
     }
 
@@ -96,7 +97,7 @@ pub trait BitVec {
         if n >= self.num_ones() {
             return None;
         }
-        let index = partition_point(self.len(), |i| self.rank1(i) <= n);
+        let index = self.len().partition_point(|i| self.rank1(i) <= n);
         Some(index - 1)
     }
 
