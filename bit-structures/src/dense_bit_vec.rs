@@ -9,7 +9,9 @@
 // x change rank to return the count strictly below the input index i so that rank and select become inverses.
 //   x we can possibly reuse the rank block indexing check
 // - is 'dense' the right name for this? the raw one is dense, this just adds rank/select support.
-
+//
+// todo:
+// - try split_last in select1
 use crate::bit_block::BitBlock;
 use crate::bit_vec::BitVec;
 use std::debug_assert;

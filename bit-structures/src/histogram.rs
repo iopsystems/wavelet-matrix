@@ -45,16 +45,8 @@ impl HistogramBuilder {
     //     Histogram { a: 0, b: 0, cdf }
     // }
 
-    // given a bin index, returns the lowest value that bin represents.
-    // pub fn low(i: u64) -> u64 {
-    //     if i < c {
-    //         i << a
-    //     } else {
-    //     }
-    // }
-
     pub fn bin_index(&self, value: u64) -> usize {
-        let Self { a, b, c, .. } = self;
+        let Self { a, b, c, .. } = *self;
         if value < (1 << c) {
             // the bin width below the cutoff is 1 << a
             (value >> a) as usize
@@ -77,8 +69,34 @@ impl HistogramBuilder {
             let preceding_bins_in_log_segment = ((value ^ (1 << v)) >> (v - b)) as u32;
 
             // there are 2^(b+1) = 2*2^b bins below the cutoff, and (v-c)*2^b bins between the cutoff
-            // and v-th log bin.
+            // and v-th log segment.
             (preceding_bins_before_log_segment + preceding_bins_in_log_segment) as usize
+        }
+    }
+
+    // given a bin index, returns the lowest value that bin can contain.
+    pub fn low(&self, i: u32) -> u64 {
+        let Self { a, b, c, .. } = *self;
+        let bins_in_linear_section = 2 << b;
+        if i < bins_in_linear_section {
+            (i << a) as u64
+        } else {
+            // the offset of the i-th bin inside the log section of the histogram
+            let n = i - bins_in_linear_section;
+
+            // the log segment containin the i-th bin.
+            // there are c bins before the cutoff each log segment has 2^b bins wide.
+            let log_segment = c + (n >> b); // mask off the low bits
+
+            // the offset of this bin within its log segment
+            let bin = n & ((1 << b) - 1); // keep only the low bits
+
+            // The lowest value in this bin is given by:
+            //   2^log_segment + bin * 2^(log_segment - b)
+            // The first term represents the start of this log segment and
+            // the second term represents the offset of the linear bin
+            // within that log segment.
+            ((1 << log_segment) + bin * (1 << (log_segment - b))) as u64
         }
     }
 }
@@ -97,6 +115,14 @@ mod tests {
         ];
         for (i, bin) in (0..64).zip(bins) {
             assert_eq!(b.bin_index(i), bin);
+            if i > 14 {
+                println!("--------------------");
+                dbg!(i, bin, b.low(bin as u32));
+            }
         }
+
+        // dbg!(17, 8, b.low(8));
+
+        panic!("histogram");
     }
 }
