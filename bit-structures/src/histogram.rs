@@ -1,5 +1,6 @@
 // https://github.com/pelikan-io/ccommon/blob/main/docs/modules/cc_histogram.rst
 // https://observablehq.com/d/35f0b601ed888da9
+// https://github.com/pelikan-io/rustcommon/blob/main/histogram/src/histogram.rs
 // I want three histograms:
 // - naive raw pdf histogram backed by a CDF array, with an entry per bucket; can be incremented
 //   - maybe this is a builder (though we don't have those for anything else)
@@ -32,7 +33,7 @@ struct HistogramBuilder {
     // 2^n - 1 is the maximum value this histogram can store.
     n: u32,
     // there are n log segments in this histogram, with
-    // c of them below the cutoff point and n - c above it.
+    // c of them below the cutoff point and n-c above it.
     // - below the cutoff, there are 2^(b+1) = 2*2^b bins in total
     // - above the cutoff, there are n-c log segments, with 2^b bins each
     // so the total number of bins in the histogram is (n-c+2) * 2^b.
@@ -41,10 +42,9 @@ struct HistogramBuilder {
 
 impl HistogramBuilder {
     fn new(a: u32, b: u32, n: u32) -> HistogramBuilder {
-        let c = a + b + 1; // linear-log cutoff
+        let c = a + b + 1;
         let num_bins = (n - c + 2) << b;
-        let pdf = vec![0, num_bins].into_boxed_slice();
-
+        let pdf = vec![num_bins; 0].into_boxed_slice();
         HistogramBuilder { a, b, c, n, pdf }
     }
 
