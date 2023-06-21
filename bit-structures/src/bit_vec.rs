@@ -20,7 +20,8 @@ use crate::utils::partition_point;
 // We could technically still support only u32 1-bits by making select return u64.
 // That would imply being able to ask for rank1(u64) and get a usize or u32 back.
 // And would mean num_ones would be u32 and num_zeros would be u64...
-//
+// Should we even encourage usize, which can be dynamic? What if we had two traits,
+// BitVec32 and BitVec64?
 pub trait BitVec {
     fn rank1(&self, index: usize) -> usize {
         default_rank1(self, index)

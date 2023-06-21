@@ -36,6 +36,8 @@ use crate::{bit_vec::BitVec, slice_bit_vec::SliceBitVec};
 
 struct Histogram<T: BitVec> {
     h: HistogramHelper,
+    // note: this is a multiset, since zero bins in the pdf
+    // manifest as repeated values in the cdf
     cdf: T,
 }
 
@@ -62,20 +64,16 @@ impl HistogramBuilder {
     }
 
     pub fn build(self) -> Histogram<SliceBitVec> {
-        Histogram {
-            h: self.h,
-            cdf: SliceBitVec::new(&[], 10),
+        let mut acc = 0;
+        let mut pdf = self.pdf;
+        for x in pdf.iter_mut() {
+            acc += *x;
+            *x = acc;
         }
+        let cdf = SliceBitVec::new(&*pdf, 10);
+        Histogram { h: self.h, cdf }
     }
 }
-
-// pdf: Box<[u32]>,
-// let num_bins = (n - c + 2) << b;
-// let pdf = vec![num_bins; 0].into_boxed_slice();
-// fn build() -> Histogram {
-//     // let cdf = SparseBitVec::new(ones, len);
-//     Histogram { a: 0, b: 0, cdf }
-// }
 
 // note: multiple histograms could concievably share a single helper,
 // if space becomes an issue (it would have to be behind a pointer).

@@ -21,6 +21,44 @@ use std::{collections::VecDeque, debug_assert};
 /// See https://doc.rust-lang.org/1.69.0/std/primitive.slice.html#method.partition_point
 ///
 /// See the appendix (bottom of this file for a more elaborate but efficient implementation).
+
+// using a trait so we can implement this for u32, u64, and usize
+trait PartitionPoint: Sized {
+    fn partition_point(n: Self, pred: impl Fn(Self) -> bool) -> Self;
+    fn bit_floor(n: Self) -> Self;
+}
+
+macro_rules! partition_point_impl {
+     ($($t:ty)*) => ($(
+        impl PartitionPoint for $t {
+            fn partition_point(n: Self, pred: impl Fn(Self) -> bool) -> Self {
+                let mut b = 0;
+                let mut bit = Self::bit_floor(n);
+                while bit != 0 {
+                    let i = (b | bit) - 1;
+                    if i < n && pred(i) {
+                        b |= bit
+                    }
+                    bit >>= 1;
+                }
+                b
+            }
+
+            fn bit_floor(n: Self) -> Self {
+                if n == 0 {
+                    0
+                } else {
+                    let msb = Self::BITS - 1 - n.leading_zeros();
+                    1 << msb
+                }
+            }
+
+        }
+     )*)
+ }
+
+partition_point_impl! { u32 u64 usize }
+
 pub fn partition_point(n: usize, pred: impl Fn(usize) -> bool) -> usize {
     let mut b = 0;
     let mut bit = bit_floor(n);
@@ -32,6 +70,15 @@ pub fn partition_point(n: usize, pred: impl Fn(usize) -> bool) -> usize {
         bit >>= 1;
     }
     b
+}
+
+pub fn bit_floor(n: usize) -> usize {
+    if n == 0 {
+        0
+    } else {
+        let msb = usize::BITS - 1 - n.leading_zeros();
+        1 << msb
+    }
 }
 
 // trying out an implementation of multiple binary search that independently tracks each needle.
@@ -114,14 +161,14 @@ pub fn new_batch_partition_point_slice<T: Copy + std::cmp::PartialOrd<T>>(
 // Note that bitwise binary search as per `lower_bound_pad` in the article does 0.2 more
 // comparisons than is optimal (on average, assuming a uniform query distribution).
 
-pub fn bit_floor(n: usize) -> usize {
-    if n == 0 {
-        0
-    } else {
-        let msb = usize::BITS - 1 - n.leading_zeros();
-        1 << msb
-    }
-}
+// pub fn bit_floor(n: usize) -> usize {
+//     if n == 0 {
+//         0
+//     } else {
+//         let msb = usize::BITS - 1 - n.leading_zeros();
+//         1 << msb
+//     }
+// }
 
 pub fn div_ceil(n: usize, m: usize) -> usize {
     (n + m - 1) / m
