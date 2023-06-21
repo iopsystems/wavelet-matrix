@@ -84,8 +84,6 @@ impl SparseBitVec {
 }
 
 impl BitVec for SparseBitVec {
-    type Ones = usize;
-
     //     3: index of the first guy of the next group
     //  1: index of the first guy of this group
     // -1--33----7

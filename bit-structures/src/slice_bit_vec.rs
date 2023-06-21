@@ -3,22 +3,21 @@
 
 use std::debug_assert;
 
-use crate::bit_block::BitBlock;
 use crate::bit_vec::BitVec;
 use crate::utils::partition_point;
 
 #[derive(Debug)]
-pub struct SliceBitVec<T: BitBlock> {
-    ones: Box<[T]>,
+pub struct SliceBitVec {
+    ones: Box<[usize]>,
     len: usize,
 }
 
-impl<T: BitBlock> SliceBitVec<T> {
-    pub fn new(ones: &[T], len: usize) -> Self {
-        // debug_assert!(
-        //     ones.windows(2).all(|w| w[0] < w[1]),
-        //     "ones must be monotonically increasing"
-        // );
+impl SliceBitVec {
+    pub fn new(ones: &[usize], len: usize) -> Self {
+        debug_assert!(
+            ones.windows(2).all(|w| w[0] < w[1]),
+            "ones must be monotonically increasing"
+        );
         debug_assert!(ones.len() <= len);
         Self {
             ones: ones.into(),
@@ -27,28 +26,26 @@ impl<T: BitBlock> SliceBitVec<T> {
     }
 }
 
-impl<T: BitBlock> BitVec for SliceBitVec<T> {
-    type Ones = T;
-
-    fn rank1(&self, i: T) -> T {
+impl BitVec for SliceBitVec {
+    fn rank1(&self, i: usize) -> usize {
         if i >= self.len() {
             return self.num_ones();
         }
-        partition_point(self.num_ones(), |n| self.ones[n.to_usize().unwrap()] < i)
+        partition_point(self.num_ones(), |n| self.ones[n] < i)
     }
 
-    fn select1(&self, n: T) -> Option<T> {
+    fn select1(&self, n: usize) -> Option<usize> {
         if n >= self.num_ones() {
             return None;
         }
-        Some(self.ones[n.to_usize().unwrap()])
+        Some(self.ones[n])
     }
 
-    fn num_ones(&self) -> T {
+    fn num_ones(&self) -> usize {
         self.ones.len()
     }
 
-    fn len(&self) -> T {
+    fn len(&self) -> usize {
         self.len
     }
 }

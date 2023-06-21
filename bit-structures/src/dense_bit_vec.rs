@@ -148,8 +148,6 @@ impl<RawBlock: BitBlock> DenseBitVec<RawBlock> {
 }
 
 impl<RawBlock: BitBlock> BitVec for DenseBitVec<RawBlock> {
-    type Ones = usize;
-
     fn rank1(&self, index: usize) -> usize {
         if index >= self.len() {
             return self.num_ones();
