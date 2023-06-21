@@ -6,7 +6,8 @@
 // : FromIterator<u32>
 // todo: decide whether to call these `index` and `n` or `i` and `n`
 // todo: rename this file to bit_vec.rs?
-use crate::utils::partition_point;
+use crate::{bit_block::BitBlock, utils::partition_point};
+use num::One;
 
 // You should implement:
 // - rank1 or rank0
@@ -14,35 +15,37 @@ use crate::utils::partition_point;
 // - len
 
 pub trait BitVec {
-    fn rank1(&self, index: usize) -> usize {
+    type Ones: BitBlock;
+
+    fn rank1(&self, index: Self::Ones) -> Self::Ones {
         default_rank1(self, index)
     }
 
-    fn rank0(&self, index: usize) -> usize {
+    fn rank0(&self, index: Self::Ones) -> Self::Ones {
         default_rank0(self, index)
     }
 
-    fn select1(&self, n: usize) -> Option<usize> {
+    fn select1(&self, n: Self::Ones) -> Option<Self::Ones> {
         default_select1(self, n)
     }
 
-    fn select0(&self, n: usize) -> Option<usize> {
+    fn select0(&self, n: Self::Ones) -> Option<Self::Ones> {
         default_select0(self, n)
     }
 
-    fn get(&self, index: usize) -> bool {
+    fn get(&self, index: Self::Ones) -> bool {
         default_get(self, index)
     }
 
-    fn num_ones(&self) -> usize {
+    fn num_ones(&self) -> Self::Ones {
         self.len() - self.num_zeros()
     }
 
-    fn num_zeros(&self) -> usize {
+    fn num_zeros(&self) -> Self::Ones {
         self.len() - self.num_ones()
     }
 
-    fn len(&self) -> usize;
+    fn len(&self) -> Self::Ones;
 
     // todo: return the total size in bytes using std::mem::size_of plus the
     // same recursively for all constituents behind a pointer?
@@ -63,7 +66,7 @@ pub trait BitVec {
 // the sparse bitvec checks whether it contains multiplicity before calling select0 or rank0.
 
 /// Default impl of rank1 using rank0
-pub fn default_rank1<T: BitVec + ?Sized>(bv: &T, index: usize) -> usize {
+pub fn default_rank1<T: BitVec + ?Sized>(bv: &T, index: T::Ones) -> T::Ones {
     if index >= bv.len() {
         return bv.num_ones();
     }
@@ -71,7 +74,7 @@ pub fn default_rank1<T: BitVec + ?Sized>(bv: &T, index: usize) -> usize {
 }
 
 /// Default impl of rank0 using rank1
-pub fn default_rank0<T: BitVec + ?Sized>(bv: &T, index: usize) -> usize {
+pub fn default_rank0<T: BitVec + ?Sized>(bv: &T, index: T::Ones) -> T::Ones {
     if index >= bv.len() {
         return bv.num_zeros();
     }
@@ -79,31 +82,31 @@ pub fn default_rank0<T: BitVec + ?Sized>(bv: &T, index: usize) -> usize {
 }
 
 /// Default impl of select1 using binary search over ranks
-pub fn default_select0<T: BitVec + ?Sized>(bv: &T, n: usize) -> Option<usize> {
+pub fn default_select0<T: BitVec + ?Sized>(bv: &T, n: T::Ones) -> Option<T::Ones> {
     if n >= bv.num_zeros() {
         return None;
     }
     let index = partition_point(bv.len(), |i| bv.rank0(i) <= n);
-    Some(index - 1)
+    Some(index - T::Ones::one())
 }
 
 /// Default impl of select0 using binary search over ranks
-pub fn default_select1<T: BitVec + ?Sized>(bv: &T, n: usize) -> Option<usize> {
+pub fn default_select1<T: BitVec + ?Sized>(bv: &T, n: T::Ones) -> Option<T::Ones> {
     if n >= bv.num_ones() {
         return None;
     }
     let index = partition_point(bv.len(), |i| bv.rank1(i) <= n);
-    Some(index - 1)
+    Some(index - T::Ones::one())
 }
 
-pub fn default_get<T: BitVec + ?Sized>(bv: &T, index: usize) -> bool {
+pub fn default_get<T: BitVec + ?Sized>(bv: &T, index: T::Ones) -> bool {
     // This could be done more efficiently but is a reasonable default.
-    let ones_count = bv.rank1(index + 1) - bv.rank1(index);
-    ones_count == 1
+    let ones_count = bv.rank1(index + T::Ones::one()) - bv.rank1(index);
+    ones_count == T::Ones::one()
 }
 
 #[cfg(test)]
-pub fn test_bitvector<T: BitVec>(new: impl Fn(&[usize], usize) -> T) {
+pub fn test_bitvector<T: BitVec<Ones = usize>>(new: impl Fn(&[usize], usize) -> T) {
     let bv = new(&[1, 2, 3], 4);
     assert_eq!(bv.len(), 4);
     assert_eq!(bv.num_ones(), 3);
@@ -133,7 +136,7 @@ pub fn test_bitvector<T: BitVec>(new: impl Fn(&[usize], usize) -> T) {
     assert_eq!(bv.select1(4), None);
 }
 
-pub fn test_bitvector_vs_naive<T: BitVec>(new: impl Fn(&[usize], usize) -> T) {
+pub fn test_bitvector_vs_naive<T: BitVec<Ones = usize>>(new: impl Fn(&[usize], usize) -> T) {
     use exhaustigen::Gen;
 
     use crate::slice_bit_vec::SliceBitVec;

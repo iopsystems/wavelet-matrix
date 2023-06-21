@@ -3,6 +3,8 @@
 
 use std::{collections::VecDeque, debug_assert};
 
+use crate::bit_block::BitBlock;
+
 /// Bitwise binary search the range 0..n based on the function `lower_bound_pad`
 /// from this article:
 ///   https://orlp.net/blog/bitwise-binary-search/
@@ -21,7 +23,7 @@ use std::{collections::VecDeque, debug_assert};
 /// See https://doc.rust-lang.org/1.69.0/std/primitive.slice.html#method.partition_point
 ///
 /// See the appendix (bottom of this file for a more elaborate but efficient implementation).
-pub fn partition_point(n: usize, pred: impl Fn(usize) -> bool) -> usize {
+pub fn partition_point<T: BitBlock>(n: T, pred: impl Fn(T) -> bool) -> T {
     let mut b = 0;
     let mut bit = bit_floor(n);
     while bit != 0 {
