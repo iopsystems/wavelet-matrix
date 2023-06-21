@@ -13,59 +13,98 @@
 // - make the "rank" / quantile function compatible with rank1(0) being inclusive; maybe make a rank1p which is the rank of the value plus one.
 //   - like how log1p(x) = ln(x+1); rank1p(x) = rank1(x - 1) and rank0p(x) = rank0(x - 1) but will return 0 for x=0?
 
-use crate::sparse_bit_vec::SparseBitVec;
+use crate::bit_block::LargeBitBlock;
+use crate::bit_vec::BitVec;
 
-struct Histogram {
+struct Histogram<T: BitVec> {
     a: u32,
     b: u32,
     n: u32,
-    cdf: SparseBitVec,
+    cdf: T,
 }
 
-struct HistogramBuilder {
+// pdf: Box<[u32]>,
+// let num_bins = (n - c + 2) << b;
+// let pdf = vec![num_bins; 0].into_boxed_slice();
+// fn build() -> Histogram {
+//     // let cdf = SparseBitVec::new(ones, len);
+//     Histogram { a: 0, b: 0, cdf }
+// }
+
+// note: multiple histograms could concievably share a single helper,
+// if space becomes an issue (it would have to be behind a pointer).
+// note: a, b, c, n could be u8 except it causes type system annoyances...
+struct HistogramHelper<T: LargeBitBlock> {
     // 2^a is the absolute error below the cutoff,
     // and is also the bin width below the cutoff.
     // there are 2^(b+1) bins below the cutoff, since
     // the cutoff is 2^(a+b+1) and the bin width is 2^a.
-    a: u32,
+    a: T,
     // 2^b is the number of bins per log segment above the cutoff, and
     // 2^-b is the relative error above the cutoff
-    b: u32,
+    b: T,
     // 2^c = 2^(a+b+1) is the cutoff point below which are 2^(b+1)
     // fixed-width bins of width 2^a with absolute error, and above which
     // are log segments each with 2^b bins and a relative error of 2^-b.
-    c: u32,
+    c: T,
     // 2^n - 1 is the maximum value this histogram can store.
-    n: u32,
+    n: T,
     // there are n log segments in this histogram, with
     // c of them below the cutoff point and n-c above it.
     // - below the cutoff, there are 2^(b+1) = 2*2^b bins in total
     // - above the cutoff, there are n-c log segments, with 2^b bins each
     // so the total number of bins in the histogram is (n-c+2) * 2^b.
-    pdf: Box<[u32]>,
+    // while the number of bins could exceed u32::MAX, such as if the
+    // histogram stores u64 values and consists entirely of linear bins
+    // with a = 0, that is not a use case this library is designed to support
+    // and so we limit the maximum number of bins to roughly 4 billion.
+    num_bins: T,
 }
 
-impl HistogramBuilder {
-    fn new(a: u32, b: u32, n: u32) -> HistogramBuilder {
-        let c = a + b + 1;
-        let num_bins = (n - c + 2) << b;
-        let pdf = vec![num_bins; 0].into_boxed_slice();
-        HistogramBuilder { a, b, c, n, pdf }
+impl<T: LargeBitBlock> HistogramHelper<T> {
+    fn new(a: T, b: T, n: T) -> HistogramHelper<T> {
+        let c = a + b + T::one();
+        let num_bins = (n - c + 2.into()) << b;
+        HistogramHelper {
+            a,
+            b,
+            c,
+            n,
+            num_bins,
+        }
     }
 
-    // fn build() -> Histogram {
-    //     // let cdf = SparseBitVec::new(ones, len);
-    //     Histogram { a: 0, b: 0, cdf }
-    // }
+    fn num_bins(&self) -> T {
+        self.num_bins
+    }
 
-    pub fn bin_index(&self, value: u64) -> usize {
+    pub fn max_value(&self) -> T {
+        if self.n == T::BITS.into() {
+            T::max_value()
+        } else {
+            T::one() << self.n
+        }
+    }
+
+    pub fn high(&self, i: T) -> T {
+        if i == self.num_bins {
+            self.max_value()
+        } else {
+            // the highest value of the i-th bin is the
+            // integer right before the low of the next bin.
+            self.low(i + T::one()) - T::one()
+        }
+    }
+
+    pub fn bin_index(&self, value: T) -> T {
         let Self { a, b, c, .. } = *self;
-        if value < (1 << c) {
+        if value < (T::one() << c) {
             // the bin width below the cutoff is 1 << a
-            (value >> a) as usize
+            value >> a
         } else {
             // The log segment containing the value
-            let v = value.ilog2();
+            // Equivalent to value.ilog2() but compatible with traits from the Num crate
+            let v: T = (T::BITS - 1 - value.leading_zeros()).into();
 
             // We want to calculate the number of bins that precede the v-th log segment.
             // We can break this down into two components:
@@ -73,62 +112,47 @@ impl HistogramBuilder {
             //    for a total of 2^(b+1) = 2*2^b bins below the cutoff.
             // 2. Above the cutoff, there are `v - c` log segments before the v-th log segment, each with 2^b bins.
             // Taken together, there are (v - c + 2) * 2^b bins preceding the v-th log segment.
-            let preceding_bins_before_seg = (v - c + 2) << b;
+            let bins_before_seg: T = (v - c + 2.into()) << b;
 
             // The bin offset within the v-th log segment.
             // - `value ^ (1 << v)` zeros the topmost (v-th) bit
             // - `>> (v - b)` extracts the top `b` bits of the value, corresponding
             //   to the bin index within the v-th log segment.
-            let preceding_bins_within_seg = ((value ^ (1 << v)) >> (v - b)) as u32;
+            let bins_within_seg = (value ^ (T::one() << v)) >> (v - b);
 
             // there are 2^(b+1) = 2*2^b bins below the cutoff, and (v-c)*2^b bins between the cutoff
             // and v-th log segment.
-            (preceding_bins_before_seg + preceding_bins_within_seg) as usize
+            bins_before_seg + bins_within_seg
         }
     }
 
     // given a bin index, returns the lowest value that bin can contain.
-    pub fn low(&self, i: usize) -> u64 {
-        let i = i as u32;
+    pub fn low(&self, i: T) -> T {
         let Self { a, b, c, .. } = *self;
-        let bins_below_cutoff = 2 << b;
+
+        let two: T = 2.into();
+        let bins_below_cutoff: T = two << b;
         if i < bins_below_cutoff {
-            (i << a) as u64
+            i << a
         } else {
             // the number of bins in 0..i that are above the cutoff point
             let n = i - bins_below_cutoff;
             // the index of the log segment we're in: there are `c` log
             // segments below the cutoff and `n >> b` above, since each
             // one is divided into 2^b bins.
-            let seg = c + (n >> b);
+            let seg: T = c + (n >> b);
             // by definition, the lowest value in a log segment is 2^seg
-            let seg_start = 1 << seg;
+            let seg_start = T::one() << seg;
             // the bin we're in within that segment, given by the low bits of n:
             // the bit shifts remove the `b` lowest bits, leaving only the high
             // bits, which we then subtract from `n` to keep only the low bits.
             let bin = n - ((n >> b) << b);
             // the width of an individual bin within this log segment
             let bin_width = seg_start >> b;
-
-            (seg_start + bin * bin_width) as u64
-        }
-    }
-
-    pub fn high(&self, i: usize) -> u64 {
-        if i == self.pdf.len() - 1 {
-            self.max_value()
-        } else {
-            // the highest value of the i-th bin is the
-            // integer right before the low of the next bin.
-            self.low(i + 1) - 1
-        }
-    }
-
-    pub fn max_value(&self) -> u64 {
-        if self.n == 64 {
-            u64::MAX
-        } else {
-            (1 << self.n) - 1
+            // the lowest value represented by this bin is simple to compute:
+            // start where the logarithmic segment begins, and increment by the
+            // linear bin index within the segment times the bin width.
+            seg_start + bin * bin_width
         }
     }
 }
@@ -139,7 +163,7 @@ mod tests {
 
     #[test]
     fn test_histogram() {
-        let b = HistogramBuilder::new(1, 2, 6);
+        let b = HistogramHelper::<u32>::new(1, 2, 6);
         let bins = [
             0, 0, 1, 1, 2, 2, 3, 3, 4, 4, 5, 5, 6, 6, 7, 7, 8, 8, 8, 8, 9, 9, 9, 9, 10, 10, 10, 10,
             11, 11, 11, 11, 12, 12, 12, 12, 12, 12, 12, 12, 13, 13, 13, 13, 13, 13, 13, 13, 14, 14,

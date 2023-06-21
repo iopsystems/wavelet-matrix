@@ -1,14 +1,28 @@
 use core::ops::BitAndAssign;
+use core::ops::Shr;
+use num::traits::AsPrimitive;
 use num::traits::CheckedShr;
 use num::traits::WrappingSub;
 use num::PrimInt;
 use num::Unsigned;
 use std::ops::BitAnd;
+use std::ops::Shl;
+use std::ops::Sub;
 
 /// Trait representing an unsigned integer type used as a block of bits,
 /// which allows our bit-based structures to be generic over block sizes.
 pub trait BitBlock:
-    PrimInt + Unsigned + WrappingSub + CheckedShr + BitAndAssign + BitAnd + Clone
+    PrimInt
+    + Unsigned
+    + Sub
+    + WrappingSub
+    + CheckedShr
+    + BitAndAssign
+    + BitAnd
+    + Clone
+    + Shl<Output = Self>
+    + Shr<Output = Self>
+    + AsPrimitive<u32>
 {
     const BITS: u32; // number of bits in the representation of this type
     const BIT_WIDTH: u32 = Self::BITS.ilog2(); // bit width
@@ -43,6 +57,10 @@ impl BitBlock for u16 {
     const BITS: u32 = Self::BITS;
 }
 
+impl BitBlock for usize {
+    const BITS: u32 = Self::BITS;
+}
+
 impl BitBlock for u32 {
     const BITS: u32 = Self::BITS;
 }
@@ -55,6 +73,13 @@ impl BitBlock for u128 {
     const BITS: u32 = Self::BITS;
 }
 
-impl BitBlock for usize {
-    const BITS: u32 = Self::BITS;
-}
+// The From<u32> makes it simpler to deal with common cases
+// in eg. histograms, where we want to add constants (eg. 2u32.into())
+// or dynamic values (such as the results of leading_zeros()).
+pub trait LargeBitBlock: BitBlock + From<u32> {}
+
+impl LargeBitBlock for u32 {}
+
+impl LargeBitBlock for u64 {}
+
+impl LargeBitBlock for u128 {}
