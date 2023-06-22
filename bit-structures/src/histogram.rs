@@ -1,18 +1,3 @@
-// https://github.com/pelikan-io/ccommon/blob/main/docs/modules/cc_histogram.rst
-// https://observablehq.com/d/35f0b601ed888da9
-// https://github.com/pelikan-io/rustcommon/blob/main/histogram/src/histogram.rs
-// I want three histograms:
-// - naive raw pdf histogram backed by a CDF array, with an entry per bucket; can be incremented
-//   - maybe this is a builder (though we don't have those for anything else)
-//   - .to_dense() .to_sparse()
-//     - or better, construct from another histogram w possibly different (but compatible) a, b parameters & block type
-// - dense EF-compressed static histogram with repetitions for zero buckets; ie same as above, but with a sparse bitvec
-// - sparse EF-compressed static histogram with a dense bitvector marking nonzero buckets (essentially a compact weighted multiset representation)
-// - parameterizable storage maximum - eg. u32 or u64 (bitblock?)
-// - sparse bitvec should also be parameterizable the same way so that we can store 64 or 128 bits if we want to, but not have to pay for it otherwise
-// - make the "rank" / quantile function compatible with rank1(0) being inclusive; maybe make a rank1p which is the rank of the value plus one.
-//   - like how log1p(x) = ln(x+1); rank1m(x) = rank1(x - 1) and rank0m(x) = rank0(x - 1) but will return 0 for x=0?
-
 use crate::bit_block::BitBlock;
 use crate::bit_vec::MultiBitVec;
 use crate::slice_bit_vec::SliceBitVec;
@@ -20,57 +5,78 @@ use std::marker::PhantomData;
 
 struct Histogram<Ones, BV>
 where
+    // Ones is a type capable of representing the maximum number of observations represented
+    // by this histogram.
     Ones: BitBlock,
+    // Zero bins in the PDF manifest as repetitions in the CDF, so require a MultiBitVec
     BV: MultiBitVec<Ones>,
 {
-    h: HistogramHelper,
-    // note: this is a multiset, since zero bins in the pdf
-    // manifest as repeated values in the cdf
+    helper: HistogramHelper,
     cdf: BV,
     phantom: PhantomData<Ones>,
 }
 
-struct HistogramBuilder {
-    h: HistogramHelper,
-    pdf: Box<[u64]>,
-}
-
-impl HistogramBuilder {
-    pub fn new(a: u32, b: u32, n: u32) -> HistogramBuilder {
-        let h = HistogramHelper::new(a, b, n);
-        let pdf = vec![0; h.num_bins() as usize].into_boxed_slice();
-        HistogramBuilder { h, pdf }
+impl<Ones, BV> Histogram<Ones, BV>
+where
+    Ones: BitBlock,
+    BV: MultiBitVec<Ones>,
+{
+    /// Return an upper bound on the value of the k-th observation.
+    /// Analogous to `select` (return the approximate value of the `k`-th observation)
+    fn quantile_upper_bound(&self, k: Ones) -> Ones {
+        // Which bin is the k-th observation in?
+        let bin_index = self.cdf.rank1(k);
+        // What is the maximum value in that bin?
+        let value = self.helper.high(bin_index.u32());
+        Ones::from_u64(value)
     }
 
-    pub fn increment(&mut self, value: u64, count: u64) {
-        let bin_index = self.h.bin_index(value);
+    /// Return an upper bound on the number of observations below `value`.
+    /// Analogous to `rank` (return the approximate rank of `value`).
+    // todo: when rank changes to be inclusive, change this to be inclusive,
+    // returning the number of observations at or below `value`.
+    fn cdf_upper_bound(&self, value: Ones) -> Ones {
+        // What is the index of the bin containing `value`?
+        let bin_index = self.helper.bin_index(value.into());
+        // How many observations are there at or below that bin?
+        self.cdf.select1(Ones::from_u32(bin_index)).unwrap()
+    }
+}
+
+struct HistogramBuilder<Ones: BitBlock> {
+    helper: HistogramHelper,
+    pdf: Box<[Ones]>,
+}
+
+impl<Ones: BitBlock> HistogramBuilder<Ones> {
+    pub fn new(a: u32, b: u32, n: u32) -> HistogramBuilder<Ones> {
+        let helper = HistogramHelper::new(a, b, n);
+        let num_bins = helper.num_bins();
+        let pdf = vec![Ones::zero(); num_bins as usize].into();
+        HistogramBuilder { helper, pdf }
+    }
+
+    pub fn increment(&mut self, value: Ones, count: Ones) {
+        let bin_index = self.helper.bin_index(value.u64());
         self.pdf[bin_index as usize] += count;
     }
 
-    pub fn decrement(&mut self, value: u64, count: u64) {
-        let bin_index = self.h.bin_index(value);
-        self.pdf[bin_index as usize] -= count;
-    }
-
-    pub fn build(self) -> Histogram<u32, SliceBitVec<u32>> {
-        let mut acc = 0;
-        let mut pdf = self.pdf;
-        for x in pdf.iter_mut() {
+    pub fn build(self) -> Histogram<Ones, SliceBitVec<Ones>> {
+        let mut acc = Ones::zero();
+        let mut cdf = self.pdf;
+        for x in cdf.iter_mut() {
             acc += *x;
             *x = acc;
         }
-        let cdf = SliceBitVec::new(&[], 10); // &*pdf
         Histogram {
-            h: self.h,
-            cdf,
+            helper: self.helper,
+            cdf: SliceBitVec::new(&cdf, acc),
             phantom: PhantomData,
         }
     }
 }
 
-// note: multiple histograms could concievably share a single helper,
-// if space becomes an issue (it would have to be behind a pointer).
-// note: a, b, c, n could be u8 except it causes type system annoyances...
+// note: multiple histograms could concievably share a single helper
 struct HistogramHelper {
     // 2^a is the absolute error below the cutoff,
     // and is also the bin width below the cutoff.
@@ -112,6 +118,22 @@ impl HistogramHelper {
         }
     }
 
+    pub fn a(&self) -> u32 {
+        self.a
+    }
+
+    pub fn b(&self) -> u32 {
+        self.b
+    }
+
+    pub fn c(&self) -> u32 {
+        self.c
+    }
+
+    pub fn num_bins(&self) -> u32 {
+        self.num_bins
+    }
+
     // seg: power of 2 of the log segment; also the index of the log segment
     // returns the number of bins up to the start of the seg-th log segment.
     // ie. if seg = n, returns the number of bins in the histogram (since
@@ -135,13 +157,13 @@ impl HistogramHelper {
         }
     }
 
-    pub fn high(&self, i: u32) -> u64 {
-        if i == self.num_bins {
+    pub fn high(&self, bin_index: u32) -> u64 {
+        if bin_index == self.num_bins {
             self.max_value()
         } else {
             // the highest value of the i-th bin is the
             // integer right before the low of the next bin.
-            self.low(i + 1) - 1
+            self.low(bin_index + 1) - 1
         }
     }
 
@@ -169,15 +191,15 @@ impl HistogramHelper {
     }
 
     // given a bin index, returns the lowest value that bin can contain.
-    pub fn low(&self, i: u32) -> u64 {
+    pub fn low(&self, bin_index: u32) -> u64 {
         let Self { a, b, c, .. } = *self;
 
         let bins_below_cutoff = 2 << b;
-        if i < bins_below_cutoff {
-            (i << a) as u64
+        if bin_index < bins_below_cutoff {
+            (bin_index << a) as u64
         } else {
             // the number of bins in 0..i that are above the cutoff point
-            let n = i - bins_below_cutoff;
+            let n = bin_index - bins_below_cutoff;
             // the index of the log segment we're in: there are `c` log
             // segments below the cutoff and `n >> b` above, since each
             // one is divided into 2^b bins.
@@ -195,22 +217,6 @@ impl HistogramHelper {
             // linear bin index within the segment times the bin width.
             seg_start + bin as u64 * bin_width
         }
-    }
-
-    pub fn a(&self) -> u32 {
-        self.a
-    }
-
-    pub fn b(&self) -> u32 {
-        self.b
-    }
-
-    pub fn c(&self) -> u32 {
-        self.c
-    }
-
-    pub fn num_bins(&self) -> u32 {
-        self.num_bins
     }
 }
 

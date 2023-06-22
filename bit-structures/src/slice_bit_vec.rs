@@ -16,23 +16,24 @@ impl<Ones: BitBlock> SliceBitVec<Ones> {
     // note: in the case of multiplicity-enabled bitvecs, `len` is a misnomer.
     // it is more like `max_one_index` or `universe`. still need to decide what
     // to do about Ones::max_value() – should we allow setting that bit?
+    // todo: should we accept a multiplicity bool argument to know the user's intention?
     pub fn new(ones: &[Ones], len: Ones) -> Self {
-        assert!(
-            len.to_usize().is_some(),
-            "len must be convertible to usize since it is used as an array index"
-        );
+        // len must be convertible to usize since it is used as an array index
+        assert!(len.to_usize().is_some());
 
-        debug_assert!(
-            ones.windows(2).all(|w| w[0] <= w[1]),
-            "ones must be monotonically nondecreasing"
-        );
+        // ones must be monotonically nondecreasing
+        debug_assert!(ones.windows(2).all(|w| w[0] <= w[1]),);
 
-        debug_assert!(ones.len() <= len.as_usize());
+        let has_multiplicity = ones.windows(2).any(|w| w[0] == w[1]);
+        if !has_multiplicity {
+            // there cannot be more set 1-bits than
+            debug_assert!(ones.len() <= len.as_usize());
+        }
 
         Self {
             ones: ones.into(),
             len,
-            has_multiplicity: ones.windows(2).any(|w| w[0] == w[1]),
+            has_multiplicity,
         }
     }
 }
@@ -42,8 +43,7 @@ impl<Ones: BitBlock> BitVec<Ones> for SliceBitVec<Ones> {
         if i >= self.len() {
             return self.num_ones();
         }
-        // Safety: n < num_ones and num_ones is derived from a array length, which is usize,
-        // so as_usize is always correct.
+        // Safety: n < num_ones and num_ones is derived from a array length, which is usize.
         self.num_ones()
             .partition_point(|n| self.ones[n.as_usize()] < i)
     }
@@ -52,8 +52,7 @@ impl<Ones: BitBlock> BitVec<Ones> for SliceBitVec<Ones> {
         if n >= self.num_ones() {
             return None;
         }
-        // Safety: n < num_ones and num_ones is derived from a array length, which is usize,
-        // so as_usize is always correct.
+        // Safety: n < num_ones and num_ones is derived from a array length, which is usize.
         Some(self.ones[n.as_usize()])
     }
 

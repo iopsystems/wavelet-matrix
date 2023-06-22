@@ -22,6 +22,7 @@ pub trait BitBlock:
     + BitAndAssign
     + Clone
     + Debug
+    + Into<u64>
 {
     const BITS: u32; // number of bits in the representation of this type
     const BIT_WIDTH: u32 = Self::BITS.ilog2(); // bit width
