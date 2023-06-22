@@ -1,7 +1,10 @@
-use num::traits::{AsPrimitive, CheckedShr, WrappingSub};
+use num::traits::{CheckedShr, WrappingSub};
 use num::{PrimInt, Unsigned};
 use std::fmt::Debug;
 use std::ops::{AddAssign, BitAndAssign, BitOrAssign, Shl, Shr, ShrAssign};
+
+// todo:
+// - audit uses of .usize() and switch to as_usize() where appropriate
 
 /// Trait representing an unsigned integer type used as a block of bits,
 /// which allows our bit-based structures to be generic over block sizes.
@@ -10,14 +13,12 @@ pub trait BitBlock:
     + PrimInt
     + WrappingSub
     + CheckedShr
-    + BitAndAssign
     + Shl<Output = Self>
     + Shr<Output = Self>
-    + BitOrAssign
     + ShrAssign
     + AddAssign
-    + AsPrimitive<u32>
-    + TryFrom<u32>
+    + BitOrAssign
+    + BitAndAssign
     + Clone
     + Debug
 {
