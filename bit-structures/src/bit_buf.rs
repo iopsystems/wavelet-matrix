@@ -21,6 +21,10 @@ use crate::utils::div_ceil;
 // - [same idea, refined] implement a "default value" that we can compress out of the top and bottom – or maybe always zero.
 //   ie., store only the middle section and return the default value outside it.
 
+// todo:
+// - does this need to use Ones as the input to eg. .get?
+//   - we can't actually store more than usize::MAX elements in a slice...
+
 #[derive(Debug)]
 pub struct BitBuf<Block: BitBlock = u8> {
     blocks: Box<[Block]>,

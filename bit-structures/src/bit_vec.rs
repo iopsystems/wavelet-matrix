@@ -23,7 +23,7 @@ use crate::utils::PartitionPoint;
 // And would mean num_ones would be u32 and num_zeros would be u64...
 // Should we even encourage usize, which can be dynamic? What if we had two traits,
 // BitVec32 and BitVec64?
-pub type Ones = usize; // u64;
+pub type Ones = u32; //usize; // u64;
 
 pub trait IntoUsize {
     // panics if the value does not fit
@@ -129,7 +129,7 @@ pub trait BitVec {
 // the sparse bitvec checks whether it contains multiplicity before calling select0 or rank0.
 
 #[cfg(test)]
-pub fn test_bitvector<T: BitVec>(new: impl Fn(&[usize], usize) -> T) {
+pub fn test_bitvector<T: BitVec>(new: impl Fn(&[Ones], Ones) -> T) {
     let bv = new(&[1, 2, 3], 4);
     assert_eq!(bv.len(), 4);
     assert_eq!(bv.num_ones(), 3);
