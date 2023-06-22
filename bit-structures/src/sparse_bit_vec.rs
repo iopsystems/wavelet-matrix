@@ -5,7 +5,7 @@ use std::debug_assert;
 
 use crate::bit_buf::BitBuf;
 
-use crate::bit_vec::BitVec;
+use crate::bit_vec::{BitVec, MultiBitVec};
 use crate::dense_bit_vec::DenseBitVec;
 use crate::int_vec::IntVec;
 
@@ -167,6 +167,8 @@ impl<Ones: BitBlock> BitVec<Ones> for SparseBitVec<Ones> {
         self.len
     }
 }
+
+impl<Ones: BitBlock> MultiBitVec<Ones> for SparseBitVec<Ones> {}
 
 #[cfg(test)]
 mod tests {

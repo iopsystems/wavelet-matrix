@@ -1,7 +1,7 @@
 // Simple bit vector implemented as a slice-backed dense array containing sorted indices of set bits.
 // Should allow multiplicity (if there is multiplicity then select0/rank0 should be disallowed)
 
-use crate::bit_block::BitBlock;
+use crate::{bit_block::BitBlock, bit_vec::MultiBitVec};
 use std::debug_assert;
 
 use crate::bit_vec::BitVec;
@@ -53,6 +53,8 @@ impl<Ones: BitBlock> BitVec<Ones> for SliceBitVec<Ones> {
         Some(self.ones[n.as_usize()])
     }
 
+    // todo: check and assert multiplicity for rank0 and select0
+
     fn num_ones(&self) -> Ones {
         Ones::from_usize(self.ones.len())
     }
@@ -61,6 +63,8 @@ impl<Ones: BitBlock> BitVec<Ones> for SliceBitVec<Ones> {
         Ones::from_usize(self.len)
     }
 }
+
+impl<Ones: BitBlock> MultiBitVec<Ones> for SliceBitVec<Ones> {}
 
 #[cfg(test)]
 mod tests {

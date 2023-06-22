@@ -111,6 +111,9 @@ pub trait BitVec<Ones: BitBlock> {
     }
 }
 
+// For bitvector types that allow multiplicity
+pub trait MultiBitVec<Ones: BitBlock>: BitVec<Ones> {}
+
 // We export these defaults so that implementors of this trait have the option of
 // calling these functions, eg. after doing some bookkeeping work. For example,
 // the sparse bitvec checks whether it contains multiplicity before calling select0 or rank0.

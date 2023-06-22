@@ -14,14 +14,14 @@
 //   - like how log1p(x) = ln(x+1); rank1m(x) = rank1(x - 1) and rank0m(x) = rank0(x - 1) but will return 0 for x=0?
 
 use crate::bit_block::BitBlock;
+use crate::bit_vec::MultiBitVec;
+use crate::slice_bit_vec::SliceBitVec;
 use std::marker::PhantomData;
-
-use crate::{bit_vec::BitVec, slice_bit_vec::SliceBitVec};
 
 struct Histogram<Ones, BV>
 where
     Ones: BitBlock,
-    BV: BitVec<Ones>,
+    BV: MultiBitVec<Ones>,
 {
     h: HistogramHelper,
     // note: this is a multiset, since zero bins in the pdf
