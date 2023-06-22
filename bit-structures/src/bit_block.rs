@@ -51,6 +51,10 @@ pub trait BitBlock:
         max.checked_shr(Self::BITS - n.into())
             .unwrap_or(Self::zero())
     }
+    // panics if the value does not fit
+    fn into_usize(self) -> usize {
+        self.to_usize().unwrap()
+    }
 }
 
 impl BitBlock for u8 {

@@ -235,14 +235,14 @@ mod tests {
         ];
         for (i, bin) in (0..66).zip(bins) {
             assert_eq!(b.bin_index(i), bin);
-            if i > 14 {
-                println!("--------------------");
-                dbg!(i, bin, b.low(bin));
-            }
+            // if i > 14 {
+            //     println!("--------------------");
+            //     dbg!(i, bin, b.low(bin));
+            // }
         }
 
         // dbg!(17, 8, b.low(8));
 
-        panic!("histogram");
+        // panic!("histogram");
     }
 }

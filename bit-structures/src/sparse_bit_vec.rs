@@ -5,18 +5,18 @@ use std::debug_assert;
 
 use crate::bit_buf::BitBuf;
 
-use crate::bit_vec::{BitVec, IntoUsize, Ones};
+use crate::bit_vec::{BitVec, Ones};
 use crate::dense_bit_vec::DenseBitVec;
 use crate::int_vec::IntVec;
-use crate::utils::{PartitionPoint};
+use crate::utils::PartitionPoint;
 
 pub struct SparseBitVec {
     high: DenseBitVec<u8>,  // High bit buckets in unary encoding
     low: IntVec,            // Low bits in fixed-width encoding
     num_ones: Ones,         // Number of elements (n)
     len: Ones,              // Maximum representable integer (u + 1)
-    low_bits: usize,        // Number of low bits per element
-    low_mask: Ones,         // Mask with the low_bits lowest bits set to 1
+    low_bit_width: u32,     // Number of low bits per element
+    low_mask: Ones,         // Mask with the low_bit_width lowest bits set to 1
     has_multiplicity: bool, // Whether any element is repeated more than once
 }
 
@@ -31,13 +31,13 @@ impl SparseBitVec {
         // this is nice because we don't need the number of high bits explicitly so can avoid computing them
         let num_ones: Ones = ones.len().try_into().unwrap();
         let bits_per_one = if num_ones == 0 { 0 } else { len / num_ones };
-        let low_bits = bits_per_one.max(1).ilog2();
-        let low_mask = Ones::one_mask(low_bits);
+        let low_bit_width = bits_per_one.max(1).ilog2();
+        let low_mask = Ones::one_mask(low_bit_width);
 
         // unary coding; 1 denotes values and 0 denotes separators
-        let high_len = num_ones + (len >> low_bits);
+        let high_len = num_ones + (len >> low_bit_width);
         let mut high = BitBuf::new(high_len.into_usize());
-        let mut low = IntVec::new(num_ones.into_usize(), low_bits as usize);
+        let mut low = IntVec::new(num_ones.into_usize(), low_bit_width as usize);
         let mut prev = 0;
         let mut has_multiplicity = false;
 
@@ -50,7 +50,7 @@ impl SparseBitVec {
             prev = one;
 
             // Encode element
-            let quotient = one >> low_bits;
+            let quotient = one >> low_bit_width;
             high.set(n + usize::try_from(quotient).unwrap());
             let remainder = one & low_mask;
             low.write_int(remainder as u32);
@@ -64,10 +64,7 @@ impl SparseBitVec {
             low,
             num_ones,
             len,
-            // todo: this feels like an untidy consequences of
-            // the way we approach u32/u64/usize – maybe it can
-            // be removed through more careful use of types.
-            low_bits: low_bits.into_usize(),
+            low_bit_width,
             low_mask,
             has_multiplicity,
         }
@@ -75,7 +72,7 @@ impl SparseBitVec {
 
     // todo: use this in the constructor?
     fn quotient(&self, value: Ones) -> Ones {
-        value >> self.low_bits
+        value >> self.low_bit_width
     }
 
     fn remainder(&self, value: Ones) -> Ones {
@@ -128,7 +125,7 @@ impl BitVec for SparseBitVec {
     fn select1(&self, n: Ones) -> Option<Ones> {
         let quotient = self.high.rank0(self.high.select1(n)?);
         let remainder = self.low.get(n.into_usize()) as Ones;
-        Some((quotient << self.low_bits) + remainder)
+        Some((quotient << self.low_bit_width) + remainder)
     }
 
     fn select0(&self, n: Ones) -> Option<Ones> {

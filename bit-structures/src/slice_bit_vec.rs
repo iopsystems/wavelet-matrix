@@ -5,7 +5,8 @@ use std::debug_assert;
 
 use num::ToPrimitive;
 
-use crate::bit_vec::{BitVec, IntoUsize, Ones};
+use crate::bit_block::BitBlock;
+use crate::bit_vec::{BitVec, Ones};
 use crate::utils::PartitionPoint;
 
 #[derive(Debug)]

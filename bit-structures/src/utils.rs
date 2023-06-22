@@ -3,27 +3,26 @@
 
 use std::{collections::VecDeque, debug_assert};
 
-/// Bitwise binary search the range 0..n based on the function `lower_bound_pad`
-/// from this article:
-///   https://orlp.net/blog/bitwise-binary-search/
-///
-/// Returns the index of the partition point according to the given predicate
-/// (the index of the first element of the second partition).
-///
-/// The slice is assumed to be partitioned according to the given predicate.
-/// This means that all elements for which the predicate returns true are at
-/// the start of the slice and all elements for which the predicate returns
-/// false are at the end.
-///
-/// If this slice is not partitioned, the returned result is unspecified
-/// and meaningless, as this method performs a kind of binary search.
-///
-/// See https://doc.rust-lang.org/1.69.0/std/primitive.slice.html#method.partition_point
-///
-/// See the appendix (bottom of this file for a more elaborate but efficient implementation).
-
 // using a trait so we can implement this for u32, u64, and usize
+// todo: rename this trait since it now contains multiple useful functions
 pub trait PartitionPoint: Sized {
+    /// Bitwise binary search the range 0..n based on the function `lower_bound_pad`
+    /// from this article:
+    ///   https://orlp.net/blog/bitwise-binary-search/
+    ///
+    /// Returns the index of the partition point according to the given predicate
+    /// (the index of the first element of the second partition).
+    ///
+    /// The slice is assumed to be partitioned according to the given predicate.
+    /// This means that all elements for which the predicate returns true are at
+    /// the start of the slice and all elements for which the predicate returns
+    /// false are at the end.
+    ///
+    /// If this slice is not partitioned, the returned result is unspecified
+    /// and meaningless, as this method performs a kind of binary search.
+    ///
+    /// See https://doc.rust-lang.org/1.69.0/std/primitive.slice.html#method.partition_point
+    /// See the appendix (bottom of this file for a more elaborate but efficient implementation).
     fn partition_point(self, pred: impl Fn(Self) -> bool) -> Self;
     fn bit_floor(self) -> Self;
     fn div_ceil(self, m: Self) -> Self;
@@ -44,8 +43,8 @@ macro_rules! partition_point_impl {
                     bit >>= 1;
                 }
                 b
-            }
-
+            } 
+ 
             fn bit_floor(self) -> Self {
                 let n = self;
                 if n == 0 {

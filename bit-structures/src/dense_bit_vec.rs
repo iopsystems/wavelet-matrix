@@ -13,7 +13,7 @@
 // todo:
 // - try split_last in select1
 use crate::bit_block::BitBlock;
-use crate::bit_vec::{BitVec, IntoUsize, Ones};
+use crate::bit_vec::{BitVec, Ones};
 use std::debug_assert;
 
 use crate::bit_buf::BitBuf;
@@ -100,7 +100,7 @@ impl<RawBlock: BitBlock> DenseBitVec<RawBlock> {
             s0: s0.into_boxed_slice(),
             s1: s1.into_boxed_slice(),
             // num_ones is always <= u32::MAX by construction
-            num_ones: cumulative_ones,
+            num_ones: cumulative_ones.into(),
         }
     }
 
@@ -130,7 +130,7 @@ impl<RawBlock: BitBlock> DenseBitVec<RawBlock> {
         //    which we can subtract from j*2^ss_pow2 to tell the number of 1-bits
         //    up to the raw-block-aligned bit position.
         let sample_index = n >> ss_pow2;
-        let sample = s[sample_index as usize];
+        let sample = s[sample_index.into_usize()];
 
         // bitmask with the RawBlock::BIT_WIDTH bottom bits set.
         let mask = RawBlock::BITS - 1;
@@ -143,7 +143,7 @@ impl<RawBlock: BitBlock> DenseBitVec<RawBlock> {
         // num. of ones represented by this sample, up to the raw block boundary
         let num_ones = (sample_index << ss_pow2) - correction;
 
-        (bit_pos, num_ones)
+        (bit_pos.into(), num_ones)
     }
 }
 
@@ -153,12 +153,9 @@ impl<RawBlock: BitBlock> BitVec for DenseBitVec<RawBlock> {
             return self.num_ones();
         }
 
-        // Note: The uses of into_usize() in this function assume
-        // the bitvec represents <= u32::MAX bits.
-        let index_usize = index.into_usize();
-
         // Start with the prefix count from the rank block
         let mut rank = self.r[self.r_index(index)];
+        let index_usize = index.into_usize();
 
         // // self.s[select_index] points somewhere before index
         // let select_index = self.select_index(rank);
@@ -182,7 +179,7 @@ impl<RawBlock: BitBlock> BitVec for DenseBitVec<RawBlock> {
             }
         }
 
-        rank
+        rank.into()
     }
 
     // Steps (todo):

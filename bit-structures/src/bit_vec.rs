@@ -23,21 +23,10 @@ use crate::utils::PartitionPoint;
 // And would mean num_ones would be u32 and num_zeros would be u64...
 // Should we even encourage usize, which can be dynamic? What if we had two traits,
 // BitVec32 and BitVec64?
-pub type Ones = u32; //usize; // u64;
 
-pub trait IntoUsize {
-    // panics if the value does not fit
-    fn into_usize(self) -> usize;
-}
-
-impl IntoUsize for Ones {
-    fn into_usize(self) -> usize {
-        usize::try_from(self).unwrap()
-    }
-}
-
-// Note: We want to avoid usize since it is architecture-dependent and we want to
-// serialize from 64-bit to 32-bit environments (eg. webassembly)
+// Note: We want to avoid usize since it depends on the environment and we want to
+// serialize from 64-bit to 32-bit environments (WebAssembly)
+pub type Ones = u64; // u32 | u64
 
 pub trait BitVec {
     fn rank1(&self, index: Ones) -> Ones {
