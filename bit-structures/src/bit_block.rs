@@ -76,14 +76,3 @@ impl BitBlock for u64 {
 impl BitBlock for u128 {
     const BITS: u32 = Self::BITS;
 }
-
-// The From<u32> makes it simpler to deal with common cases
-// in eg. histograms, where we want to add constants (eg. 2u32.into())
-// or dynamic values (such as the results of leading_zeros()).
-pub trait LargeBitBlock: BitBlock + From<u32> {}
-
-impl LargeBitBlock for u32 {}
-
-impl LargeBitBlock for u64 {}
-
-impl LargeBitBlock for u128 {}

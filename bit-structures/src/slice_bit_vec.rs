@@ -3,20 +3,21 @@
 
 use std::debug_assert;
 
-use crate::bit_vec::{BitVec, Ones};
+use num::ToPrimitive;
+
+use crate::bit_vec::{BitVec, IntoUsize, Ones};
 use crate::utils::PartitionPoint;
 
 #[derive(Debug)]
 pub struct SliceBitVec {
     ones: Box<[Ones]>,
-    len: Ones,
+    len: usize,
 }
 
 impl SliceBitVec {
     pub fn new(ones: &[Ones], len: Ones) -> Self {
-        // check that the length can be converted to usize (should we check u32 instea?)
-        let check: Result<usize, _> = len.try_into();
-        assert!(check.is_ok());
+        // check that the length can be converted to usize (should we check u32 instead?)
+        // assert!(usize::try_from(len).is_ok());
 
         debug_assert!(
             ones.windows(2).all(|w| w[0] < w[1]),
@@ -25,7 +26,7 @@ impl SliceBitVec {
         // debug_assert!(ones.len() <= len); // duplicates are allowed
         Self {
             ones: ones.into(),
-            len,
+            len: len.into_usize(),
         }
     }
 }
@@ -36,22 +37,22 @@ impl BitVec for SliceBitVec {
             return self.num_ones();
         }
         self.num_ones()
-            .partition_point(|n| self.ones[n as usize] < i)
+            .partition_point(|n| self.ones[n.into_usize()] < i)
     }
 
-    fn select1(&self, n: usize) -> Option<usize> {
+    fn select1(&self, n: Ones) -> Option<Ones> {
         if n >= self.num_ones() {
             return None;
         }
-        Some(self.ones[n])
+        Some(self.ones[n.to_usize().unwrap()])
     }
 
-    fn num_ones(&self) -> usize {
-        self.ones.len()
+    fn num_ones(&self) -> Ones {
+        self.ones.len().try_into().unwrap()
     }
 
-    fn len(&self) -> usize {
-        self.len
+    fn len(&self) -> Ones {
+        self.len.try_into().unwrap()
     }
 }
 

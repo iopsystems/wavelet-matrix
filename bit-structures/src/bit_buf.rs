@@ -21,16 +21,6 @@ use crate::utils::div_ceil;
 // - [same idea, refined] implement a "default value" that we can compress out of the top and bottom – or maybe always zero.
 //   ie., store only the middle section and return the default value outside it.
 
-// todo:
-// - is there an elegant way to generalize this to arbitrary unsigned types?
-// - is there a specific choice that works well with wasm and wasm simd?
-// - current thoughts: we can use the BitBlock trait to centralize common functionality
-//   across block types, and type aliases to fix the individual block types for each
-//   individual bitvector type and block.
-// pub type B = u32; // B type
-
-// todo: rename this to BitBuffer?
-
 #[derive(Debug)]
 pub struct BitBuf<Block: BitBlock = u8> {
     blocks: Box<[Block]>,
@@ -46,7 +36,7 @@ impl<Block: BitBlock> BitBuf<Block> {
         Self { blocks: data, len }
     }
 
-    // /// Return the bool value of the bit at index `index`
+    /// Return the bool value of the bit at index `index`
     pub fn get(&self, index: usize) -> bool {
         let block = self.blocks[Block::block_index(index)];
         // let rhs = (B::one() << B::bit_offset(index));
