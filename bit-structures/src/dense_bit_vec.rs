@@ -13,11 +13,9 @@
 // todo:
 // - try split_last in select1
 use crate::bit_block::BitBlock;
-use crate::bit_vec::BitVec;
-use num::{One, Zero};
-use std::debug_assert;
-
 use crate::bit_buf::BitBuf;
+use crate::bit_vec::BitVec;
+use std::debug_assert;
 
 // todo: describe what each rank/select sample holds.
 

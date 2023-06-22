@@ -11,26 +11,7 @@
 // - parameterizable storage maximum - eg. u32 or u64 (bitblock?)
 // - sparse bitvec should also be parameterizable the same way so that we can store 64 or 128 bits if we want to, but not have to pay for it otherwise
 // - make the "rank" / quantile function compatible with rank1(0) being inclusive; maybe make a rank1p which is the rank of the value plus one.
-//   - like how log1p(x) = ln(x+1); rank1p(x) = rank1(x - 1) and rank0p(x) = rank0(x - 1) but will return 0 for x=0?
-
-// todo:
-// - consider reverting back to the nongeneric version; use u32 for a, b, c, n, and u64 for the value.
-// - investigate if there are packages that allow you to "template" a type, implementing it for a finite enumerated set of types: xxx_impl!().
-
-/*
-https://www.reddit.com/r/rust/comments/7f7qgo/implementing_a_trait_for_multiple_concrete_structs/
-https://github.com/rust-lang/rust/blob/59bf09d4d473c803609d3ad925a0ebf13bdbb0ab/src/libcore/cmp.rs#L759-L783
-
-macro_rules! eq_impl {
-    ($($t:ty)*) => ($(
-        #[stable(feature = "rust1", since = "1.0.0")]
-        impl Eq for $t {}
-    )*)
-}
-
-eq_impl! { () bool char usize u8 u16 u32 u64 u128 isize i8 i16 i32 i64 i128 }
-
-*/
+//   - like how log1p(x) = ln(x+1); rank1m(x) = rank1(x - 1) and rank0m(x) = rank0(x - 1) but will return 0 for x=0?
 
 use crate::bit_block::BitBlock;
 use std::marker::PhantomData;
