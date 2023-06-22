@@ -1,18 +1,18 @@
 // Simple bit vector implemented as a slice-backed dense array containing sorted indices of set bits.
 // Should allow multiplicity (if there is multiplicity then select0/rank0 should be disallowed)
 
-use crate::bit_block::LargeBitBlock;
+use crate::bit_block::BitBlock;
 use std::debug_assert;
 
 use crate::bit_vec::BitVec;
 
 #[derive(Debug)]
-pub struct SliceBitVec<Ones: LargeBitBlock = u32> {
+pub struct SliceBitVec<Ones: BitBlock = u32> {
     ones: Box<[Ones]>,
     len: usize,
 }
 
-impl<Ones: LargeBitBlock> SliceBitVec<Ones> {
+impl<Ones: BitBlock> SliceBitVec<Ones> {
     pub fn new(ones: &[Ones], len: Ones) -> Self {
         // check that the length can be converted to usize (should we check u32 instead?)
         // assert!(usize::try_from(len).is_ok());
@@ -24,25 +24,25 @@ impl<Ones: LargeBitBlock> SliceBitVec<Ones> {
         // debug_assert!(ones.len() <= len); // duplicates are allowed
         Self {
             ones: ones.into(),
-            len: len.into_usize(),
+            len: len.usize(),
         }
     }
 }
 
-impl<Ones: LargeBitBlock> BitVec<Ones> for SliceBitVec<Ones> {
+impl<Ones: BitBlock> BitVec<Ones> for SliceBitVec<Ones> {
     fn rank1(&self, i: Ones) -> Ones {
         if i >= self.len() {
             return self.num_ones();
         }
         self.num_ones()
-            .partition_point(|n| self.ones[n.into_usize()] < i)
+            .partition_point(|n| self.ones[n.usize()] < i)
     }
 
     fn select1(&self, n: Ones) -> Option<Ones> {
         if n >= self.num_ones() {
             return None;
         }
-        Some(self.ones[n.into_usize()])
+        Some(self.ones[n.usize()])
     }
 
     fn num_ones(&self) -> Ones {

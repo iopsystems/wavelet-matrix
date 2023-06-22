@@ -1,4 +1,4 @@
-use crate::bit_block::LargeBitBlock;
+use crate::bit_block::BitBlock;
 // Bitvector support traits for Access, Rank, Select.
 // How can we make select and rank support configurable at zero cost? Type level constant params?
 // todo: should this fromiterator type be u32, usize, or u64? or generic?
@@ -26,7 +26,7 @@ use crate::bit_block::LargeBitBlock;
 // serialize from 64-bit to 32-bit environments (WebAssembly)
 // pub type Ones = u64; // u32 | u64
 
-pub trait BitVec<Ones: LargeBitBlock> {
+pub trait BitVec<Ones: BitBlock> {
     fn rank1(&self, index: Ones) -> Ones {
         self.default_rank1(index)
     }

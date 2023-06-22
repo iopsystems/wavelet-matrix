@@ -47,19 +47,25 @@ pub trait BitBlock:
     }
 
     // The into_xxxx functions panic if the value does not fit
-    fn into_usize(self) -> usize {
+    fn usize(self) -> usize {
         self.to_usize().unwrap()
     }
 
-    fn into_u32(self) -> u32 {
+    fn u32(self) -> u32 {
         self.to_u32().unwrap()
     }
 
-    fn into_u64(self) -> u64 {
+    fn u64(self) -> u64 {
         self.to_u64().unwrap()
     }
 
+    fn as_u32(self) -> u32;
+    fn as_u64(self) -> u64;
+    fn as_usize(self) -> usize;
+
     // will panic if the value does not fit
+    fn from_u32(value: u32) -> Self;
+    fn from_u64(value: u64) -> Self;
     fn from_usize(value: usize) -> Self;
 
     fn partition_point(self, pred: impl Fn(Self) -> bool) -> Self {
@@ -98,20 +104,29 @@ macro_rules! bit_block_impl {
      ($($t:ty)*) => ($(
         impl BitBlock for $t {
             const BITS: u32 = Self::BITS;
-            fn from_usize(value: usize) -> Self {
-               <$t>::try_from(value).unwrap()
-            }
             fn ilog2(self) -> u32 {
                 self.ilog2()
+            }
+            fn as_u32(self) -> u32 {
+                self as u32
+            }
+            fn as_u64(self) -> u64 {
+                self as u64
+            }
+            fn as_usize(self) -> usize {
+                self as usize
+            }
+            fn from_u32(value: u32) -> Self {
+               <$t>::try_from(value).unwrap()
+            }
+            fn from_u64(value: u64) -> Self {
+               <$t>::try_from(value).unwrap()
+            }
+            fn from_usize(value: usize) -> Self {
+               <$t>::try_from(value).unwrap()
             }
         }
      )*)
  }
 
 bit_block_impl! { u8 u16 u32 u64 }
-
-pub trait LargeBitBlock: BitBlock + From<u32> {}
-
-impl LargeBitBlock for u32 {}
-
-impl LargeBitBlock for u64 {}
