@@ -30,6 +30,10 @@ impl<Ones: BitBlock> SliceBitVec<Ones> {
             debug_assert!(ones.len() <= len.as_usize());
         }
 
+        if let Some(&one) = ones.last() {
+            debug_assert!(one <= len); // todo: < or <=?
+        }
+
         Self {
             ones: ones.into(),
             len,

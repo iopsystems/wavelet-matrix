@@ -1,4 +1,4 @@
-use num::traits::{CheckedShr, WrappingSub};
+use num::traits::{CheckedShr, SaturatingSub, WrappingSub};
 use num::{PrimInt, Unsigned};
 use std::fmt::Debug;
 use std::ops::{AddAssign, BitAnd, BitAndAssign, BitOrAssign, Shl, Shr, ShrAssign};
@@ -20,6 +20,7 @@ pub trait BitBlock:
     + BitAnd
     + BitOrAssign
     + BitAndAssign
+    + SaturatingSub
     + Clone
     + Debug
     + Into<u64>
@@ -62,6 +63,10 @@ pub trait BitBlock:
         self.to_u64().unwrap()
     }
 
+    fn f64(self) -> f64 {
+        self.to_f64().unwrap()
+    }
+
     fn as_u32(self) -> u32;
     fn as_u64(self) -> u64;
     fn as_usize(self) -> usize;
@@ -70,6 +75,7 @@ pub trait BitBlock:
     fn from_u32(value: u32) -> Self;
     fn from_u64(value: u64) -> Self;
     fn from_usize(value: usize) -> Self;
+    fn from_f64(value: f64) -> Self;
 
     fn partition_point(self, pred: impl Fn(Self) -> bool) -> Self {
         let n = self;
@@ -127,6 +133,11 @@ macro_rules! bit_block_impl {
             }
             fn from_usize(value: usize) -> Self {
                <$t>::try_from(value).unwrap()
+            }
+            fn from_f64(value: f64) -> Self {
+                // returns the closest representable integer
+                // unless value is NaN, which will return zero.
+               value.round() as $t
             }
         }
      )*)

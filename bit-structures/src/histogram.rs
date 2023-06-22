@@ -1,6 +1,7 @@
 use crate::bit_block::BitBlock;
 use crate::bit_vec::MultiBitVec;
 use crate::slice_bit_vec::SliceBitVec;
+use std::debug_assert;
 use std::marker::PhantomData;
 
 struct Histogram<Ones, BV>
@@ -13,6 +14,7 @@ where
 {
     helper: HistogramHelper,
     cdf: BV,
+    count: Ones,
     phantom: PhantomData<Ones>,
 }
 
@@ -21,9 +23,18 @@ where
     Ones: BitBlock,
     BV: MultiBitVec<Ones>,
 {
+    fn new(helper: HistogramHelper, cdf: BV) -> Histogram<Ones, BV> {
+        let count = cdf.rank1(cdf.len());
+        Histogram {
+            helper,
+            cdf,
+            count,
+            phantom: PhantomData,
+        }
+    }
     /// Return an upper bound on the value of the k-th observation.
     /// Analogous to `select` (return the approximate value of the `k`-th observation)
-    fn quantile_upper_bound(&self, k: Ones) -> Ones {
+    fn raw_quantile(&self, k: Ones) -> Ones {
         // Which bin is the k-th observation in?
         let bin_index = self.cdf.rank1(k);
         // What is the maximum value in that bin?
@@ -35,11 +46,17 @@ where
     /// Analogous to `rank` (return the approximate rank of `value`).
     // todo: when rank changes to be inclusive, change this to be inclusive,
     // returning the number of observations at or below `value`.
-    fn cdf_upper_bound(&self, value: Ones) -> Ones {
+    fn raw_cdf(&self, value: Ones) -> Ones {
         // What is the index of the bin containing `value`?
         let bin_index = self.helper.bin_index(value.into());
         // How many observations are there at or below that bin?
         self.cdf.select1(Ones::from_u32(bin_index)).unwrap()
+    }
+
+    fn quantile(&self, q: f64) -> Ones {
+        debug_assert!((0.0..=1.0).contains(&q));
+        let k = Ones::from_f64(q * self.count.f64());
+        self.raw_quantile(k)
     }
 }
 
@@ -68,11 +85,7 @@ impl<Ones: BitBlock> HistogramBuilder<Ones> {
             acc += *x;
             *x = acc;
         }
-        Histogram {
-            helper: self.helper,
-            cdf: SliceBitVec::new(&cdf, acc),
-            phantom: PhantomData,
-        }
+        Histogram::new(self.helper, SliceBitVec::new(&cdf, acc))
     }
 }
 
@@ -108,14 +121,16 @@ struct HistogramHelper {
 impl HistogramHelper {
     fn new(a: u32, b: u32, n: u32) -> HistogramHelper {
         let c = a + b + 1;
-        let num_bins = Self::bins_before_seg(n, c, b);
-        HistogramHelper {
+        // let num_bins = Self::bins_before_seg(a, b, c, n).min(1 << n);
+        let mut helper = HistogramHelper {
             a,
             b,
             c,
             n,
-            num_bins,
-        }
+            num_bins: 0,
+        };
+        helper.num_bins = helper.bin_index(helper.max_value()) + 1;
+        helper
     }
 
     pub fn a(&self) -> u32 {
@@ -132,28 +147,46 @@ impl HistogramHelper {
 
     pub fn num_bins(&self) -> u32 {
         self.num_bins
+        // self.bin_index(1 << self.n)
     }
 
-    // seg: power of 2 of the log segment; also the index of the log segment
-    // returns the number of bins up to the start of the seg-th log segment.
-    // ie. if seg = n, returns the number of bins in the histogram (since
-    // (the max value is 2^n-1 and the start of the n-th seg is at 2^n)
-    fn bins_before_seg(seg: u32, c: u32, b: u32) -> u32 {
-        // We want to calculate the number of bins that precede the v-th log segment.
+    // m and r are names used by the classical histogram parameterization,
+    // standing for minimum resolution and resolution range.
+    pub fn m(&self) -> u32 {
+        self.a
+    }
+
+    pub fn r(&self) -> u32 {
+        self.c
+    }
+
+    // We want to calculate the number of bins that precede the n-th log segment.
+    // ie. if seg = self.n, returns the number of bins in the histogram,
+    // since the max value is 2^n-1 and the start of the n-th seg is at 2^n
+    fn bins_before_seg(a: u32, b: u32, c: u32, n: u32) -> u32 {
         // We can break this down into two components:
-        // 1. The linear section has twice as many bins as an individual log segment above the cutoff,
-        //    for a total of 2^(b+1) = 2*2^b bins below the cutoff.
-        // 2. Above the cutoff, there are `v - c` log segments before the v-th log segment, each with 2^b bins.
-        // Taken together, there are (v - c + 2) * 2^b bins preceding the v-th log segment.
-        // Note: if we knew there are less than 2^32 bins, we could use `((seg - c + 2) << b) as u64`
-        (seg - c + 2) << b
+        // Taken together, there are (n - c + 2) * 2^b bins preceding the n-th log segment.
+        // (2 + n - c) * (1 << b)
+        if n < c {
+            // We're below the cutoff.
+            // each linear bin has 2^a bins and there are bins up to the value 2^n,
+            // giving us 2^(n - a) bins in total. We never want to go below 1 bin.
+            1 << n.saturating_sub(a)
+        } else {
+            // We're above the cutoff.
+            // 1. The linear section has twice as many bins as an individual log segment above the cutoff,
+            //    for a total of 2^(b+1) = 2*2^b bins below the cutoff.
+            // 2. Above the cutoff, there are `n - c` log segments before the n-th log segment, each with 2^b bins.
+            // Taken together, there are (n - c + 2) * 2^b bins preceding the n-th log segment.
+            (2 + n - c) << b
+        }
     }
 
     pub fn max_value(&self) -> u64 {
         if self.n == u64::BITS {
             u64::max_value()
         } else {
-            1 << self.n
+            (1 << self.n) - 1
         }
     }
 
@@ -186,7 +219,8 @@ impl HistogramHelper {
 
             // there are 2^(b+1) = 2*2^b bins below the cutoff, and (v-c)*2^b bins between the cutoff
             // and v-th log segment.
-            Self::bins_before_seg(v, c, b) + bins_within_seg as u32
+            let bins_below_seg = (2 + v - c) << b;
+            bins_below_seg + bins_within_seg as u32
         }
     }
 
@@ -234,14 +268,36 @@ mod tests {
         ];
         for (i, bin) in (0..66).zip(bins) {
             assert_eq!(b.bin_index(i), bin);
-            // if i > 14 {
-            //     println!("--------------------");
-            //     dbg!(i, bin, b.low(bin));
-            // }
         }
 
         // dbg!(17, 8, b.low(8));
 
         // panic!("histogram");
+    }
+
+    fn m_r_to_a_b(m: u32, r: u32) -> (u32, u32) {
+        (m, r - m - 1)
+    }
+
+    #[test]
+    fn num_bins() {
+        assert_eq!(HistogramHelper::new(0, 0, 6).num_bins(), 7);
+        assert_eq!(HistogramHelper::new(0, 0, 7).num_bins(), 8);
+        assert_eq!(HistogramHelper::new(0, 2, 6).num_bins(), 20);
+        assert_eq!(HistogramHelper::new(1, 2, 6).num_bins(), 16);
+        assert_eq!(HistogramHelper::new(1, 0, 6).num_bins(), 6);
+        assert_eq!(HistogramHelper::new(1, 1, 6).num_bins(), 10);
+        assert_eq!(HistogramHelper::new(0, 1, 6).num_bins(), 12);
+        assert_eq!(HistogramHelper::new(2, 0, 4).num_bins(), 3);
+        assert_eq!(HistogramHelper::new(2, 1, 4).num_bins(), 4);
+
+        assert_eq!(HistogramHelper::new(2, 2, 10).num_bins(), 28);
+        assert_eq!(HistogramHelper::new(2, 2, 6).num_bins(), 12);
+        assert_eq!(HistogramHelper::new(2, 2, 5).num_bins(), 8);
+        assert_eq!(HistogramHelper::new(2, 2, 4).num_bins(), 4);
+        assert_eq!(HistogramHelper::new(2, 3, 3).num_bins(), 2);
+        assert_eq!(HistogramHelper::new(2, 3, 2).num_bins(), 1);
+        assert_eq!(HistogramHelper::new(2, 3, 1).num_bins(), 1);
+        assert_eq!(HistogramHelper::new(2, 3, 0).num_bins(), 1);
     }
 }
