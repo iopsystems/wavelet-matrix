@@ -15,6 +15,7 @@
 use crate::bit_block::BitBlock;
 use crate::bit_buf::BitBuf;
 use crate::bit_vec::BitVec;
+use crate::utils::select1;
 use std::debug_assert;
 
 // todo: describe what each rank/select sample holds.
@@ -220,13 +221,9 @@ impl<Ones: BitBlock, RawBlock: BitBlock> BitVec<Ones> for DenseBitVec<Ones, RawB
             .unwrap();
 
         // clear the bottom 1-bits
-        let mut block = block;
         let shift = RawBlock::BIT_WIDTH as usize;
-        for _ in preceding_ones.u64()..n.u64() {
-            block &= block - RawBlock::one(); // unset extra zeros
-        }
         let block_bits = Ones::from_usize((raw_start + count) << shift);
-        let bit_offset = Ones::from_u32(block.trailing_zeros());
+        let bit_offset = Ones::from_u32(select1(block, (n - preceding_ones).as_u32()));
         Some(block_bits + bit_offset)
     }
 
