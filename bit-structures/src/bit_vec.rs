@@ -1,4 +1,3 @@
-use crate::bit_block::BitBlock;
 use crate::bit_block::LargeBitBlock;
 // Bitvector support traits for Access, Rank, Select.
 // How can we make select and rank support configurable at zero cost? Type level constant params?
@@ -8,7 +7,6 @@ use crate::bit_block::LargeBitBlock;
 // : FromIterator<u32>
 // todo: decide whether to call these `index` and `n` or `i` and `n`
 // todo: rename this file to bit_vec.rs?
-use crate::utils::PartitionPoint;
 // You should implement:
 // - rank1 or rank0
 // - num_ones or num_zeros
@@ -118,7 +116,7 @@ pub trait BitVec<Ones: LargeBitBlock> {
 // the sparse bitvec checks whether it contains multiplicity before calling select0 or rank0.
 
 #[cfg(test)]
-pub fn test_bitvector<Ones: LargeBitBlock, T: BitVec<Ones>>(new: impl Fn(&[Ones], Ones) -> T) {
+pub fn test_bitvector<T: BitVec<u32>>(new: impl Fn(&[u32], u32) -> T) {
     let bv = new(&[1, 2, 3], 4);
     assert_eq!(bv.len(), 4);
     assert_eq!(bv.num_ones(), 3);
@@ -149,14 +147,12 @@ pub fn test_bitvector<Ones: LargeBitBlock, T: BitVec<Ones>>(new: impl Fn(&[Ones]
 }
 
 #[cfg(test)]
-pub fn test_bitvector_vs_naive<Ones: LargeBitBlock, T: BitVec<Ones>>(
-    new: impl Fn(&[Ones], Ones) -> T,
-) {
+pub fn test_bitvector_vs_naive<T: BitVec<u32>>(new: impl Fn(&[u32], u32) -> T) {
     use exhaustigen::Gen;
 
     use crate::slice_bit_vec::SliceBitVec;
 
-    struct TestCase<Ones>(Vec<Ones>, Ones);
+    struct TestCase(Vec<u32>, u32);
 
     // we use a length larger than what we assume is
     // the largest RawBitVec block size (128)

@@ -4,7 +4,6 @@
 use crate::bit_block::LargeBitBlock;
 use std::debug_assert;
 
-use crate::bit_block::BitBlock;
 use crate::bit_vec::BitVec;
 
 #[derive(Debug)]
@@ -30,7 +29,7 @@ impl<Ones: LargeBitBlock> SliceBitVec<Ones> {
     }
 }
 
-impl<Ones: LargeBitBlock> BitVec<Ones> for SliceBitVec {
+impl<Ones: LargeBitBlock> BitVec<Ones> for SliceBitVec<Ones> {
     fn rank1(&self, i: Ones) -> Ones {
         if i >= self.len() {
             return self.num_ones();
@@ -43,15 +42,15 @@ impl<Ones: LargeBitBlock> BitVec<Ones> for SliceBitVec {
         if n >= self.num_ones() {
             return None;
         }
-        Some(self.ones[n.to_usize().unwrap()])
+        Some(self.ones[n.into_usize()])
     }
 
     fn num_ones(&self) -> Ones {
-        self.ones.len().try_into().unwrap()
+        Ones::from_usize(self.ones.len())
     }
 
     fn len(&self) -> Ones {
-        self.len.try_into().unwrap()
+        Ones::from_usize(self.len)
     }
 }
 

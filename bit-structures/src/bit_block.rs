@@ -2,7 +2,6 @@ use std::ops::AddAssign;
 use std::ops::BitOr;
 use std::ops::BitAndAssign;
 use std::ops::Shr;
-use num::ToPrimitive;
 use num::traits::AsPrimitive;
 use num::traits::CheckedShr;
 use num::traits::WrappingSub;
@@ -62,18 +61,20 @@ pub trait BitBlock:
             .unwrap_or(Self::zero())
     }
 
-    // panics if the value does not fit
+    // The into_xxxx functions panic if the value does not fit
     fn into_usize(self) -> usize {
         self.to_usize().unwrap()
     }
 
+  fn into_u32(self) -> u32 {
+        self.to_u32().unwrap()
+    }
 
-    // panics if the value does not fit
     fn into_u64(self) -> u64 {
         self.to_u64().unwrap()
     }
 
-    // panics if the value does not fit
+    // will panic if the value does not fit
     fn from_usize(value: usize) -> Self;
 
     fn partition_point(self, pred: impl Fn(Self) -> bool) -> Self {
@@ -104,49 +105,26 @@ pub trait BitBlock:
         let n = self;
         (n + m - Self::one()) / m
     }
+
+    fn ilog2(self) -> u32;
 }
 
-impl BitBlock for u8 {
-    const BITS: u32 = Self::BITS;
-    fn from_usize(value: usize) -> Self {
-        value.to_u8().unwrap()
-    }
-}
 
-impl BitBlock for u16 {
-    const BITS: u32 = Self::BITS;
-    fn from_usize(value: usize) -> Self {
-        value.to_u16().unwrap()
-    }
-}
+macro_rules! bit_block_impl {
+     ($($t:ty)*) => ($(
+        impl BitBlock for $t {
+            const BITS: u32 = Self::BITS;
+            fn from_usize(value: usize) -> Self {
+               <$t>::try_from(value).unwrap()
+            }
+            fn ilog2(self) -> u32 {
+                self.ilog2()
+            }
+        }
+     )*)
+ }
 
-impl BitBlock for usize {
-    const BITS: u32 = Self::BITS;
-    fn from_usize(value: usize) -> Self {
-        value
-    }
-}
-
-impl BitBlock for u32 {
-    const BITS: u32 = Self::BITS;
-    fn from_usize(value: usize) -> Self {
-        value.to_u32().unwrap()
-    }
-}
-
-impl BitBlock for u64 {
-    const BITS: u32 = Self::BITS;
-    fn from_usize(value: usize) -> Self {
-        value.to_u64().unwrap()
-    }
-}
-
-impl BitBlock for u128 {
-    const BITS: u32 = Self::BITS;
-    fn from_usize(value: usize) -> Self {
-        value.to_u128().unwrap()
-    }
-}
+bit_block_impl! { u8 u16 u32 u64 }
 
 pub trait LargeBitBlock: BitBlock + From<u32> {}
 

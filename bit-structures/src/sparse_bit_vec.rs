@@ -1,6 +1,6 @@
 // Elias-Fano-encoded sparse bitvector
 
-use crate::bit_block::{BitBlock, LargeBitBlock};
+use crate::bit_block::LargeBitBlock;
 use std::debug_assert;
 
 use crate::bit_buf::BitBuf;
@@ -8,16 +8,15 @@ use crate::bit_buf::BitBuf;
 use crate::bit_vec::BitVec;
 use crate::dense_bit_vec::DenseBitVec;
 use crate::int_vec::IntVec;
-use crate::utils::PartitionPoint;
 
-pub struct SparseBitVec<Ones: LargeBitBlock = u32> {
-    high: DenseBitVec<Ones, u8>, // High bit buckets in unary encoding
-    low: IntVec,                 // Low bits in fixed-width encoding
-    num_ones: Ones,              // Number of elements (n)
-    len: Ones,                   // Maximum representable integer (u + 1)
-    low_bit_width: u32,          // Number of low bits per element
-    low_mask: Ones,              // Mask with the low_bit_width lowest bits set to 1
-    has_multiplicity: bool,      // Whether any element is repeated more than once
+pub struct SparseBitVec<Ones: LargeBitBlock> {
+    high: DenseBitVec<u8>,  // High bit buckets in unary encoding
+    low: IntVec,            // Low bits in fixed-width encoding
+    num_ones: Ones,         // Number of elements (n)
+    len: Ones,              // Maximum representable integer (u + 1)
+    low_bit_width: Ones,    // Number of low bits per element
+    low_mask: Ones,         // Mask with the low_bit_width lowest bits set to 1
+    has_multiplicity: bool, // Whether any element is repeated more than once
 }
 
 impl<Ones: LargeBitBlock> SparseBitVec<Ones> {
@@ -29,16 +28,20 @@ impl<Ones: LargeBitBlock> SparseBitVec<Ones> {
         // todo: understand the comments in the paper "On Elias-Fano for Rank Queries in FM-Indexes"
         // but for now do the more obvious thing. todo: explain.
         // this is nice because we don't need the number of high bits explicitly so can avoid computing them
-        let num_ones: Ones = ones.len().try_into().unwrap();
-        let bits_per_one = if num_ones == 0 { 0 } else { len / num_ones };
-        let low_bit_width = bits_per_one.max(1).ilog2();
+        let num_ones: Ones = Ones::from_usize(ones.len());
+        let bits_per_one = if num_ones.is_zero() {
+            Ones::zero()
+        } else {
+            len / num_ones
+        };
+        let low_bit_width = bits_per_one.max(Ones::one()).ilog2();
         let low_mask = Ones::one_mask(low_bit_width);
 
         // unary coding; 1 denotes values and 0 denotes separators
         let high_len = num_ones + (len >> low_bit_width);
         let mut high = BitBuf::new(high_len.into_usize());
         let mut low = IntVec::new(num_ones.into_usize(), low_bit_width as usize);
-        let mut prev = 0;
+        let mut prev = Ones::zero();
         let mut has_multiplicity = false;
 
         for (n, one) in ones.iter().copied().enumerate() {
@@ -51,9 +54,9 @@ impl<Ones: LargeBitBlock> SparseBitVec<Ones> {
 
             // Encode element
             let quotient = one >> low_bit_width;
-            high.set(n + usize::try_from(quotient).unwrap());
+            high.set(n + quotient.into_usize());
             let remainder = one & low_mask;
-            low.write_int(remainder as u32);
+            low.write_int(remainder.into_u32());
         }
 
         // todo: allow tuning of the block parameters
@@ -64,7 +67,7 @@ impl<Ones: LargeBitBlock> SparseBitVec<Ones> {
             low,
             num_ones,
             len,
-            low_bit_width,
+            low_bit_width: low_bit_width.into(),
             low_mask,
             has_multiplicity,
         }
@@ -80,7 +83,7 @@ impl<Ones: LargeBitBlock> SparseBitVec<Ones> {
     }
 }
 
-impl<Ones: LargeBitBlock> BitVec<Ones> for SparseBitVec {
+impl<Ones: LargeBitBlock> BitVec<Ones> for SparseBitVec<Ones> {
     //     3: index of the first guy of the next group
     //  1: index of the first guy of this group
     // -1--33----7
@@ -93,24 +96,51 @@ impl<Ones: LargeBitBlock> BitVec<Ones> for SparseBitVec {
         }
 
         let quotient = self.quotient(index);
-        let (lower_bound, upper_bound) = if quotient == 0 {
-            (0, self.high.select0(0).unwrap_or(self.num_ones))
+        let (lower_bound, upper_bound) = if quotient.is_zero() {
+            let lower_bound = Ones::zero();
+            let upper_bound = self
+                .high
+                .select0(0)
+                .map(|x| x.into())
+                .unwrap_or(self.num_ones);
+            (lower_bound, upper_bound)
         } else {
             // compute the lower..upper range to search within the low bits
+            // since the dense bitvec has Ones = u32, convert the quotient.
+            // todo: try the equivalent of "as u32" if we can assert in the
+            // constructor that we don't go beyond u32::MAX bits.
+            let quotient = quotient.into_u32();
+
             let i = quotient - 1;
-            let lower_bound = self.high.select0(i).map(|x| x - i).unwrap_or(0);
+            let lower_bound: Ones = self
+                .high
+                .select0(i)
+                .map(|x| {
+                    let x: Ones = x.into();
+                    let i: Ones = i.into();
+                    x - i
+                })
+                .unwrap_or(Ones::zero());
 
             let i = quotient;
-            let upper_bound = self.high.select0(i).map(|x| x - i).unwrap_or(self.num_ones);
+            let upper_bound = self
+                .high
+                .select0(i)
+                .map(|x| {
+                    let x: Ones = x.into();
+                    let i: Ones = i.into();
+                    x - i
+                })
+                .unwrap_or(self.num_ones);
 
             (lower_bound, upper_bound)
         };
 
         // count the number of elements in this bucket that are strictly below i, using just the low bits
-        let remainder = self.remainder(index) as u32;
+        let remainder = self.remainder(index);
         let bucket_count = (upper_bound - lower_bound).partition_point(|n| {
             let index = lower_bound + n;
-            let value = self.low.get(index.into_usize());
+            let value: Ones = self.low.get(index.into_usize()).into();
             value < remainder
         });
 
@@ -123,8 +153,8 @@ impl<Ones: LargeBitBlock> BitVec<Ones> for SparseBitVec {
     }
 
     fn select1(&self, n: Ones) -> Option<Ones> {
-        let quotient = self.high.rank0(self.high.select1(n)?);
-        let remainder = self.low.get(n.into_usize()) as Ones;
+        let quotient: Ones = self.high.rank0(self.high.select1(n.into_u32())?).into();
+        let remainder: Ones = self.low.get(n.into_usize()).into();
         Some((quotient << self.low_bit_width) + remainder)
     }
 
@@ -155,8 +185,8 @@ mod tests {
 
     #[test]
     fn test_bitvector() {
-        bit_vec::test_bitvector(SparseBitVec::new);
-        bit_vec::test_bitvector_vs_naive(SparseBitVec::new);
+        bit_vec::test_bitvector(SparseBitVec::<u32>::new);
+        bit_vec::test_bitvector_vs_naive(SparseBitVec::<u32>::new);
     }
 
     // todo: sparse-specific tests
