@@ -156,7 +156,7 @@ pub fn test_bitvector_vs_naive<T: BitVec<u32>>(new: impl Fn(&[u32], u32) -> T) {
 
     // we use a length larger than what we assume is
     // the largest RawBitVec block size (128)
-    let len = 150;
+    let len = 300;
     let mut test_cases = vec![
         TestCase(vec![], 0),
         TestCase(vec![], len),
@@ -172,7 +172,7 @@ pub fn test_bitvector_vs_naive<T: BitVec<u32>>(new: impl Fn(&[u32], u32) -> T) {
 
     {
         // add test cases with a sparser bit pattern
-        let input = vec![0, 10, 20, len - 1];
+        let input = vec![0, 10, 20, len - 5, len - 1];
         let mut gen = Gen::new();
         while !gen.done() {
             let ones = gen.gen_subset(&input);

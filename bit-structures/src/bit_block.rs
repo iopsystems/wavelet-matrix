@@ -1,7 +1,7 @@
 use num::traits::{CheckedShr, WrappingSub};
 use num::{PrimInt, Unsigned};
 use std::fmt::Debug;
-use std::ops::{AddAssign, BitAndAssign, BitOrAssign, Shl, Shr, ShrAssign};
+use std::ops::{AddAssign, BitAnd, BitAndAssign, BitOrAssign, Shl, Shr, ShrAssign};
 
 // todo:
 // - audit uses of .usize() and switch to as_usize() where appropriate
@@ -17,6 +17,7 @@ pub trait BitBlock:
     + Shr<Output = Self>
     + ShrAssign
     + AddAssign
+    + BitAnd
     + BitOrAssign
     + BitAndAssign
     + Clone

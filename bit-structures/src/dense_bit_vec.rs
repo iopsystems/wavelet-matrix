@@ -160,12 +160,42 @@ impl<Ones: BitBlock, RawBlock: BitBlock> BitVec<Ones> for DenseBitVec<Ones, RawB
         let mut rank = self.r[self.r_index(index)];
         let index_usize = index.usize();
 
+        // use select blocks to increase raw_start by hopping through select blocks
+
+        // Identify the largest select block pointing at or before the rank in the rank block
+        // let (mut bit_pos, mut preceding_ones) = Self::select_sample(&self.s1, self.ss_pow2, n);
+        let mask = Ones::from_u32(RawBlock::BITS - 1);
+
+        let s_start = rank >> self.ss_pow2;
+        let s_blocks = self.s1[self.s1.len().min(s_start.usize() + 1)..]
+            .iter()
+            .copied();
+        let s_block = s_blocks
+            .take_while(|&x| {
+                // raw-block-aligned bit position represented by this select block
+                let bit_pos = x & !mask;
+                bit_pos <= index
+            })
+            .enumerate()
+            .last();
+        let raw_start = if let Some((i, sample)) = s_block {
+            let i: Ones = Ones::from_usize(i);
+            let bit_pos = sample & !mask;
+            let correction = sample & mask;
+            // the new rank is based on the select block index,
+            // since we sample selects based on the rank.
+            let select_block_index = s_start + i + Ones::one();
+            rank = (select_block_index << self.ss_pow2) - correction;
+            // the new raw block is based on the position of the 1-bit designated by the select block.
+            RawBlock::block_index(bit_pos.usize())
+        } else {
+            RawBlock::block_index(self.rank_aligned_bit_index(index).usize())
+        };
+
         // // self.s[select_index] points somewhere before index
         // let select_index = self.select_index(rank);
 
         // Sequentially scan raw blocks from raw_start onwards
-        // todo: use select blocks to increase raw_start by hopping through select blocks
-        let raw_start = RawBlock::block_index(self.rank_aligned_bit_index(index).usize());
         let raw_end = RawBlock::block_index(index_usize);
         let raw_slice = &self.raw.blocks()[raw_start..=raw_end];
         if let Some((last_block, blocks)) = raw_slice.split_last() {
@@ -291,12 +321,12 @@ mod tests {
     #[test]
     fn test_bitvector() {
         let f = |ones: &[u32], len: u32| {
-            let mut raw = BitBuf::<u8>::new(len.try_into().unwrap());
+            type RawBlock = u8;
+            let mut raw = BitBuf::<RawBlock>::new(len.try_into().unwrap());
             for one in ones.iter().copied() {
                 raw.set(one.try_into().unwrap());
             }
-            type RawBlock = u8;
-            DenseBitVec::new(raw, RawBlock::BIT_WIDTH, RawBlock::BIT_WIDTH)
+            DenseBitVec::<u32, RawBlock>::new(raw, RawBlock::BIT_WIDTH, RawBlock::BIT_WIDTH)
         };
         bit_vec::test_bitvector(f);
         bit_vec::test_bitvector_vs_naive(f);
