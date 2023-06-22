@@ -1,26 +1,26 @@
 // Elias-Fano-encoded sparse bitvector
 
-use crate::bit_block::BitBlock;
+use crate::bit_block::{BitBlock, LargeBitBlock};
 use std::debug_assert;
 
 use crate::bit_buf::BitBuf;
 
-use crate::bit_vec::{BitVec, Ones};
+use crate::bit_vec::BitVec;
 use crate::dense_bit_vec::DenseBitVec;
 use crate::int_vec::IntVec;
 use crate::utils::PartitionPoint;
 
-pub struct SparseBitVec {
-    high: DenseBitVec<u8>,  // High bit buckets in unary encoding
-    low: IntVec,            // Low bits in fixed-width encoding
-    num_ones: Ones,         // Number of elements (n)
-    len: Ones,              // Maximum representable integer (u + 1)
-    low_bit_width: u32,     // Number of low bits per element
-    low_mask: Ones,         // Mask with the low_bit_width lowest bits set to 1
-    has_multiplicity: bool, // Whether any element is repeated more than once
+pub struct SparseBitVec<Ones: LargeBitBlock = u32> {
+    high: DenseBitVec<Ones, u8>, // High bit buckets in unary encoding
+    low: IntVec,                 // Low bits in fixed-width encoding
+    num_ones: Ones,              // Number of elements (n)
+    len: Ones,                   // Maximum representable integer (u + 1)
+    low_bit_width: u32,          // Number of low bits per element
+    low_mask: Ones,              // Mask with the low_bit_width lowest bits set to 1
+    has_multiplicity: bool,      // Whether any element is repeated more than once
 }
 
-impl SparseBitVec {
+impl<Ones: LargeBitBlock> SparseBitVec<Ones> {
     // note: get, select0, rank0 will be incorrect when there is multiplicity.
     // because we rely on default impls, there is no room fo
     // debug_assert!(!self.has_multiplicity);
@@ -80,7 +80,7 @@ impl SparseBitVec {
     }
 }
 
-impl BitVec for SparseBitVec {
+impl<Ones: LargeBitBlock> BitVec<Ones> for SparseBitVec {
     //     3: index of the first guy of the next group
     //  1: index of the first guy of this group
     // -1--33----7

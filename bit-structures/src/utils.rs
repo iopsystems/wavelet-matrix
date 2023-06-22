@@ -55,7 +55,7 @@ macro_rules! partition_point_impl {
                 }
             }
 
-             fn div_ceil(self, m: Self) -> Self {
+            fn div_ceil(self, m: Self) -> Self {
                 let n = self;
                 (n + m - 1) / m
             }

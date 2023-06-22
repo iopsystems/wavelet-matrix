@@ -1,3 +1,5 @@
+use crate::bit_block::BitBlock;
+use crate::bit_block::LargeBitBlock;
 // Bitvector support traits for Access, Rank, Select.
 // How can we make select and rank support configurable at zero cost? Type level constant params?
 // todo: should this fromiterator type be u32, usize, or u64? or generic?
@@ -6,9 +8,7 @@
 // : FromIterator<u32>
 // todo: decide whether to call these `index` and `n` or `i` and `n`
 // todo: rename this file to bit_vec.rs?
-use crate::bit_vec;
 use crate::utils::PartitionPoint;
-
 // You should implement:
 // - rank1 or rank0
 // - num_ones or num_zeros
@@ -26,9 +26,9 @@ use crate::utils::PartitionPoint;
 
 // Note: We want to avoid usize since it depends on the environment and we want to
 // serialize from 64-bit to 32-bit environments (WebAssembly)
-pub type Ones = u64; // u32 | u64
+// pub type Ones = u64; // u32 | u64
 
-pub trait BitVec {
+pub trait BitVec<Ones: LargeBitBlock> {
     fn rank1(&self, index: Ones) -> Ones {
         self.default_rank1(index)
     }
@@ -94,7 +94,7 @@ pub trait BitVec {
             return None;
         }
         let index = self.len().partition_point(|i| self.rank0(i) <= n);
-        Some(index - 1)
+        Some(index - Ones::one())
     }
 
     /// Default impl of select0 using binary search over ranks
@@ -103,13 +103,13 @@ pub trait BitVec {
             return None;
         }
         let index = self.len().partition_point(|i| self.rank1(i) <= n);
-        Some(index - 1)
+        Some(index - Ones::one())
     }
 
     fn default_get(&self, index: Ones) -> bool {
         // This could be done more efficiently but is a reasonable default.
-        let ones_count = self.rank1(index + 1) - self.rank1(index);
-        ones_count == 1
+        let ones_count = self.rank1(index + Ones::one()) - self.rank1(index);
+        ones_count.is_one()
     }
 }
 
@@ -118,7 +118,7 @@ pub trait BitVec {
 // the sparse bitvec checks whether it contains multiplicity before calling select0 or rank0.
 
 #[cfg(test)]
-pub fn test_bitvector<T: BitVec>(new: impl Fn(&[Ones], Ones) -> T) {
+pub fn test_bitvector<Ones: LargeBitBlock, T: BitVec<Ones>>(new: impl Fn(&[Ones], Ones) -> T) {
     let bv = new(&[1, 2, 3], 4);
     assert_eq!(bv.len(), 4);
     assert_eq!(bv.num_ones(), 3);
@@ -148,12 +148,15 @@ pub fn test_bitvector<T: BitVec>(new: impl Fn(&[Ones], Ones) -> T) {
     assert_eq!(bv.select1(4), None);
 }
 
-pub fn test_bitvector_vs_naive<T: BitVec>(new: impl Fn(&[Ones], Ones) -> T) {
+#[cfg(test)]
+pub fn test_bitvector_vs_naive<Ones: LargeBitBlock, T: BitVec<Ones>>(
+    new: impl Fn(&[Ones], Ones) -> T,
+) {
     use exhaustigen::Gen;
 
     use crate::slice_bit_vec::SliceBitVec;
 
-    struct TestCase(Vec<bit_vec::Ones>, Ones);
+    struct TestCase<Ones>(Vec<Ones>, Ones);
 
     // we use a length larger than what we assume is
     // the largest RawBitVec block size (128)

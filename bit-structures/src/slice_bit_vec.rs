@@ -1,21 +1,19 @@
 // Simple bit vector implemented as a slice-backed dense array containing sorted indices of set bits.
 // Should allow multiplicity (if there is multiplicity then select0/rank0 should be disallowed)
 
+use crate::bit_block::LargeBitBlock;
 use std::debug_assert;
 
-use num::ToPrimitive;
-
 use crate::bit_block::BitBlock;
-use crate::bit_vec::{BitVec, Ones};
-use crate::utils::PartitionPoint;
+use crate::bit_vec::BitVec;
 
 #[derive(Debug)]
-pub struct SliceBitVec {
+pub struct SliceBitVec<Ones: LargeBitBlock = u32> {
     ones: Box<[Ones]>,
     len: usize,
 }
 
-impl SliceBitVec {
+impl<Ones: LargeBitBlock> SliceBitVec<Ones> {
     pub fn new(ones: &[Ones], len: Ones) -> Self {
         // check that the length can be converted to usize (should we check u32 instead?)
         // assert!(usize::try_from(len).is_ok());
@@ -32,7 +30,7 @@ impl SliceBitVec {
     }
 }
 
-impl BitVec for SliceBitVec {
+impl<Ones: LargeBitBlock> BitVec<Ones> for SliceBitVec {
     fn rank1(&self, i: Ones) -> Ones {
         if i >= self.len() {
             return self.num_ones();

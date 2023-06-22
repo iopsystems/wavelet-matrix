@@ -32,13 +32,17 @@ eq_impl! { () bool char usize u8 u16 u32 u64 u128 isize i8 i16 i32 i64 i128 }
 
 */
 
-use crate::{bit_vec::BitVec, slice_bit_vec::SliceBitVec};
+use crate::bit_block::LargeBitBlock;
+use std::marker::PhantomData;
 
-struct Histogram<T: BitVec> {
+use crate::{bit_block::BitBlock, bit_vec::BitVec, slice_bit_vec::SliceBitVec};
+
+struct Histogram<Ones: LargeBitBlock, BV: BitVec<Ones>> {
     h: HistogramHelper,
     // note: this is a multiset, since zero bins in the pdf
     // manifest as repeated values in the cdf
-    cdf: T,
+    cdf: BV,
+    ones: PhantomData<Ones>,
 }
 
 struct HistogramBuilder {
@@ -63,7 +67,7 @@ impl HistogramBuilder {
         self.pdf[bin_index as usize] -= count;
     }
 
-    pub fn build(self) -> Histogram<SliceBitVec> {
+    pub fn build(self) -> Histogram<u32, SliceBitVec> {
         let mut acc = 0;
         let mut pdf = self.pdf;
         for x in pdf.iter_mut() {
