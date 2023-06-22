@@ -18,7 +18,11 @@ use std::marker::PhantomData;
 
 use crate::{bit_vec::BitVec, slice_bit_vec::SliceBitVec};
 
-struct Histogram<Ones: BitBlock, BV: BitVec<Ones>> {
+struct Histogram<Ones, BV>
+where
+    Ones: BitBlock,
+    BV: BitVec<Ones>,
+{
     h: HistogramHelper,
     // note: this is a multiset, since zero bins in the pdf
     // manifest as repeated values in the cdf
@@ -48,7 +52,7 @@ impl HistogramBuilder {
         self.pdf[bin_index as usize] -= count;
     }
 
-    pub fn build(self) -> Histogram<u32, SliceBitVec> {
+    pub fn build(self) -> Histogram<u32, SliceBitVec<u32>> {
         let mut acc = 0;
         let mut pdf = self.pdf;
         for x in pdf.iter_mut() {

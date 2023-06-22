@@ -7,7 +7,7 @@ use std::debug_assert;
 use crate::bit_vec::BitVec;
 
 #[derive(Debug)]
-pub struct SliceBitVec<Ones: BitBlock = u32> {
+pub struct SliceBitVec<Ones: BitBlock> {
     ones: Box<[Ones]>,
     len: usize,
 }

@@ -24,7 +24,11 @@ use std::debug_assert;
 // type Ones = u32;
 
 #[derive(Debug)]
-pub struct DenseBitVec<Ones: BitBlock, RawBlock: BitBlock> {
+pub struct DenseBitVec<Ones, RawBlock>
+where
+    Ones: BitBlock,
+    RawBlock: BitBlock,
+{
     raw: BitBuf<RawBlock>, // bit data
     sr_pow2: Ones,         // power of 2 of the rank sampling rate
     ss_pow2: Ones,         // power of 2 of the select sampling rate
