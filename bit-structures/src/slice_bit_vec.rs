@@ -1,5 +1,4 @@
-// Simple bit vector implemented as a slice-backed dense array containing sorted indices of set bits.
-// Should allow multiplicity (if there is multiplicity then select0/rank0 should be disallowed)
+// SliceBitVec is a sparse bit vector backed by sorted integer slice. Allows multiplicity.
 
 use crate::{bit_block::BitBlock, bit_vec::MultiBitVec};
 use std::debug_assert;
@@ -8,11 +7,15 @@ use crate::bit_vec::BitVec;
 
 #[derive(Debug)]
 pub struct SliceBitVec<Ones: BitBlock> {
-    ones: Box<[Ones]>,
-    len: usize,
+    ones: Box<[Ones]>,      // Sorted slice of values
+    len: Ones,              // Maximum representable integer [todo: is it? or is it that plus one?]
+    has_multiplicity: bool, // Whether any element is repeated more than once
 }
 
 impl<Ones: BitBlock> SliceBitVec<Ones> {
+    // note: in the case of multiplicity-enabled bitvecs, `len` is a misnomer.
+    // it is more like `max_one_index` or `universe`. still need to decide what
+    // to do about Ones::max_value() – should we allow setting that bit?
     pub fn new(ones: &[Ones], len: Ones) -> Self {
         assert!(
             len.to_usize().is_some(),
@@ -20,15 +23,16 @@ impl<Ones: BitBlock> SliceBitVec<Ones> {
         );
 
         debug_assert!(
-            ones.windows(2).all(|w| w[0] < w[1]),
-            "ones must be monotonically increasing"
+            ones.windows(2).all(|w| w[0] <= w[1]),
+            "ones must be monotonically nondecreasing"
         );
 
         debug_assert!(ones.len() <= len.as_usize());
 
         Self {
             ones: ones.into(),
-            len: len.usize(),
+            len,
+            has_multiplicity: ones.windows(2).any(|w| w[0] == w[1]),
         }
     }
 }
@@ -53,14 +57,22 @@ impl<Ones: BitBlock> BitVec<Ones> for SliceBitVec<Ones> {
         Some(self.ones[n.as_usize()])
     }
 
-    // todo: check and assert multiplicity for rank0 and select0
+    fn rank0(&self, index: Ones) -> Ones {
+        debug_assert!(!self.has_multiplicity);
+        self.default_rank0(index)
+    }
+
+    fn select0(&self, n: Ones) -> Option<Ones> {
+        debug_assert!(!self.has_multiplicity);
+        self.default_select0(n)
+    }
 
     fn num_ones(&self) -> Ones {
         Ones::from_usize(self.ones.len())
     }
 
     fn len(&self) -> Ones {
-        Ones::from_usize(self.len)
+        self.len
     }
 }
 
