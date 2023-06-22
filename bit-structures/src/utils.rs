@@ -43,8 +43,8 @@ macro_rules! partition_point_impl {
                     bit >>= 1;
                 }
                 b
-            } 
- 
+            }
+
             fn bit_floor(self) -> Self {
                 let n = self;
                 if n == 0 {

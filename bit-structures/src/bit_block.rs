@@ -1,40 +1,25 @@
-use std::ops::AddAssign;
-use std::ops::BitOr;
-use std::ops::BitAndAssign;
-use std::ops::Shr;
-use num::traits::AsPrimitive;
-use num::traits::CheckedShr;
-use num::traits::WrappingSub;
-use num::PrimInt;
-use num::Unsigned;
-use std::ops::BitAnd;
-use std::ops::BitOrAssign;
-use std::ops::Shl;
-use std::ops::ShrAssign;
-use std::ops::Sub;
+use num::traits::{AsPrimitive, CheckedShr, WrappingSub};
+use num::{PrimInt, Unsigned};
 use std::fmt::Debug;
+use std::ops::{AddAssign, BitAndAssign, BitOrAssign, Shl, Shr, ShrAssign};
 
 /// Trait representing an unsigned integer type used as a block of bits,
 /// which allows our bit-based structures to be generic over block sizes.
 pub trait BitBlock:
-    PrimInt
-    + Unsigned
-    + Sub
+    Unsigned
+    + PrimInt
     + WrappingSub
     + CheckedShr
     + BitAndAssign
-    + BitAnd
-    + Clone
     + Shl<Output = Self>
-    // + Shl<u32, Output = Self>
     + Shr<Output = Self>
     + BitOrAssign
-    + BitOr 
     + ShrAssign
     + AddAssign
     + AsPrimitive<u32>
-    // + std::iter::Step
-    +TryFrom<u32> + Debug
+    + TryFrom<u32>
+    + Clone
+    + Debug
 {
     const BITS: u32; // number of bits in the representation of this type
     const BIT_WIDTH: u32 = Self::BITS.ilog2(); // bit width
@@ -66,7 +51,7 @@ pub trait BitBlock:
         self.to_usize().unwrap()
     }
 
-  fn into_u32(self) -> u32 {
+    fn into_u32(self) -> u32 {
         self.to_u32().unwrap()
     }
 
@@ -91,7 +76,7 @@ pub trait BitBlock:
         b
     }
 
-    fn bit_floor(self) -> Self{
+    fn bit_floor(self) -> Self {
         let n = self;
         if n.is_zero() {
             Self::zero()
@@ -108,7 +93,6 @@ pub trait BitBlock:
 
     fn ilog2(self) -> u32;
 }
-
 
 macro_rules! bit_block_impl {
      ($($t:ty)*) => ($(
@@ -131,4 +115,3 @@ pub trait LargeBitBlock: BitBlock + From<u32> {}
 impl LargeBitBlock for u32 {}
 
 impl LargeBitBlock for u64 {}
-
