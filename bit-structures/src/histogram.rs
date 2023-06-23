@@ -36,6 +36,7 @@ where
 {
     pub fn new(params: HistogramParams, cdf: BV) -> Histogram<Ones, BV> {
         let num_ones = cdf.num_ones();
+        debug_assert!(num_ones == Ones::from_u32(params.num_bins()));
         let count = if num_ones.is_zero() {
             Ones::zero()
         } else {
