@@ -2,7 +2,6 @@ use crate::bit_block::BitBlock;
 use crate::bit_vec::MultiBitVec;
 use crate::slice_bit_vec::SliceBitVec;
 use std::debug_assert;
-use std::marker::PhantomData;
 
 struct Histogram<Ones, BV>
 where
@@ -14,8 +13,8 @@ where
 {
     helper: HistogramHelper,
     cdf: BV,
+    // The number of observations repreesnted by this histogram
     count: Ones,
-    phantom: PhantomData<Ones>,
 }
 
 impl<Ones, BV> Histogram<Ones, BV>
@@ -25,13 +24,27 @@ where
 {
     fn new(helper: HistogramHelper, cdf: BV) -> Histogram<Ones, BV> {
         let count = cdf.rank1(cdf.len());
-        Histogram {
-            helper,
-            cdf,
-            count,
-            phantom: PhantomData,
-        }
+        Histogram { helper, cdf, count }
     }
+
+    /// Return an upper bound on the value of the q-th quantile.
+    fn quantile(&self, q: f64) -> Ones {
+        debug_assert!((0.0..=1.0).contains(&q));
+        let k = Ones::from_f64(q * self.count.f64());
+        self.raw_quantile(k)
+    }
+
+    /// Return an upper bound on the number of observations below `value`.
+    /// Analogous to `rank` (return the approximate rank of `value`).
+    // todo: when rank changes to be inclusive, change this to be inclusive,
+    // returning the number of observations at or below `value`.
+    fn cdf(&self, value: Ones) -> Ones {
+        // What is the index of the bin containing `value`?
+        let bin_index = self.helper.bin_index(value.into());
+        // How many observations are there at or below that bin?
+        self.cdf.select1(Ones::from_u32(bin_index)).unwrap()
+    }
+
     /// Return an upper bound on the value of the k-th observation.
     /// Analogous to `select` (return the approximate value of the `k`-th observation)
     fn raw_quantile(&self, k: Ones) -> Ones {
@@ -40,23 +53,6 @@ where
         // What is the maximum value in that bin?
         let value = self.helper.high(bin_index.u32());
         Ones::from_u64(value)
-    }
-
-    /// Return an upper bound on the number of observations below `value`.
-    /// Analogous to `rank` (return the approximate rank of `value`).
-    // todo: when rank changes to be inclusive, change this to be inclusive,
-    // returning the number of observations at or below `value`.
-    fn raw_cdf(&self, value: Ones) -> Ones {
-        // What is the index of the bin containing `value`?
-        let bin_index = self.helper.bin_index(value.into());
-        // How many observations are there at or below that bin?
-        self.cdf.select1(Ones::from_u32(bin_index)).unwrap()
-    }
-
-    fn quantile(&self, q: f64) -> Ones {
-        debug_assert!((0.0..=1.0).contains(&q));
-        let k = Ones::from_f64(q * self.count.f64());
-        self.raw_quantile(k)
     }
 }
 
@@ -105,32 +101,12 @@ struct HistogramHelper {
     c: u32,
     // 2^n - 1 is the maximum value this histogram can store.
     n: u32,
-    // there are n log segments in this histogram, with
-    // c of them below the cutoff point and n-c above it.
-    // - below the cutoff, there are 2^(b+1) = 2*2^b bins in total
-    // - above the cutoff, there are n-c log segments, with 2^b bins each
-    // so the total number of bins in the histogram is (n-c+2) * 2^b.
-    // while the number of bins could exceed u32::MAX, such as if the
-    // histogram stores u64 values and consists entirely of linear bins
-    // with a = 0, that is not a use case this library is designed to support
-    // and so we limit the maximum number of bins to roughly 4 billion.
-    // update: that's not true at the moment; should figure out the approach here.
-    num_bins: u32,
 }
 
 impl HistogramHelper {
     fn new(a: u32, b: u32, n: u32) -> HistogramHelper {
         let c = a + b + 1;
-        // let num_bins = Self::bins_before_seg(a, b, c, n).min(1 << n);
-        let mut helper = HistogramHelper {
-            a,
-            b,
-            c,
-            n,
-            num_bins: 0,
-        };
-        helper.num_bins = helper.bin_index(helper.max_value()) + 1;
-        helper
+        HistogramHelper { a, b, c, n }
     }
 
     pub fn a(&self) -> u32 {
@@ -146,8 +122,9 @@ impl HistogramHelper {
     }
 
     pub fn num_bins(&self) -> u32 {
-        self.num_bins
-        // self.bin_index(1 << self.n)
+        // note: this could be cached if it somehow becomes a bottleneck
+        // (it's used in self.high(...))
+        self.bin_index(self.max_value()) + 1
     }
 
     // m and r are names used by the classical histogram parameterization,
@@ -160,28 +137,6 @@ impl HistogramHelper {
         self.c
     }
 
-    // We want to calculate the number of bins that precede the n-th log segment.
-    // ie. if seg = self.n, returns the number of bins in the histogram,
-    // since the max value is 2^n-1 and the start of the n-th seg is at 2^n
-    fn bins_before_seg(a: u32, b: u32, c: u32, n: u32) -> u32 {
-        // We can break this down into two components:
-        // Taken together, there are (n - c + 2) * 2^b bins preceding the n-th log segment.
-        // (2 + n - c) * (1 << b)
-        if n < c {
-            // We're below the cutoff.
-            // each linear bin has 2^a bins and there are bins up to the value 2^n,
-            // giving us 2^(n - a) bins in total. We never want to go below 1 bin.
-            1 << n.saturating_sub(a)
-        } else {
-            // We're above the cutoff.
-            // 1. The linear section has twice as many bins as an individual log segment above the cutoff,
-            //    for a total of 2^(b+1) = 2*2^b bins below the cutoff.
-            // 2. Above the cutoff, there are `n - c` log segments before the n-th log segment, each with 2^b bins.
-            // Taken together, there are (n - c + 2) * 2^b bins preceding the n-th log segment.
-            (2 + n - c) << b
-        }
-    }
-
     pub fn max_value(&self) -> u64 {
         if self.n == u64::BITS {
             u64::max_value()
@@ -191,7 +146,7 @@ impl HistogramHelper {
     }
 
     pub fn high(&self, bin_index: u32) -> u64 {
-        if bin_index == self.num_bins {
+        if bin_index == self.num_bins() {
             self.max_value()
         } else {
             // the highest value of the i-th bin is the
@@ -203,23 +158,29 @@ impl HistogramHelper {
     pub fn bin_index(&self, value: u64) -> u32 {
         let Self { a, b, c, .. } = *self;
         if value < (1 << c) {
-            // the bin width below the cutoff is 1 << a
+            // We're below the cutoff.
+            // The bin width below the cutoff is 1 << a
             (value >> a) as u32
         } else {
+            // We're above the cutoff.
+
             // The log segment containing the value
-            // Equivalent to value.ilog2() but compatible with traits from the Num crate
-            // (T::BITS - 1 - value.leading_zeros());
             let v = value.ilog2();
 
             // The bin offset within the v-th log segment.
-            // - `value ^ (1 << v)` zeros the topmost (v-th) bit
+            // - `value - (1 << v)` zeros the topmost (v-th) bit.
             // - `>> (v - b)` extracts the top `b` bits of the value, corresponding
             //   to the bin index within the v-th log segment.
-            let bins_within_seg = (value ^ (1 << v)) >> (v - b);
+            let bins_within_seg = (value - (1 << v)) >> (v - b);
 
-            // there are 2^(b+1) = 2*2^b bins below the cutoff, and (v-c)*2^b bins between the cutoff
-            // and v-th log segment.
+            // We want to calculate the number of bins that precede the v-th log segment.
+            // 1. The linear section below the cutoff has twice as many bins as any log segment
+            //    above the cutoff, for a total of 2^(b+1) = 2*2^b bins below the cutoff.
+            // 2. Above the cutoff, there are `v - c` log segments before the v-th log segment,
+            //    each with 2^b bins, for a total of (v - c) * 2^b bins above the cutoff.
+            // Taken together, there are (v - c + 2) * 2^b bins preceding the v-th log segment.
             let bins_below_seg = (2 + v - c) << b;
+
             bins_below_seg + bins_within_seg as u32
         }
     }
