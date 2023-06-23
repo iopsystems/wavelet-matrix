@@ -39,14 +39,12 @@ where
         let count = if num_ones.is_zero() {
             Ones::zero()
         } else {
-            cdf.select1(cdf.num_ones() - Ones::one()).unwrap()
+            cdf.select1(num_ones - Ones::one()).unwrap()
         };
         Histogram { params, cdf, count }
     }
 
-    /// Return an upper bound on the number of observations at or below `value`.
-    /// Analogous to `rank`: returns the approximate rank of `value`.
-    /// todo: for now, this is inclusive but rank is exclusive
+    /// Return an upper bound on the number of observations strictly below `value`.
     pub fn cdf(&self, value: Ones) -> Ones {
         // What is the index of the bin containing `value`?
         let bin_index = self.params.bin_index(value.into());
