@@ -75,7 +75,6 @@ pub trait BitBlock:
     fn from_u32(value: u32) -> Self;
     fn from_u64(value: u64) -> Self;
     fn from_usize(value: usize) -> Self;
-    fn floor_from_f64(value: f64) -> Self;
 
     fn partition_point(self, pred: impl Fn(Self) -> bool) -> Self {
         let n = self;
@@ -111,6 +110,11 @@ pub trait BitBlock:
 
 macro_rules! bit_block_impl {
      ($($t:ty)*) => ($(
+        // impl<T: Ones> From<$t> for T {
+        //     fn from(value: $t) -> T {
+        //         // ?
+        //     }
+        // }
         impl BitBlock for $t {
             const BITS: u32 = Self::BITS;
             fn ilog2(self) -> u32 {
@@ -133,11 +137,6 @@ macro_rules! bit_block_impl {
             }
             fn from_usize(value: usize) -> Self {
                 <$t>::try_from(value).unwrap()
-            }
-            fn floor_from_f64(value: f64) -> Self {
-                // returns the floor of the value
-                // (or 0 if the value is NaN)
-                value.round() as $t
             }
         }
      )*)
