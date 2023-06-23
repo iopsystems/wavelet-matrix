@@ -14,10 +14,9 @@ use std::debug_assert;
 
 struct Histogram<Ones, BV = SliceBitVec<Ones>>
 where
-    // Ones is a type capable of representing the maximum number of observations represented
-    // by this histogram.
+    // Ones is a type capable of representing the total number of values represented
+    // by this histogram, as well as the maximum value.
     Ones: BitBlock,
-
     // Zero bins in the PDF manifest as repetitions in the CDF, so require a MultiBitVec
     BV: MultiBitVec<Ones>,
 {

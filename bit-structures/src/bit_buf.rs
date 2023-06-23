@@ -36,8 +36,8 @@ impl<Block: BitBlock> BitBuf<Block> {
         // The number of blocks should be just enough to represent `len` bits.
         let num_blocks = div_ceil(len, Block::BITS as usize);
         // Initialize to zero so that any trailing bits in the last block will be zero.
-        let data = vec![Block::zero(); num_blocks].into_boxed_slice();
-        Self { blocks: data, len }
+        let blocks = vec![Block::zero(); num_blocks].into();
+        Self { blocks, len }
     }
 
     /// Return the bool value of the bit at index `index`
