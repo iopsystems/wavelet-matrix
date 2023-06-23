@@ -1,9 +1,17 @@
+// Base-2 HDR histogram. Inspired and based in part on the Rezolus histogram implementation.
+// Resources:
+// Rezolus histogram documentation:
+//   https://github.com/pelikan-io/ccommon/blob/main/docs/modules/cc_histogram.rst
+// Rezolus histogram code:
+//   https://github.com/pelikan-io/rustcommon/blob/main/histogram/src/histogram.rs
+// Prototype histogram visualization:
+//   https://observablehq.com/d/35f0b601ed888da9
 use crate::bit_block::BitBlock;
 use crate::bit_vec::MultiBitVec;
 use crate::slice_bit_vec::SliceBitVec;
 use std::debug_assert;
 
-struct Histogram<Ones, BV>
+struct Histogram<Ones, BV = SliceBitVec<Ones>>
 where
     // Ones is a type capable of representing the maximum number of observations represented
     // by this histogram.
@@ -17,7 +25,7 @@ where
     // A bitvector representing the cumulative counts for each bin.
     cdf: BV,
 
-    // The number of observations repreesnted by this histogram
+    // The number of values added to this histogram
     count: Ones,
 }
 
@@ -27,21 +35,27 @@ where
     BV: MultiBitVec<Ones>,
 {
     fn new(params: HistogramParams, cdf: BV) -> Histogram<Ones, BV> {
-        let count = cdf.rank1(cdf.len());
+        let num_ones = cdf.num_ones();
+        let count = if num_ones.is_zero() {
+            Ones::zero()
+        } else {
+            cdf.select1(cdf.num_ones() - Ones::one()).unwrap()
+        };
         Histogram { params, cdf, count }
     }
 
     /// Return an upper bound on the value of the q-th quantile.
+    /// Meaning: Find the largest k such that k/count <= q, and
+    /// return the bin index of the upper bound on its value.
     fn quantile(&self, q: f64) -> Ones {
         debug_assert!((0.0..=1.0).contains(&q));
-        let k = Ones::from_f64(q * self.count.f64());
+        let k = Ones::floor_from_f64(q * self.count.f64());
         self.raw_quantile(k)
     }
 
-    /// Return an upper bound on the number of observations below `value`.
-    /// Analogous to `rank` (return the approximate rank of `value`).
-    // todo: when rank changes to be inclusive, change this to be inclusive,
-    // returning the number of observations at or below `value`.
+    /// Return an upper bound on the number of observations at or below `value`.
+    /// Analogous to `rank`: returns the approximate rank of `value`.
+    /// todo: for now, this is inclusive but rank is exclusive
     fn cdf(&self, value: Ones) -> Ones {
         // What is the index of the bin containing `value`?
         let bin_index = self.params.bin_index(value.into());
@@ -49,14 +63,29 @@ where
         self.cdf.select1(Ones::from_u32(bin_index)).unwrap()
     }
 
-    /// Return an upper bound on the value of the k-th observation.
+    fn bin_index(&self, k: Ones) -> Ones {
+        // Which bin is the k-th observation in?
+        self.cdf.rank1(k + Ones::one())
+    }
+
+    /// Return the bin index of the upper bound on the value of the k-th observation.
+    /// Meaning: The k-th value is guaranteed to be no greater than the returned value.
     /// Analogous to `select` (return the approximate value of the `k`-th observation)
     fn raw_quantile(&self, k: Ones) -> Ones {
         // Which bin is the k-th observation in?
-        let bin_index = self.cdf.rank1(k);
+        let bin_index = self.bin_index(k);
+
         // What is the maximum value in that bin?
         let value = self.params.high(bin_index.u32());
         Ones::from_u64(value)
+    }
+
+    pub fn count(&self) -> Ones {
+        self.count
+    }
+
+    pub fn builder(a: u32, b: u32, n: u32) -> HistogramBuilder<Ones> {
+        HistogramBuilder::new(a, b, n)
     }
 }
 
@@ -100,31 +129,43 @@ struct HistogramParams {
     b: u32,
     // 2^n - 1 is the maximum value this histogram can store.
     n: u32,
+    // 2^c = 2^(a+b+1) is the cutoff point below which are 2^(b+1)
+    // fixed-width bins of width 2^a with absolute error, and above which
+    // are log segments each with 2^b bins and a relative error of 2^-b.
+    c: u32,
+    // the number of bins in this histogram
+    num_bins: u32,
 }
 
 impl HistogramParams {
-    // in the classical parameterization, m = a and r = c.
+    // note: in the classical parameterization, m = a and r = c.
     fn new(a: u32, b: u32, n: u32) -> HistogramParams {
-        HistogramParams { a, b, n }
-    }
+        // todo: figure out how to assert there are less than 2^32 bins
+        let c = a + b + 1;
+        // todo: figure out the conditions we want to assert here, and whether
+        // they should be debug or regular errors.
+        // debug_assert!(c <= 32)
+        // debug_assert!(a <= 32 && b <= 31 && n <= 64);
 
-    pub fn a(&self) -> u32 {
-        self.a
-    }
-
-    pub fn b(&self) -> u32 {
-        self.b
-    }
-
-    pub fn c(&self) -> u32 {
-        // 2^c = 2^(a+b+1) is the cutoff point below which are 2^(b+1)
-        // fixed-width bins of width 2^a with absolute error, and above which
-        // are log segments each with 2^b bins and a relative error of 2^-b.
-        self.a + self.b + 1
+        let num_bins = if n < c {
+            // Each log segment is covered by bins of width 2^a and there are n log segments,
+            // giving us 2^(n - a) bins in total. Also, we always want a minimum of 1 bin.
+            1 << n.saturating_sub(a)
+        } else {
+            // See the comment above `bins_below_seg` in `bin_index` for a derivation
+            (2 + n - c) << b
+        };
+        HistogramParams {
+            a,
+            b,
+            c,
+            n,
+            num_bins,
+        }
     }
 
     pub fn bin_index(&self, value: u64) -> u32 {
-        let (a, b, c) = (self.a, self.b, self.c());
+        let Self { a, b, c, .. } = *self;
         if value < (1 << c) {
             // We're below the cutoff.
             // The bin width below the cutoff is 1 << a
@@ -155,7 +196,7 @@ impl HistogramParams {
 
     // given a bin index, returns the lowest value that bin can contain.
     pub fn low(&self, bin_index: u32) -> u64 {
-        let (a, b, c) = (self.a, self.b, self.c());
+        let Self { a, b, c, .. } = *self;
         let bins_below_cutoff = 2 << b;
         if bin_index < bins_below_cutoff {
             (bin_index << a) as u64
@@ -199,10 +240,24 @@ impl HistogramParams {
         }
     }
 
+    pub fn a(&self) -> u32 {
+        self.a
+    }
+
+    pub fn b(&self) -> u32 {
+        self.b
+    }
+
+    pub fn c(&self) -> u32 {
+        self.c
+    }
+
+    pub fn n(&self) -> u32 {
+        self.n
+    }
+
     pub fn num_bins(&self) -> u32 {
-        // note: this could be cached if it somehow becomes a bottleneck
-        // (it's used in self.high(...))
-        self.bin_index(self.max_value()) + 1
+        self.num_bins
     }
 }
 
@@ -221,18 +276,70 @@ mod tests {
         for (i, bin) in (0..66).zip(bins) {
             assert_eq!(b.bin_index(i), bin);
         }
-
-        // dbg!(17, 8, b.low(8));
-
-        // panic!("histogram");
     }
 
     fn m_r_to_a_b(m: u32, r: u32) -> (u32, u32) {
         (m, r - m - 1)
     }
 
+    // these are adapted from the rezolus tests
+    // todo: tidy
+    #[test]
+    fn quantile_lower_res() {
+        let mut h = Histogram::<u32>::builder(0, 1, 10);
+        for v in 1..1024 {
+            h.increment(v, 1);
+        }
+        let h = h.build();
+
+        let q_lo_hi = &[
+            (0.01, 8, 11),
+            (0.1, 96, 127),
+            (0.25, 256, 383),
+            (0.5, 512, 767),
+            (0.75, 768, 1023),
+            (0.9, 768, 1023),
+            (0.99, 768, 1023),
+            (0.9999, 768, 1023),
+        ];
+
+        for (q, _lo, hi) in q_lo_hi.iter().copied() {
+            dbg!(q, hi);
+            // assert_eq!(h.lowh.params.bin_index((q * h.count()) as u64), hi);
+            assert_eq!(h.quantile(q), hi);
+        }
+    }
+
+    #[test]
+    fn quantile_higher_res() {
+        let mut h = Histogram::<u32>::builder(0, 4, 10);
+        for v in 1..1024 {
+            h.increment(v, 1);
+        }
+        let h = h.build();
+
+        let q_lo_hi = &[
+            (0.01, 11, 11),
+            (0.1, 100, 103),
+            (0.25, 256, 271),
+            (0.5, 512, 543),
+            (0.75, 768, 799),
+            (0.9, 896, 927),
+            (0.99, 992, 1023),
+            (0.9999, 992, 1023),
+        ];
+
+        for (q, _lo, hi) in q_lo_hi.iter().copied() {
+            dbg!(q, hi);
+            // assert_eq!(h.lowh.params.bin_index((q * h.count()) as u64), hi);
+            assert_eq!(h.quantile(q), hi);
+        }
+    }
+
     #[test]
     fn num_bins() {
+        // a scattershot of checks to ensure that the number of bins is computed correctly
+        assert_eq!(HistogramParams::new(0, 0, 0).num_bins(), 1);
         assert_eq!(HistogramParams::new(0, 0, 6).num_bins(), 7);
         assert_eq!(HistogramParams::new(0, 0, 7).num_bins(), 8);
         assert_eq!(HistogramParams::new(0, 2, 6).num_bins(), 20);
@@ -242,8 +349,6 @@ mod tests {
         assert_eq!(HistogramParams::new(0, 1, 6).num_bins(), 12);
         assert_eq!(HistogramParams::new(2, 0, 4).num_bins(), 3);
         assert_eq!(HistogramParams::new(2, 1, 4).num_bins(), 4);
-
-        assert_eq!(HistogramParams::new(2, 2, 10).num_bins(), 28);
         assert_eq!(HistogramParams::new(2, 2, 6).num_bins(), 12);
         assert_eq!(HistogramParams::new(2, 2, 5).num_bins(), 8);
         assert_eq!(HistogramParams::new(2, 2, 4).num_bins(), 4);
@@ -251,5 +356,11 @@ mod tests {
         assert_eq!(HistogramParams::new(2, 3, 2).num_bins(), 1);
         assert_eq!(HistogramParams::new(2, 3, 1).num_bins(), 1);
         assert_eq!(HistogramParams::new(2, 3, 0).num_bins(), 1);
+
+        assert_eq!(HistogramParams::new(32, 0, 32).num_bins(), 1);
+
+        // todo: this should work, one day, or error.
+        // all linear bins below a cutoff of 2^32.
+        // assert_eq!(HistogramParams::new(0, 31, 32).num_bins(), u32::MAX);
     }
 }

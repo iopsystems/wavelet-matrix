@@ -75,7 +75,7 @@ pub trait BitBlock:
     fn from_u32(value: u32) -> Self;
     fn from_u64(value: u64) -> Self;
     fn from_usize(value: usize) -> Self;
-    fn from_f64(value: f64) -> Self;
+    fn floor_from_f64(value: f64) -> Self;
 
     fn partition_point(self, pred: impl Fn(Self) -> bool) -> Self {
         let n = self;
@@ -126,18 +126,18 @@ macro_rules! bit_block_impl {
                 self as usize
             }
             fn from_u32(value: u32) -> Self {
-               <$t>::try_from(value).unwrap()
+                <$t>::try_from(value).unwrap()
             }
             fn from_u64(value: u64) -> Self {
-               <$t>::try_from(value).unwrap()
+                <$t>::try_from(value).unwrap()
             }
             fn from_usize(value: usize) -> Self {
-               <$t>::try_from(value).unwrap()
+                <$t>::try_from(value).unwrap()
             }
-            fn from_f64(value: f64) -> Self {
-                // returns the closest representable integer
-                // unless value is NaN, which will return zero.
-               value.round() as $t
+            fn floor_from_f64(value: f64) -> Self {
+                // returns the floor of the value
+                // (or 0 if the value is NaN)
+                value.round() as $t
             }
         }
      )*)
