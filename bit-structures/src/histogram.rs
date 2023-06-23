@@ -44,11 +44,11 @@ where
         Histogram { params, cdf, count }
     }
 
-    /// Return an upper bound on the number of observations strictly below `value`.
+    /// Return an upper bound on the number of observations at or below `value`.
     pub fn cdf(&self, value: Ones) -> Ones {
         // What is the index of the bin containing `value`?
         let bin_index = self.params.bin_index(value.into());
-        // How many observations are there at or below that bin?
+        // How many observations are in or below that bin?
         self.cdf.select1(Ones::from_u32(bin_index)).unwrap()
     }
 
@@ -56,8 +56,7 @@ where
     pub fn quantile(&self, q: f64) -> Ones {
         // Number of observations at or below the q-th quantile
         let k = self.quantile_to_count(q);
-        // Bin index of the bin containing the k-th observation.
-        // TODO: I'm not sure I understand the need for the + 1 here.
+        // Bin index of the bin containing the k-th observation
         let bin_index = self.cdf.rank1(k + Ones::one());
         // Maximum value in that bin
         let high = self.params.high(bin_index.u32());
@@ -263,6 +262,9 @@ impl HistogramParams {
         self.num_bins
     }
 }
+
+// todo: randomized testing where we make a fully histogram with 0% error,
+// and test that the error guarantees of the other histograms are achieved.
 
 #[cfg(test)]
 mod tests {

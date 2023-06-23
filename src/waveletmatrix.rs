@@ -534,6 +534,8 @@ fn build_levels(data: Vec<u32>, num_levels: usize) -> Vec<SimpleBitVector> {
 // Returns an array of level bitvectors built from `data`.
 // Handles the sparse case where the alphabet size exceeds the number of data points and
 // building a histogram with an entry for each symbol is expensive
+// TODO: Would bucket sort using 2 bits at a time (into 4 buckets) speed up construction
+// by minimizing the number of passes required over the data?
 fn build_levels_large_alphabet(mut data: Vec<u32>, num_levels: usize) -> Vec<SimpleBitVector> {
     let mut levels = Vec::with_capacity(num_levels);
     let max_level = num_levels - 1;
