@@ -8,11 +8,15 @@ where
     // Ones is a type capable of representing the maximum number of observations represented
     // by this histogram.
     Ones: BitBlock,
+
     // Zero bins in the PDF manifest as repetitions in the CDF, so require a MultiBitVec
     BV: MultiBitVec<Ones>,
 {
-    helper: HistogramHelper,
+    params: HistogramParams,
+
+    // A bitvector representing the cumulative counts for each bin.
     cdf: BV,
+
     // The number of observations repreesnted by this histogram
     count: Ones,
 }
@@ -22,9 +26,9 @@ where
     Ones: BitBlock,
     BV: MultiBitVec<Ones>,
 {
-    fn new(helper: HistogramHelper, cdf: BV) -> Histogram<Ones, BV> {
+    fn new(params: HistogramParams, cdf: BV) -> Histogram<Ones, BV> {
         let count = cdf.rank1(cdf.len());
-        Histogram { helper, cdf, count }
+        Histogram { params, cdf, count }
     }
 
     /// Return an upper bound on the value of the q-th quantile.
@@ -40,7 +44,7 @@ where
     // returning the number of observations at or below `value`.
     fn cdf(&self, value: Ones) -> Ones {
         // What is the index of the bin containing `value`?
-        let bin_index = self.helper.bin_index(value.into());
+        let bin_index = self.params.bin_index(value.into());
         // How many observations are there at or below that bin?
         self.cdf.select1(Ones::from_u32(bin_index)).unwrap()
     }
@@ -51,26 +55,26 @@ where
         // Which bin is the k-th observation in?
         let bin_index = self.cdf.rank1(k);
         // What is the maximum value in that bin?
-        let value = self.helper.high(bin_index.u32());
+        let value = self.params.high(bin_index.u32());
         Ones::from_u64(value)
     }
 }
 
 struct HistogramBuilder<Ones: BitBlock> {
-    helper: HistogramHelper,
+    params: HistogramParams,
     pdf: Box<[Ones]>,
 }
 
 impl<Ones: BitBlock> HistogramBuilder<Ones> {
     pub fn new(a: u32, b: u32, n: u32) -> HistogramBuilder<Ones> {
-        let helper = HistogramHelper::new(a, b, n);
-        let num_bins = helper.num_bins();
+        let params = HistogramParams::new(a, b, n);
+        let num_bins = params.num_bins();
         let pdf = vec![Ones::zero(); num_bins as usize].into();
-        HistogramBuilder { helper, pdf }
+        HistogramBuilder { params, pdf }
     }
 
     pub fn increment(&mut self, value: Ones, count: Ones) {
-        let bin_index = self.helper.bin_index(value.u64());
+        let bin_index = self.params.bin_index(value.u64());
         self.pdf[bin_index as usize] += count;
     }
 
@@ -81,12 +85,11 @@ impl<Ones: BitBlock> HistogramBuilder<Ones> {
             acc += *x;
             *x = acc;
         }
-        Histogram::new(self.helper, SliceBitVec::new(&cdf, acc))
+        Histogram::new(self.params, SliceBitVec::new(&cdf, acc))
     }
 }
 
-// note: multiple histograms could concievably share a single helper
-struct HistogramHelper {
+struct HistogramParams {
     // 2^a is the absolute error below the cutoff,
     // and is also the bin width below the cutoff.
     // there are 2^(b+1) bins below the cutoff, since
@@ -95,18 +98,14 @@ struct HistogramHelper {
     // 2^b is the number of bins per log segment above the cutoff, and
     // 2^-b is the relative error above the cutoff
     b: u32,
-    // 2^c = 2^(a+b+1) is the cutoff point below which are 2^(b+1)
-    // fixed-width bins of width 2^a with absolute error, and above which
-    // are log segments each with 2^b bins and a relative error of 2^-b.
-    c: u32,
     // 2^n - 1 is the maximum value this histogram can store.
     n: u32,
 }
 
-impl HistogramHelper {
-    fn new(a: u32, b: u32, n: u32) -> HistogramHelper {
-        let c = a + b + 1;
-        HistogramHelper { a, b, c, n }
+impl HistogramParams {
+    // in the classical parameterization, m = a and r = c.
+    fn new(a: u32, b: u32, n: u32) -> HistogramParams {
+        HistogramParams { a, b, n }
     }
 
     pub fn a(&self) -> u32 {
@@ -118,45 +117,14 @@ impl HistogramHelper {
     }
 
     pub fn c(&self) -> u32 {
-        self.c
-    }
-
-    pub fn num_bins(&self) -> u32 {
-        // note: this could be cached if it somehow becomes a bottleneck
-        // (it's used in self.high(...))
-        self.bin_index(self.max_value()) + 1
-    }
-
-    // m and r are names used by the classical histogram parameterization,
-    // standing for minimum resolution and resolution range.
-    pub fn m(&self) -> u32 {
-        self.a
-    }
-
-    pub fn r(&self) -> u32 {
-        self.c
-    }
-
-    pub fn max_value(&self) -> u64 {
-        if self.n == u64::BITS {
-            u64::max_value()
-        } else {
-            (1 << self.n) - 1
-        }
-    }
-
-    pub fn high(&self, bin_index: u32) -> u64 {
-        if bin_index == self.num_bins() {
-            self.max_value()
-        } else {
-            // the highest value of the i-th bin is the
-            // integer right before the low of the next bin.
-            self.low(bin_index + 1) - 1
-        }
+        // 2^c = 2^(a+b+1) is the cutoff point below which are 2^(b+1)
+        // fixed-width bins of width 2^a with absolute error, and above which
+        // are log segments each with 2^b bins and a relative error of 2^-b.
+        self.a + self.b + 1
     }
 
     pub fn bin_index(&self, value: u64) -> u32 {
-        let Self { a, b, c, .. } = *self;
+        let (a, b, c) = (self.a, self.b, self.c());
         if value < (1 << c) {
             // We're below the cutoff.
             // The bin width below the cutoff is 1 << a
@@ -187,8 +155,7 @@ impl HistogramHelper {
 
     // given a bin index, returns the lowest value that bin can contain.
     pub fn low(&self, bin_index: u32) -> u64 {
-        let Self { a, b, c, .. } = *self;
-
+        let (a, b, c) = (self.a, self.b, self.c());
         let bins_below_cutoff = 2 << b;
         if bin_index < bins_below_cutoff {
             (bin_index << a) as u64
@@ -213,6 +180,30 @@ impl HistogramHelper {
             seg_start + bin as u64 * bin_width
         }
     }
+
+    pub fn high(&self, bin_index: u32) -> u64 {
+        if bin_index == self.num_bins() {
+            self.max_value()
+        } else {
+            // the highest value of the i-th bin is the
+            // integer right before the low of the next bin.
+            self.low(bin_index + 1) - 1
+        }
+    }
+
+    pub fn max_value(&self) -> u64 {
+        if self.n == u64::BITS {
+            u64::max_value()
+        } else {
+            (1 << self.n) - 1
+        }
+    }
+
+    pub fn num_bins(&self) -> u32 {
+        // note: this could be cached if it somehow becomes a bottleneck
+        // (it's used in self.high(...))
+        self.bin_index(self.max_value()) + 1
+    }
 }
 
 #[cfg(test)]
@@ -221,7 +212,7 @@ mod tests {
 
     #[test]
     fn test_histogram() {
-        let b = HistogramHelper::new(1, 2, 6);
+        let b = HistogramParams::new(1, 2, 6);
         let bins = [
             0, 0, 1, 1, 2, 2, 3, 3, 4, 4, 5, 5, 6, 6, 7, 7, 8, 8, 8, 8, 9, 9, 9, 9, 10, 10, 10, 10,
             11, 11, 11, 11, 12, 12, 12, 12, 12, 12, 12, 12, 13, 13, 13, 13, 13, 13, 13, 13, 14, 14,
@@ -242,23 +233,23 @@ mod tests {
 
     #[test]
     fn num_bins() {
-        assert_eq!(HistogramHelper::new(0, 0, 6).num_bins(), 7);
-        assert_eq!(HistogramHelper::new(0, 0, 7).num_bins(), 8);
-        assert_eq!(HistogramHelper::new(0, 2, 6).num_bins(), 20);
-        assert_eq!(HistogramHelper::new(1, 2, 6).num_bins(), 16);
-        assert_eq!(HistogramHelper::new(1, 0, 6).num_bins(), 6);
-        assert_eq!(HistogramHelper::new(1, 1, 6).num_bins(), 10);
-        assert_eq!(HistogramHelper::new(0, 1, 6).num_bins(), 12);
-        assert_eq!(HistogramHelper::new(2, 0, 4).num_bins(), 3);
-        assert_eq!(HistogramHelper::new(2, 1, 4).num_bins(), 4);
+        assert_eq!(HistogramParams::new(0, 0, 6).num_bins(), 7);
+        assert_eq!(HistogramParams::new(0, 0, 7).num_bins(), 8);
+        assert_eq!(HistogramParams::new(0, 2, 6).num_bins(), 20);
+        assert_eq!(HistogramParams::new(1, 2, 6).num_bins(), 16);
+        assert_eq!(HistogramParams::new(1, 0, 6).num_bins(), 6);
+        assert_eq!(HistogramParams::new(1, 1, 6).num_bins(), 10);
+        assert_eq!(HistogramParams::new(0, 1, 6).num_bins(), 12);
+        assert_eq!(HistogramParams::new(2, 0, 4).num_bins(), 3);
+        assert_eq!(HistogramParams::new(2, 1, 4).num_bins(), 4);
 
-        assert_eq!(HistogramHelper::new(2, 2, 10).num_bins(), 28);
-        assert_eq!(HistogramHelper::new(2, 2, 6).num_bins(), 12);
-        assert_eq!(HistogramHelper::new(2, 2, 5).num_bins(), 8);
-        assert_eq!(HistogramHelper::new(2, 2, 4).num_bins(), 4);
-        assert_eq!(HistogramHelper::new(2, 3, 3).num_bins(), 2);
-        assert_eq!(HistogramHelper::new(2, 3, 2).num_bins(), 1);
-        assert_eq!(HistogramHelper::new(2, 3, 1).num_bins(), 1);
-        assert_eq!(HistogramHelper::new(2, 3, 0).num_bins(), 1);
+        assert_eq!(HistogramParams::new(2, 2, 10).num_bins(), 28);
+        assert_eq!(HistogramParams::new(2, 2, 6).num_bins(), 12);
+        assert_eq!(HistogramParams::new(2, 2, 5).num_bins(), 8);
+        assert_eq!(HistogramParams::new(2, 2, 4).num_bins(), 4);
+        assert_eq!(HistogramParams::new(2, 3, 3).num_bins(), 2);
+        assert_eq!(HistogramParams::new(2, 3, 2).num_bins(), 1);
+        assert_eq!(HistogramParams::new(2, 3, 1).num_bins(), 1);
+        assert_eq!(HistogramParams::new(2, 3, 0).num_bins(), 1);
     }
 }
