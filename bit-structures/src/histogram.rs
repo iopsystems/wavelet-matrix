@@ -54,33 +54,24 @@ where
 
     /// Return an upper bound on the value of the q-th quantile.
     pub fn quantile(&self, q: f64) -> Ones {
-        // How many observations are there at or below the q-the quantile?
+        // Number of observations at or below the q-th quantile
         let k = self.quantile_to_count(q);
-        // Which bin is the k-th observation in?
-        let i = self.bin_index(k).u32();
-        // What is the maximum value in that bin?
-        let high = self.params.high(i);
+        // Bin index of the bin containing the k-th observation.
+        // TODO: I'm not sure I understand the need for the + 1 here.
+        let bin_index = self.cdf.rank1(k + Ones::one());
+        // Maximum value in that bin
+        let high = self.params.high(bin_index.u32());
         Ones::from_u64(high)
     }
 
-    /// Return the bin index of the bin containing the k-th observation,
-    /// with 0 <= k < count.
-    pub fn bin_index(&self, k: Ones) -> Ones {
-        debug_assert!(k < self.count);
-        self.cdf.rank1(k + Ones::one())
-    }
-
     /// Return the number of observations that lie at or below the q-th quantile.
-    // todo: this is incorrect and we should figure out when to use count/rank and what defintions make sense for the full range of quantiles in 0..=1
-    // currently returns the count minus one, actually
     pub fn quantile_to_count(&self, q: f64) -> Ones {
         debug_assert!((0.0..=1.0).contains(&q));
-        if q == 1.0 {
-            self.count - Ones::one()
-        } else {
-            // `f64 as u32` will round down values inside the representable range of u32.
-            Ones::from_u32((q * self.count.f64()) as u32)
-        }
+        // Using `as` to convert an `f64` into any integer type will
+        // round towards zero inside representable range.
+        // This will equal self.count if and only if q == 1.0.
+        let count = (q * self.count.f64()) as u32;
+        Ones::from_u32(count)
     }
 
     pub fn count(&self) -> Ones {
@@ -172,7 +163,9 @@ impl HistogramParams {
         }
     }
 
+    /// Return the bin index of the value given this histogram's parameters.
     pub fn bin_index(&self, value: u64) -> u32 {
+        assert!(value <= self.max_value());
         let Self { a, b, c, .. } = *self;
         if value < (1 << c) {
             // We're below the cutoff.
@@ -202,7 +195,7 @@ impl HistogramParams {
         }
     }
 
-    // given a bin index, returns the lowest value that bin can contain.
+    /// Given a bin index, returns the lowest value that bin can contain.
     pub fn low(&self, bin_index: u32) -> u64 {
         let Self { a, b, c, .. } = *self;
         let bins_below_cutoff = 2 << b;
@@ -230,6 +223,7 @@ impl HistogramParams {
         }
     }
 
+    /// Given a bin index, returns the highest value that bin can contain.
     pub fn high(&self, bin_index: u32) -> u64 {
         if bin_index == self.num_bins() {
             self.max_value()
@@ -240,6 +234,7 @@ impl HistogramParams {
         }
     }
 
+    /// Return the maximum value representable by these histogram parameters.
     pub fn max_value(&self) -> u64 {
         if self.n == u64::BITS {
             u64::max_value()
@@ -277,13 +272,15 @@ mod tests {
     fn test_bin_index() {
         let params = HistogramParams::new(1, 2, 6);
         let bins = [
+            // note: the last 2 values, currently 15, would be 16 if n was greater than 6.
             0, 0, 1, 1, 2, 2, 3, 3, 4, 4, 5, 5, 6, 6, 7, 7, 8, 8, 8, 8, 9, 9, 9, 9, 10, 10, 10, 10,
             11, 11, 11, 11, 12, 12, 12, 12, 12, 12, 12, 12, 13, 13, 13, 13, 13, 13, 13, 13, 14, 14,
-            14, 14, 14, 14, 14, 14, 15, 15, 15, 15, 15, 15, 15, 15, 16, 16,
+            14, 14, 14, 14, 14, 14, 15, 15, 15, 15, 15, 15, 15, 15,
         ];
-        for (i, bin) in (0..66).zip(bins) {
+        for (i, bin) in (0..64).zip(bins) {
             assert_eq!(params.bin_index(i), bin);
         }
+        // todo: test error/panic if trying to bin a value that exceeds the max value
     }
 
     #[test]
@@ -294,7 +291,7 @@ mod tests {
         assert_eq!(h.quantile_to_count(0.00), 0);
         assert_eq!(h.quantile_to_count(0.49), 0);
         assert_eq!(h.quantile_to_count(0.50), 1);
-        // assert_eq!(h.quantile_to_count(1.00), 2); // todo: uncomment this correct test
+        assert_eq!(h.quantile_to_count(1.00), 2);
     }
 
     #[test]
