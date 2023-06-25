@@ -138,13 +138,7 @@ struct HistogramParams {
 impl HistogramParams {
     // note: in the classical parameterization, m = a and r = c, which implies that b = r - m - 1.
     fn new(a: u32, b: u32, n: u32) -> HistogramParams {
-        // todo: figure out how to assert there are less than 2^32 bins
         let c = a + b + 1;
-        // todo: figure out the conditions we want to assert here, and whether
-        // they should be debug or regular errors.
-        // debug_assert!(c <= 32)
-        // debug_assert!(a <= 32 && b <= 31 && n <= 64);
-
         let num_bins = if n < c {
             // Each log segment is covered by bins of width 2^a and there are n log segments,
             // giving us 2^(n - a) bins in total. Also, we always want a minimum of 1 bin.

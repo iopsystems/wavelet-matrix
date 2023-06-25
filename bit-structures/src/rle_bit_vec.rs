@@ -215,7 +215,6 @@ impl<Ones: BitBlock> RLEBitVectorBuilder<Ones> {
 #[cfg(test)]
 mod tests {
     use super::*;
-
     use crate::bit_vec;
 
     pub fn new<Ones: BitBlock>(ones: &[Ones], len: Ones) -> RLEBitVec<Ones> {
