@@ -218,18 +218,14 @@ impl<Ones: BitBlock, Raw: BitBlock> BitVec<Ones> for DenseBitVec<Ones, Raw> {
         rank
     }
 
-    // Steps (todo):
-    // 1. Use the select block for an initial position
-    // 2. Use rank blocks to hop over many raw blocks
-    // 3. Use raw blocks to hop over many bytes (or individual bytes, if raw block = u8)
-    // 5. Return the target bit position within the raw block
-
     fn select1(&self, n: Ones) -> Option<Ones> {
         if n >= self.num_ones {
             return None;
         }
 
+        // Use the select block for an initial position
         let (mut bit_pos, mut preceding_ones) = Self::select_sample(&self.s1, self.ss_pow2, n);
+        // Use rank blocks to hop over many raw blocks
         let r_start = self.r_index(bit_pos); // index of the preceding rank block
         let r_blocks = self.r[r_start + 1..].iter().copied();
         let r_block = r_blocks.take_while(|&x| x < n).enumerate().last();
@@ -260,6 +256,8 @@ impl<Ones: BitBlock, Raw: BitBlock> BitVec<Ones> for DenseBitVec<Ones, Raw> {
         Some(block_bits + bit_offset)
     }
 
+    // todo: use a common abstraction for select0 and select1.
+    // right now this doesn't implement the optimization that hops over rank blocks.
     fn select0(&self, n: Ones) -> Option<Ones> {
         if n >= self.num_zeros() {
             return None;
