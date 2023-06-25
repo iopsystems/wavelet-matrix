@@ -26,6 +26,8 @@ use crate::bit_block::BitBlock;
 // serialize from 64-bit to 32-bit environments (WebAssembly)
 // pub type Ones = u64; // u32 | u64
 
+// todo: consider removing default impl of rank1 since it is not used by any current subtypes
+
 pub trait BitVec<Ones: BitBlock> {
     fn rank1(&self, index: Ones) -> Ones {
         self.default_rank1(index)
@@ -132,6 +134,9 @@ pub trait BitVec<Ones: BitBlock> {
 }
 
 // For bitvector types that allow multiplicity
+// TODO: For these types:
+// - len/num_ones need not be of type Ones, ie. you could have Ones=u8 but have 1 billion elements.
+// - there should be no rank0/select0/num_zeros unless they are specifically implemented to be multiplicity-aware.
 pub trait MultiBitVec<Ones: BitBlock>: BitVec<Ones> {}
 
 // We export these defaults so that implementors of this trait have the option of

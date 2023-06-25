@@ -6,16 +6,43 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
+num = "0.4.0"
+wasm-bindgen = "0.2.87"
+cfg-if = "0.1"
+console_log = { version = "1", optional = true }
+
+# The `console_error_panic_hook` crate provides better debugging of panics by
+# logging them with `console.error`. This is great for development, but requires
+# all the `std::fmt` and `std::panicking` infrastructure, so isn't great for
+# code size when deploying.
+console_error_panic_hook = { version = "0.1.6", optional = true }
+log = "0.4.19"
+
+
+[dev-dependencies]
 criterion = "0.5.1"
 exhaustigen = "0.1.0"
-num = "0.4.0"
 rand = "0.8.5"
-
 
 # [profile.release]
 # lto = true
 # codegen-units = 1
+# We could also: tell `rustc` to optimize for small code size (for wasm).
+# opt-level = "s"
 
 [[bench]]
 name = "binary_search_benchmark"
 harness = false
+
+[features]
+default = ["console_error_panic_hook", "console_log"]
+
+[lib]
+crate-type = ["cdylib"]
+
+# To enable function names in profiling builds:
+# See https://github.com/rustwasm/wasm-pack/issues/797
+# Which referers to
+# https://rustwasm.github.io/docs/wasm-pack/cargo-toml-configuration.html
+[package.metadata.wasm-pack.profile.profiling]
+wasm-opt = ['-O4', '-g']
