@@ -20,29 +20,28 @@ use std::debug_assert;
 
 // todo: describe what each rank/select sample holds.
 
-// We support dense bitvecs up to 4gb
-// type Ones = u32;
-
 #[derive(Debug)]
-pub struct DenseBitVec<Ones, RawBlock>
+pub struct DenseBitVec<Ones, Raw>
 where
+    // Type of the 1-bits stored in this BitVec
     Ones: BitBlock,
-    RawBlock: BitBlock,
+    // Block type for the underlying storage BitBuf
+    Raw: BitBlock,
 {
-    raw: BitBuf<RawBlock>, // bit data
-    sr_pow2: Ones,         // power of 2 of the rank sampling rate
-    ss_pow2: Ones,         // power of 2 of the select sampling rate
-    r: Box<[Ones]>,        // rank samples holding the number of preceding 1-bits
-    s0: Box<[Ones]>,       // select0 samples
-    s1: Box<[Ones]>,       // select1 samples
+    raw: BitBuf<Raw>, // bit data
+    sr_pow2: Ones,    // power of 2 of the rank sampling rate
+    ss_pow2: Ones,    // power of 2 of the select sampling rate
+    r: Box<[Ones]>,   // rank samples holding the number of preceding 1-bits
+    s0: Box<[Ones]>,  // select0 samples
+    s1: Box<[Ones]>,  // select1 samples
     num_ones: Ones,
 }
 
-impl<Ones: BitBlock, RawBlock: BitBlock> DenseBitVec<Ones, RawBlock> {
-    pub fn new(data: BitBuf<RawBlock>, sr_pow2: Ones, ss_pow2: Ones) -> Self {
+impl<Ones: BitBlock, Raw: BitBlock> DenseBitVec<Ones, Raw> {
+    pub fn new(data: BitBuf<Raw>, sr_pow2: Ones, ss_pow2: Ones) -> Self {
         let raw = data;
-        let raw_block_bits = Ones::from_u32(RawBlock::BITS);
-        let raw_block_pow2 = Ones::from_u32(RawBlock::BIT_WIDTH);
+        let raw_block_bits = Ones::from_u32(Raw::BITS);
+        let raw_block_pow2 = Ones::from_u32(Raw::BIT_WIDTH);
         debug_assert!(sr_pow2 >= raw_block_pow2);
         debug_assert!(ss_pow2 >= raw_block_pow2);
 
@@ -139,13 +138,13 @@ impl<Ones: BitBlock, RawBlock: BitBlock> DenseBitVec<Ones, RawBlock> {
         let sample_index = n >> ss_pow2;
         let sample = s[sample_index.usize()];
 
-        // bitmask with the RawBlock::BIT_WIDTH bottom bits set.
-        let mask = Ones::from_u32(RawBlock::BITS - 1);
+        // bitmask with the Raw::BIT_WIDTH bottom bits set.
+        let mask = Ones::from_u32(Raw::BITS - 1);
         let bit_pos = sample & !mask;
         let correction = sample & mask;
 
-        // assert that bit pos is rawblock-aligned
-        debug_assert!(RawBlock::bit_offset(bit_pos.usize()) == 0);
+        // assert that bit pos is Raw-aligned
+        debug_assert!(Raw::bit_offset(bit_pos.usize()) == 0);
 
         // num. of ones represented by this sample, up to the raw block boundary
         let num_ones = (sample_index << ss_pow2) - correction;
@@ -154,7 +153,7 @@ impl<Ones: BitBlock, RawBlock: BitBlock> DenseBitVec<Ones, RawBlock> {
     }
 }
 
-impl<Ones: BitBlock, RawBlock: BitBlock> BitVec<Ones> for DenseBitVec<Ones, RawBlock> {
+impl<Ones: BitBlock, Raw: BitBlock> BitVec<Ones> for DenseBitVec<Ones, Raw> {
     fn rank1(&self, index: Ones) -> Ones {
         if index >= self.len() {
             return self.num_ones();
@@ -168,7 +167,7 @@ impl<Ones: BitBlock, RawBlock: BitBlock> BitVec<Ones> for DenseBitVec<Ones, RawB
 
         // Identify the largest select block pointing at or before the rank in the rank block
         // let (mut bit_pos, mut preceding_ones) = Self::select_sample(&self.s1, self.ss_pow2, n);
-        let mask = Ones::from_u32(RawBlock::BITS - 1);
+        let mask = Ones::from_u32(Raw::BITS - 1);
 
         let s_start = rank >> self.ss_pow2;
         let s_blocks = self.s1[self.s1.len().min(s_start.usize() + 1)..]
@@ -191,16 +190,16 @@ impl<Ones: BitBlock, RawBlock: BitBlock> BitVec<Ones> for DenseBitVec<Ones, RawB
             let select_block_index = s_start + i + Ones::one();
             rank = (select_block_index << self.ss_pow2) - correction;
             // the new raw block is based on the position of the 1-bit designated by the select block.
-            RawBlock::block_index(bit_pos.usize())
+            Raw::block_index(bit_pos.usize())
         } else {
-            RawBlock::block_index(self.rank_aligned_bit_index(index).usize())
+            Raw::block_index(self.rank_aligned_bit_index(index).usize())
         };
 
         // // self.s[select_index] points somewhere before index
         // let select_index = self.select_index(rank);
 
         // Sequentially scan raw blocks from raw_start onwards
-        let raw_end = RawBlock::block_index(index_usize);
+        let raw_end = Raw::block_index(index_usize);
         let raw_slice = &self.raw.blocks()[raw_start..=raw_end];
         if let Some((last_block, blocks)) = raw_slice.split_last() {
             // Add the ones in fully-covered raw blocks
@@ -209,9 +208,9 @@ impl<Ones: BitBlock, RawBlock: BitBlock> BitVec<Ones> for DenseBitVec<Ones, RawB
             }
 
             // Add any ones in the final partly-covered raw block
-            let raw_bit_offset = RawBlock::bit_offset(index_usize);
+            let raw_bit_offset = Raw::bit_offset(index_usize);
             if raw_bit_offset > 0 {
-                let mask: RawBlock = RawBlock::one_mask(raw_bit_offset as u32);
+                let mask: Raw = Raw::one_mask(raw_bit_offset as u32);
                 rank += Ones::from_u32((*last_block & mask).count_ones());
             }
         }
@@ -243,7 +242,7 @@ impl<Ones: BitBlock, RawBlock: BitBlock> BitVec<Ones> for DenseBitVec<Ones, RawB
 
         // we want the next raw block value and index, and the preceding one count up to that block.
         let mut cur_ones = preceding_ones;
-        let raw_start = RawBlock::block_index(bit_pos.usize());
+        let raw_start = Raw::block_index(bit_pos.usize());
         let raw_blocks = self.raw.blocks()[raw_start..].iter().copied();
         let (count, block) = raw_blocks
             .enumerate()
@@ -255,7 +254,7 @@ impl<Ones: BitBlock, RawBlock: BitBlock> BitVec<Ones> for DenseBitVec<Ones, RawB
             .unwrap();
 
         // clear the bottom 1-bits
-        let shift = RawBlock::BIT_WIDTH as usize;
+        let shift = Raw::BIT_WIDTH as usize;
         let block_bits = Ones::from_usize((raw_start + count) << shift);
         let bit_offset = Ones::from_u32(select1(block, (n - preceding_ones).as_u32()));
         Some(block_bits + bit_offset)
@@ -268,7 +267,7 @@ impl<Ones: BitBlock, RawBlock: BitBlock> BitVec<Ones> for DenseBitVec<Ones, RawB
         let sample_index = self.s_index(n);
         let sample = self.s0[sample_index];
 
-        let (raw_start, correction) = RawBlock::index_offset(sample.usize());
+        let (raw_start, correction) = Raw::index_offset(sample.usize());
         let select_zeros = Ones::from_usize(sample_index) << self.ss_pow2; // num. of zeros represented by this sample
         let mut prev_zeros = select_zeros - Ones::from_usize(correction);
         let mut cur_zeros = prev_zeros;
@@ -281,11 +280,11 @@ impl<Ones: BitBlock, RawBlock: BitBlock> BitVec<Ones> for DenseBitVec<Ones, RawB
                 cur_zeros > n
             })
             .unwrap();
-        let shift = RawBlock::BIT_WIDTH as usize;
+        let shift = Raw::BIT_WIDTH as usize;
 
         block = !block;
         for _ in num::iter::range(prev_zeros, n) {
-            block &= block - RawBlock::one(); // unset extra zeros
+            block &= block - Raw::one(); // unset extra zeros
         }
         block = !block;
 
@@ -317,20 +316,20 @@ mod tests {
     #[test]
     fn test_new() {
         type Ones = u32;
-        type RawBlock = u8;
+        type Raw = u8;
         let raw = BitBuf::new(100);
-        let _ = DenseBitVec::<Ones, RawBlock>::new(raw, RawBlock::BIT_WIDTH, RawBlock::BIT_WIDTH);
+        let _ = DenseBitVec::<Ones, Raw>::new(raw, Raw::BIT_WIDTH, Raw::BIT_WIDTH);
     }
 
     #[test]
     fn test_bitvector() {
         let f = |ones: &[u32], len: u32| {
-            type RawBlock = u8;
-            let mut raw = BitBuf::<RawBlock>::new(len.try_into().unwrap());
+            type Raw = u8;
+            let mut raw = BitBuf::<Raw>::new(len.try_into().unwrap());
             for one in ones.iter().copied() {
                 raw.set(one.try_into().unwrap());
             }
-            DenseBitVec::<u32, RawBlock>::new(raw, RawBlock::BIT_WIDTH, RawBlock::BIT_WIDTH)
+            DenseBitVec::<u32, Raw>::new(raw, Raw::BIT_WIDTH, Raw::BIT_WIDTH)
         };
         bit_vec::test_bitvector(f);
         bit_vec::test_bitvector_vs_naive(f);
@@ -344,8 +343,8 @@ mod tests {
         for i in ones {
             raw.set(i);
         }
-        type RawBlock = u8;
-        let bv = DenseBitVec::new(raw, RawBlock::BIT_WIDTH, RawBlock::BIT_WIDTH);
+        type Raw = u8;
+        let bv = DenseBitVec::new(raw, Raw::BIT_WIDTH, Raw::BIT_WIDTH);
         // for b in bv.raw.blocks() {
         //     println!("{:b}", b);
         // }
@@ -382,8 +381,8 @@ mod tests {
         for i in ones {
             raw.set(i);
         }
-        type RawBlock = u8;
-        let bv = DenseBitVec::new(raw, RawBlock::BIT_WIDTH, RawBlock::BIT_WIDTH);
+        type Raw = u8;
+        let bv = DenseBitVec::new(raw, Raw::BIT_WIDTH, Raw::BIT_WIDTH);
         assert_eq!(bv.select1(0), Some(1));
         assert_eq!(bv.select1(1), Some(2));
         assert_eq!(bv.select1(2), Some(5));
@@ -400,8 +399,8 @@ mod tests {
         for i in ones {
             raw.set(i);
         }
-        type RawBlock = u8;
-        let bv = DenseBitVec::new(raw, RawBlock::BIT_WIDTH, RawBlock::BIT_WIDTH);
+        type Raw = u8;
+        let bv = DenseBitVec::new(raw, Raw::BIT_WIDTH, Raw::BIT_WIDTH);
         assert_eq!(bv.select0(0), Some(0));
         assert_eq!(bv.select0(1), Some(3));
         assert_eq!(bv.select0(2), Some(4));
@@ -416,14 +415,14 @@ mod tests {
     #[test]
     fn test_select1_rand() {
         type Ones = u32;
-        type RawBlock = u8;
+        type Raw = u8;
         let n_iters = 100;
         for _ in 1..n_iters {
             let mut ones = vec![];
             let mut rng = rand::thread_rng();
             let mut prev = 0;
             for _ in 1..100 {
-                let one = prev + rng.gen_range(1..3 * RawBlock::BITS) as Ones;
+                let one = prev + rng.gen_range(1..3 * Raw::BITS) as Ones;
                 prev = one;
                 ones.push(one);
             }
@@ -435,7 +434,7 @@ mod tests {
             }
 
             println!("ones {:?}", ones);
-            let bv = DenseBitVec::new(raw, RawBlock::BIT_WIDTH, RawBlock::BIT_WIDTH);
+            let bv = DenseBitVec::new(raw, Raw::BIT_WIDTH, Raw::BIT_WIDTH);
             for (i, o) in ones.iter().copied().enumerate() {
                 println!("testing index {:?} with one  {:?}", i, o);
                 assert_eq!(bv.select1(i as Ones), Some(o));
