@@ -73,7 +73,6 @@ impl<Ones: BitBlock> SparseBitVec<Ones> {
         }
     }
 
-    // todo: use this in the constructor?
     fn quotient(&self, value: Ones) -> Ones {
         value >> self.low_bit_width
     }

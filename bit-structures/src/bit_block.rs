@@ -110,11 +110,6 @@ pub trait BitBlock:
 
 macro_rules! bit_block_impl {
      ($($t:ty)*) => ($(
-        // impl<T: Ones> From<$t> for T {
-        //     fn from(value: $t) -> T {
-        //         // ?
-        //     }
-        // }
         impl BitBlock for $t {
             const BITS: u32 = Self::BITS;
             fn ilog2(self) -> u32 {

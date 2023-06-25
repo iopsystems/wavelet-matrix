@@ -14,8 +14,7 @@ use std::debug_assert;
 
 struct Histogram<Ones, BV = SliceBitVec<Ones>>
 where
-    // Ones is a type capable of representing the total number of values represented
-    // by this histogram, as well as the maximum value.
+    // Ones is the type used to represent cumulative bin counts
     Ones: BitBlock,
     // Zero bins in the PDF manifest as repetitions in the CDF, so require a MultiBitVec
     BV: MultiBitVec<Ones>,
@@ -46,7 +45,7 @@ where
     }
 
     /// Return an upper bound on the number of observations at or below `value`.
-    pub fn cdf(&self, value: Ones) -> Ones {
+    pub fn cumulative_count(&self, value: Ones) -> Ones {
         // What is the index of the bin containing `value`?
         let bin_index = self.params.bin_index(value.into());
         // How many observations are in or below that bin?
