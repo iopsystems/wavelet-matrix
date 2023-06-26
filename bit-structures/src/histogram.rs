@@ -12,7 +12,7 @@ use crate::bit_vec::MultiBitVec;
 use crate::slice_bit_vec::SliceBitVec;
 use std::debug_assert;
 
-struct Histogram<Ones, BV = SliceBitVec<Ones>>
+pub struct Histogram<Ones, BV>
 where
     // Ones is the type used to represent cumulative bin counts
     Ones: BitBlock,
@@ -86,7 +86,7 @@ where
     }
 }
 
-struct HistogramBuilder<Ones: BitBlock> {
+pub struct HistogramBuilder<Ones: BitBlock> {
     params: HistogramParams,
     pdf: Box<[Ones]>,
 }
@@ -116,7 +116,7 @@ impl<Ones: BitBlock> HistogramBuilder<Ones> {
 }
 
 #[derive(Copy, Clone)]
-struct HistogramParams {
+pub struct HistogramParams {
     // 2^a is the absolute error below the cutoff,
     // and is also the bin width below the cutoff.
     // there are 2^(b+1) bins below the cutoff, since
@@ -142,11 +142,13 @@ impl HistogramParams {
         let num_bins = if n < c {
             // Each log segment is covered by bins of width 2^a and there are n log segments,
             // giving us 2^(n - a) bins in total. Also, we always want a minimum of 1 bin.
-            1 << n.saturating_sub(a)
+            1u32.checked_shl(n.saturating_sub(a))
         } else {
             // See the comment in `bin_index` about `bins_below_seg` for a derivation
-            (2 + n - c) << b
-        };
+            (2 + n - c).checked_shl(b)
+        }
+        .expect("num_bins must fit in u32");
+
         HistogramParams {
             a,
             b,
@@ -281,7 +283,7 @@ mod tests {
 
     #[test]
     fn test_quantile_to_count() {
-        let mut h = Histogram::<u32>::builder(0, 1, 10);
+        let mut h = Histogram::<u32, SliceBitVec<u32>>::builder(0, 1, 10);
         h.increment(0, 2);
         let h = h.build();
         assert_eq!(h.quantile_to_count(0.00), 0);
@@ -292,7 +294,7 @@ mod tests {
 
     #[test]
     fn percentiles_1() {
-        let mut h = Histogram::<u32>::builder(0, 1, 10);
+        let mut h = Histogram::<u32, SliceBitVec<u32>>::builder(0, 1, 10);
         for v in 1..1024 {
             h.increment(v, 1);
         }
@@ -317,7 +319,7 @@ mod tests {
 
     #[test]
     fn percentiles_2() {
-        let mut h = Histogram::<u32>::builder(0, 4, 10);
+        let mut h = Histogram::<u32, SliceBitVec<u32>>::builder(0, 4, 10);
         for v in 1..1024 {
             h.increment(v, 1);
         }
@@ -342,7 +344,7 @@ mod tests {
     }
 
     fn percentiles_3() {
-        let mut h = Histogram::<u32>::builder(0, 9, 30);
+        let mut h = Histogram::<u32, SliceBitVec<u32>>::builder(0, 9, 30);
         h.increment(1, 1);
         h.increment(10_000_000, 1);
         let h = h.build();
