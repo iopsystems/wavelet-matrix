@@ -236,6 +236,36 @@ impl<Ones: BitBlock, BV: BitVec<Ones>> WaveletMatrix<Ones, BV> {
             len,
         }
     }
+
+    // Returns an iterator over levels from the high bit downwards, ignoring the
+    // bottom `ignore_bits` levels.
+    fn levels(&self, ignore_bits: usize) -> impl Iterator<Item = &Level<Ones, BV>> {
+        self.levels.iter().take(self.levels.len() - ignore_bits)
+    }
+
+    pub fn len(&self) -> Ones {
+        self.len
+    }
+
+    pub fn max_symbol(&self) -> u32 {
+        self.max_symbol
+    }
+
+    pub fn is_valid_symbol(&self, symbol: u32) -> bool {
+        symbol <= self.max_symbol
+    }
+
+    pub fn is_valid_index(&self, index: Ones) -> bool {
+        index < self.len
+    }
+
+    pub fn is_valid_index_range(&self, range: Range<Ones>) -> bool {
+        range.start < self.len && range.end <= self.len && range.start <= range.end
+    }
+
+    pub fn is_valid_symbol_range(&self, range: Range<u32>) -> bool {
+        range.start <= self.max_symbol && range.end <= self.max_symbol && range.start <= range.end
+    }
 }
 
 // todo: is this bit_ceil?
