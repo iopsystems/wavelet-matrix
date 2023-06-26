@@ -30,11 +30,6 @@ fn run() -> Result<(), JsValue> {
     Ok(())
 }
 
-#[wasm_bindgen]
-pub fn greet(name: &str) {
-    info!("Hello, {}!", name);
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
