@@ -5,7 +5,7 @@
 use crate::bit_block::BitBlock;
 use crate::utils::div_ceil;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct BitBuf<Block: BitBlock = u8> {
     blocks: Box<[Block]>,
     len: usize,
