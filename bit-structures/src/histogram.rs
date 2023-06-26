@@ -139,15 +139,15 @@ impl HistogramParams {
     // note: in the classical parameterization, m = a and r = c, which implies that b = r - m - 1.
     fn new(a: u32, b: u32, n: u32) -> HistogramParams {
         let c = a + b + 1;
+        // todo: assert that the number of bins is <= u32::MAX
         let num_bins = if n < c {
             // Each log segment is covered by bins of width 2^a and there are n log segments,
             // giving us 2^(n - a) bins in total. Also, we always want a minimum of 1 bin.
-            1u32.checked_shl(n.saturating_sub(a))
+            1u32 << n.saturating_sub(a)
         } else {
             // See the comment in `bin_index` about `bins_below_seg` for a derivation
-            (2 + n - c).checked_shl(b)
-        }
-        .expect("num_bins must fit in u32");
+            (2 + n - c) << b
+        };
 
         HistogramParams {
             a,
