@@ -1,5 +1,6 @@
 use crate::bit_block::BitBlock;
 use crate::{bit_buf::BitBuf, bit_vec::BitVec, dense_bit_vec::DenseBitVec};
+use std::ops::{Range, RangeInclusive};
 
 #[derive(Debug)]
 pub struct WaveletMatrix<Ones: BitBlock, BV: BitVec<Ones>> {
@@ -140,6 +141,61 @@ struct Level<Ones: BitBlock, BV: BitVec<Ones>> {
     bitmask: u32, // todo: rename to mag?
 }
 
+impl<Ones: BitBlock, T: BitVec<Ones>> Level<Ones, T> {
+    fn to_left_index(&self, index: Ones) -> Ones {
+        index
+    }
+
+    fn to_right_index(&self, index: Ones) -> Ones {
+        self.num_zeros + index
+    }
+
+    fn to_left_range(&self, range: Range<Ones>) -> Range<Ones> {
+        range
+    }
+
+    fn to_right_range(&self, range: Range<Ones>) -> Range<Ones> {
+        let nz = self.num_zeros;
+        nz + range.start..nz + range.end
+    }
+
+    fn to_left_symbol(&self, symbol: u32) -> u32 {
+        symbol
+    }
+
+    fn to_right_symbol(&self, symbol: u32) -> u32 {
+        symbol | self.bitmask
+    }
+
+    fn overlaps_left_child(&self, range: &RangeInclusive<u32>, leftmost_symbol: u32) -> bool {
+        let left_start = leftmost_symbol;
+        let left_end_inclusive = left_start | (self.bitmask - 1);
+        intervals_overlap_inclusive(left_start, left_end_inclusive, *range.start(), *range.end())
+    }
+
+    fn overlaps_right_child(&self, range: &RangeInclusive<u32>, leftmost_symbol: u32) -> bool {
+        let right_start = leftmost_symbol | self.bitmask;
+        let right_end_inclusive = right_start | (self.bitmask - 1);
+        intervals_overlap_inclusive(
+            right_start,
+            right_end_inclusive,
+            *range.start(),
+            *range.end(),
+        )
+    }
+
+    // Returns the rank0 and rank1 at `index `:
+    // (rank0(index), rank1(index))
+    pub fn ranks(&self, index: Ones) -> (Ones, Ones) {
+        if index.is_zero() {
+            return (Ones::zero(), Ones::zero());
+        }
+        let num_ones = self.bits.rank1(index);
+        let num_zeros = index - num_ones;
+        (num_zeros, num_ones)
+    }
+}
+
 impl WaveletMatrix<u32, Dense> {
     pub fn from_data(data: Vec<u32>, max_symbol: u32) -> WaveletMatrix<u32, Dense> {
         let num_levels = num_levels_for_symbol(max_symbol);
@@ -201,4 +257,143 @@ pub fn num_levels_for_symbol(symbol: u32) -> usize {
 // can be run...)
 fn reverse_low_bits(x: usize, num_bits: usize) -> usize {
     x.reverse_bits() >> (usize::BITS as usize - num_bits)
+}
+
+fn intervals_overlap_inclusive(a_lo: u32, a_hi: u32, b_lo: u32, b_hi: u32) -> bool {
+    a_lo <= b_hi && b_lo <= a_hi
+}
+
+// The traversal order means that outputs do not appear in the same order as inputs and
+// there may be multiple outputs per input (e.g. symbols found within a given index range)
+// so associating each batch with an index allows us to track the association between inputs
+// and outputs.
+#[derive(Debug, Copy, Clone, PartialEq)]
+pub struct BatchValue<Ones: BitBlock, T> {
+    pub index: Ones,
+    pub payload: T,
+}
+
+impl<Ones: BitBlock, T> BatchValue<Ones, T> {
+    fn new(input_index: Ones, value: T) -> BatchValue<Ones, T> {
+        BatchValue {
+            index: input_index,
+            payload: value,
+        }
+    }
+    #[allow(dead_code)]
+    fn map<U>(self, f: impl FnOnce(T) -> U) -> BatchValue<Ones, U> {
+        BatchValue {
+            index: self.index,
+            payload: f(self.payload),
+        }
+    }
+    fn with_payload(&self, payload: T) -> BatchValue<Ones, T> {
+        BatchValue {
+            index: self.index,
+            payload,
+        }
+    }
+}
+
+// Enum for simple traversals that always recurse either to the left or right child node.
+#[derive(Debug)]
+enum Go<T> {
+    Left(T),
+    Right(T),
+}
+
+// Enum for traversals that may recurse into either, both, or neither of the child nodes.
+enum GoMulti<T> {
+    Left(T),
+    Right(T),
+    Both(T, T),
+    None,
+}
+
+// Manages the BFS traversal of the wavelet matrix in a cache-friendly order.
+// Each tree level is stored in a bitvector with all left children preceding
+// all right children, and this traversal helper ensures that all left children
+// are accessed before all right children at each level as you travel down the tree.
+#[derive(Debug)]
+pub struct Traversal<T> {
+    left: Vec<T>,
+    right: Vec<T>,
+}
+
+// todo: explore an implicit representation for batch indices based on the observation that
+// during repeated traversals all of a batch's left children remain contiguous, and so do all
+// of its right children. So instead of individually tracking batch indices along with each
+// payload, we can simply keep track of how many left/right children each batch has, e.g.
+// in an array of length 2 * the number of batches (left children first, then right children).
+// And then we can yield the results in an enumerate-style iterator that repeats the batch index
+// as many times as it has left (then right) children, based on the "all lefts, then all rights"
+// result ordering.
+// question: does this have any implications for parallellization where sets of batches are run
+// concurrently – how do we ensure that all the batches reflect the global batch indices, rather
+// than the subset of batches being run on each independent task?
+// Another way to say this is is to observe that we can currently initialize the 'batch index'
+// to anything we'd like. With the new idea, we would be limited to strictly ascending indices,
+// and maybe there are cases where this becomes an issue. In the specific case of parallel batches
+// we can just keep track of the "initial offset" of the batch and add that the computed index.
+impl<Ones: BitBlock, T> Traversal<BatchValue<Ones, T>> {
+    fn init(&mut self, values: impl IntoIterator<Item = T>) {
+        self.left.clear();
+        self.left.extend(
+            values
+                .into_iter()
+                .enumerate()
+                .map(|(index, value)| BatchValue::new(Ones::from_usize(index), value)),
+        );
+    }
+
+    pub fn new() -> Traversal<T> {
+        Traversal {
+            left: Vec::new(),
+            right: Vec::new(),
+        }
+    }
+
+    // Traverses the data and the resulting children at the next level in the order
+    // they appear in the wavelet matrix (all left children, then all right children).
+    // - has the same 'called once per element left to right' guarantees as retain
+    fn traverse(&mut self, f: impl Fn(&T) -> Go<T>) {
+        // Retain the elements that went left, then append those that went right.
+        self.left.retain_mut(|d| match f(&d.payload) {
+            Go::Left(l) => {
+                d.payload = l;
+                true
+            }
+            Go::Right(r) => {
+                self.right.push(d.with_payload(r));
+                false
+            }
+        });
+        self.left.append(&mut self.right);
+    }
+
+    fn traverse_multi(&mut self, f: impl Fn(&T) -> GoMulti<T>) {
+        // Retain the elements that went left, then append those that went right.
+        // Allow a single element to go in both directions (or neither direction).
+        self.left.retain_mut(|d| match f(&d.payload) {
+            GoMulti::Both(l, r) => {
+                d.payload = l;
+                self.right.push(d.with_payload(r));
+                true
+            }
+            GoMulti::Left(l) => {
+                d.payload = l;
+                true
+            }
+            GoMulti::Right(r) => {
+                self.right.push(d.with_payload(r));
+                false
+            }
+            GoMulti::None => false,
+        });
+        self.left.append(&mut self.right);
+    }
+
+    fn result(&self) -> &Vec<BatchValue<Ones, T>> {
+        &self.left
+    }
 }
