@@ -1,5 +1,6 @@
 use crate::bit_block::BitBlock;
 use crate::{bit_buf::BitBuf, bit_vec::BitVec, dense_bit_vec::DenseBitVec};
+use std::iter;
 use std::ops::{Range, RangeInclusive};
 
 #[derive(Debug)]
@@ -237,10 +238,158 @@ impl<Ones: BitBlock, BV: BitVec<Ones>> WaveletMatrix<Ones, BV> {
         }
     }
 
+    pub fn get_batch<'a>(
+        &'a self,
+        indices: impl IntoIterator<Item = Ones>,
+        ignore_bits: Ones,
+        traversal: &'a mut Traversal<BatchValue<Ones, (Ones, u32)>>,
+    ) -> impl Iterator<Item = &BatchValue<Ones, (Ones, u32)>> {
+        // stores (index, symbol) batches
+        traversal.init(indices.into_iter().map(|index| (index, 0)));
+        for level in self.levels(ignore_bits) {
+            traversal.traverse(|&(index, symbol)| {
+                let (index0, index1) = level.ranks(index);
+                match level.bits.get(index) {
+                    false => Go::Left((level.to_left_index(index0), level.to_left_symbol(symbol))),
+                    true => {
+                        Go::Right((level.to_right_index(index1), level.to_right_symbol(symbol)))
+                    }
+                }
+            });
+        }
+        traversal.result().iter()
+    }
+
+    // returns the symbols found within the given index range, and the number of times they
+    // appear within that index range.
+    // `symbol_range` can be used to filter the symbols we're interested in returning.
+    // `ignore_bits` can be used to limit the recursion by ignoring some number of leaf levels,
+    // returning counts for symbol prefixes instead.
+    // todo: subcode_separator
+    pub fn counts<'a>(
+        &'a self,
+        index_range: Range<Ones>,
+        symbol_range: RangeInclusive<u32>,
+        ignore_bits: Ones,
+        traversal: &'a mut Traversal<BatchValue<Ones, (Range<Ones>, u32)>>,
+    ) -> impl Iterator<Item = &BatchValue<Ones, (Range<Ones>, u32)>> {
+        // stores (range, symbol) batches
+        traversal.init(iter::once((index_range, 0)));
+        for level in self.levels(ignore_bits) {
+            traversal.traverse_multi(|&(ref range, symbol)| {
+                let start = level.ranks(range.start);
+                let end = level.ranks(range.end);
+
+                let left_count = end.0 - start.0;
+                let go_left =
+                    left_count > Ones::zero() && level.overlaps_left_child(&symbol_range, symbol);
+
+                let right_count = end.1 - start.1;
+                let go_right =
+                    right_count > Ones::zero() && level.overlaps_right_child(&symbol_range, symbol);
+
+                use GoMulti::*;
+                match (go_left, go_right) {
+                    (true, true) => Both(
+                        (
+                            level.to_left_range(start.0..end.0),
+                            level.to_left_symbol(symbol),
+                        ),
+                        (
+                            level.to_right_range(start.1..end.1),
+                            level.to_right_symbol(symbol),
+                        ),
+                    ),
+                    (true, false) => Left((
+                        level.to_left_range(start.0..end.0),
+                        level.to_left_symbol(symbol),
+                    )),
+                    (false, true) => Right((
+                        level.to_right_range(start.1..end.1),
+                        level.to_right_symbol(symbol),
+                    )),
+                    (false, false) => None,
+                }
+            });
+        }
+        traversal.result().iter()
+    }
+
+    pub fn count_batch<'a>(
+        &'a self,
+        index_ranges: impl IntoIterator<Item = Range<Ones>>,
+        ignore_bits: Ones,
+        traversal: &'a mut Traversal<BatchValue<Ones, (Range<Ones>, u32)>>,
+    ) -> impl Iterator<Item = &BatchValue<Ones, (Range<Ones>, u32)>> {
+        // stores (range, symbol) batches
+        traversal.init(index_ranges.into_iter().map(|r| (r, 0)));
+        for level in self.levels(ignore_bits) {
+            traversal.traverse(|&(ref range, symbol)| {
+                let start = level.ranks(range.start);
+                let end = level.ranks(range.end);
+                match symbol & level.bitmask {
+                    0 => Go::Left((
+                        level.to_left_range(start.0..end.0),
+                        level.to_left_symbol(symbol),
+                    )),
+                    _ => Go::Right((
+                        level.to_right_range(start.1..end.1),
+                        level.to_right_symbol(symbol),
+                    )),
+                }
+            });
+        }
+        traversal.result().iter()
+    }
+
+    // todo: decide whether offsets is a good name, or whether we should call them
+    // sorted_indices or quantiles.
+    // note: the js implementation assumes sorted input offsets and coalesces quantiles that map to the same symbol,
+    // which allows it to do less work at each level of the tree and return a more compact result. might not be worth
+    // optimizing if we have a small number of offsets, unless we want to compute them over a large number of index ranges.
+    // the difference between JS and Rust was pretty significant (>2x), though, so I wonder what's going on...
+    #[allow(clippy::type_complexity)] // !
+    pub fn quantile_batch<'a>(
+        &'a self,
+        index_range: Range<Ones>, // todo: impl intoiterator
+        offsets: impl IntoIterator<Item = Ones>,
+        traversal: &'a mut Traversal<BatchValue<Ones, (Range<Ones>, u32, Ones)>>,
+    ) -> impl Iterator<Item = &BatchValue<Ones, (Range<Ones>, u32, Ones)>> {
+        // stores (range, symbol, offset) batches
+        traversal.init(
+            offsets
+                .into_iter()
+                .map(|offset| (index_range.clone(), 0, offset)),
+        );
+        for level in self.levels.iter() {
+            traversal.traverse(|&(ref range, symbol, offset)| {
+                let start = level.ranks(range.start);
+                let end = level.ranks(range.end);
+                let left_count = end.0 - start.0;
+                if offset < left_count {
+                    Go::Left((
+                        level.to_left_range(start.0..end.0),
+                        level.to_left_symbol(symbol),
+                        offset,
+                    ))
+                } else {
+                    Go::Right((
+                        level.to_right_range(start.1..end.1),
+                        level.to_right_symbol(symbol),
+                        offset - left_count,
+                    ))
+                }
+            });
+        }
+        traversal.result().iter()
+    }
+
     // Returns an iterator over levels from the high bit downwards, ignoring the
     // bottom `ignore_bits` levels.
-    fn levels(&self, ignore_bits: usize) -> impl Iterator<Item = &Level<Ones, BV>> {
-        self.levels.iter().take(self.levels.len() - ignore_bits)
+    fn levels(&self, ignore_bits: Ones) -> impl Iterator<Item = &Level<Ones, BV>> {
+        self.levels
+            .iter()
+            .take(self.levels.len() - ignore_bits.usize())
     }
 
     pub fn len(&self) -> Ones {
@@ -298,26 +447,26 @@ fn intervals_overlap_inclusive(a_lo: u32, a_hi: u32, b_lo: u32, b_hi: u32) -> bo
 // so associating each batch with an index allows us to track the association between inputs
 // and outputs.
 #[derive(Debug, Copy, Clone, PartialEq)]
-pub struct BatchValue<Ones: BitBlock, T> {
-    pub index: Ones,
+pub struct BatchValue<Index: BitBlock, T> {
+    pub index: Index,
     pub payload: T,
 }
 
-impl<Ones: BitBlock, T> BatchValue<Ones, T> {
-    fn new(input_index: Ones, value: T) -> BatchValue<Ones, T> {
+impl<Index: BitBlock, T> BatchValue<Index, T> {
+    fn new(input_index: Index, value: T) -> BatchValue<Index, T> {
         BatchValue {
             index: input_index,
             payload: value,
         }
     }
     #[allow(dead_code)]
-    fn map<U>(self, f: impl FnOnce(T) -> U) -> BatchValue<Ones, U> {
+    fn map<U>(self, f: impl FnOnce(T) -> U) -> BatchValue<Index, U> {
         BatchValue {
             index: self.index,
             payload: f(self.payload),
         }
     }
-    fn with_payload(&self, payload: T) -> BatchValue<Ones, T> {
+    fn with_payload(&self, payload: T) -> BatchValue<Index, T> {
         BatchValue {
             index: self.index,
             payload,
@@ -376,7 +525,7 @@ impl<Ones: BitBlock, T> Traversal<BatchValue<Ones, T>> {
         );
     }
 
-    pub fn new() -> Traversal<T> {
+    pub fn new() -> Traversal<BatchValue<Ones, T>> {
         Traversal {
             left: Vec::new(),
             right: Vec::new(),
@@ -425,5 +574,43 @@ impl<Ones: BitBlock, T> Traversal<BatchValue<Ones, T>> {
 
     fn result(&self) -> &Vec<BatchValue<Ones, T>> {
         &self.left
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn print_counts() {
+        let symbols = vec![1, 2, 3, 3, 2, 1, 4, 5, 6, 7, 8, 9, 10];
+        let max_symbol = *symbols.iter().max().unwrap_or(&0);
+        let wm = WaveletMatrix::from_data(symbols.clone(), max_symbol);
+        // let mut t = Traversal::new();
+        // let mut iter: Vec<_> = wm.get_batch(0..13, 0, &mut t).collect();
+        // iter.sort_by(|&a, &b| a.index.cmp(&b.index));
+        // for x in iter {
+        //     //.iter().map(|x| x.payload.1) {
+        //     dbg!(x);
+        // }
+        // panic!("wm");
+
+        for r in wm.counts(
+            0..symbols.len() as u32,
+            0..=*symbols.iter().max().unwrap(),
+            0,
+            &mut Traversal::new(),
+        ) {
+            let (ref range, symbol) = r.payload;
+            println!(
+                "index: {:?} symbol: {:?} count: {:?} range: [{:?}, {:?})",
+                r.index,
+                symbol,
+                range.end - range.start,
+                range.start,
+                range.end,
+            );
+        }
+        assert!(false)
     }
 }
