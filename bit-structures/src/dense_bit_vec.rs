@@ -1,17 +1,10 @@
 // Dense bit vector with rank and select, based on the ideas described
 // in the paper "Fast, Small, Simple Rank/Select on Bitmaps".
 // We use an additional level of blocks provided by the RawBitVec, but the ideas are the same.
-// Uses a 32-bit universe size and so can store a little more than 4 billion bits.
 
 // todo:
-// - use select as an acceleration index for rank
-//   - benchmark the effect on nonuniformly distributed 1 bits; i bet it helps more when the data are clustered
-// x change rank to return the count strictly below the input index i so that rank and select become inverses.
-//   x we can possibly reuse the rank block indexing check
-// - is 'dense' the right name for this? the raw one is dense, this just adds rank/select support.
-//
-// todo:
-// - try split_last in select1
+//  - benchmark the effect on nonuniformly distributed 1 bits; i bet it helps more when the data are clustered
+//  - try split_last in select1
 use crate::bit_block::BitBlock;
 use crate::bit_buf::BitBuf;
 use crate::bit_vec::BitVec;

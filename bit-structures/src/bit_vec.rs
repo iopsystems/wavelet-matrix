@@ -1,31 +1,14 @@
-
 use crate::bit_block::BitBlock;
-// Bitvector support traits for Access, Rank, Select.
-// How can we make select and rank support configurable at zero cost? Type level constant params?
-// todo: should this fromiterator type be u32, usize, or u64? or generic?
-// todo: now can we implement from_iter in a way that allows us to also pass configuration options,
-// eg. sample rates for rank/select samples?
-// : FromIterator<u32>
-// todo: decide whether to call these `index` and `n` or `i` and `n`
-// todo: rename this file to bit_vec.rs?
-// You should implement:
+
+// BitVec is the general vector trait. MultiBitVec is the trait for bitvectors with multiplicity.
+
+// Implementers should implement:
 // - rank1 or rank0
 // - num_ones or num_zeros
 // - len
 
-// Allows bit vectors up to 2^64, which implies allowing up to 2^64 1-bits.
-// Use case: HDR Histogram with more than u32::MAX samples.
-// In the EF-compressed representation, this requires that the maximum 1-bit
-// be at an index beyond u32::MAX.
-// We could technically still support only u32 1-bits by making select return u64.
-// That would imply being able to ask for rank1(u64) and get a usize or u32 back.
-// And would mean num_ones would be u32 and num_zeros would be u64...
-// Should we even encourage usize, which can be dynamic? What if we had two traits,
-// BitVec32 and BitVec64?
-
 // Note: We want to avoid usize since it depends on the environment and we want to
 // serialize from 64-bit to 32-bit environments (WebAssembly)
-// pub type Ones = u64; // u32 | u64
 
 // todo: consider removing default impl of rank1 since it is not used by any current subtypes
 

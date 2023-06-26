@@ -15,7 +15,7 @@ mod rle_bit_vec;
 mod slice_bit_vec;
 mod sparse_bit_vec;
 pub mod utils;
-// todo: put these in a submodule?
+// todo: put the wasm-related structs in a submodule?
 mod wasm_dense_bit_vec_32;
 mod wasm_histogram32;
 mod wasm_sparse_bit_vec_32;

@@ -1,10 +1,10 @@
-// SliceBitVec is a sparse bit vector backed by sorted integer slice. Allows multiplicity.
-// todo: test this type independently from the comparison tests which check it against the other bitvecs.
+// Compressed representation of bitvector with runs of 0-bits and 1-bits.
+// The rank0/rank1 functions are efficient, and select0 is efficient; select1 requires a binary search over the full range.
+// We could implement a "flipped" bitvector wrapper to make select1 efficient.
 
 use crate::bit_block::BitBlock;
 use crate::bit_vec::BitVec;
 use crate::sparse_bit_vec::SparseBitVec;
-// use std::debug_assert;
 
 pub struct RLEBitVec<Ones: BitBlock> {
     // z[i]: Cumulative number of zeros before the start of the i-th 1-run;

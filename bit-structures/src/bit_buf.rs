@@ -1,30 +1,9 @@
 // A plain fixed-size bitvector with no acceleration structures, backed by an array of integers.
 // Supports random bit read and write. Intended as a data representation for dense bitvectors.
 // Not designed for general fixed-width encoding; we can use the bitbuffer library for that.
-// todo:
-// - customizable backing integer type (feels useful to be able to change the block type)
-//   - implement T.bits() for u16, u32, u64;
-//   - see simple-sds split_at_index for how they handle it; maybe we want a T.mask() also for offset masking
-//   - see also my similar block_index_and_offset
-// - add as many debug_assert! s as is reasonable to do
 
 use crate::bit_block::BitBlock;
 use crate::utils::div_ceil;
-
-
-// todo:
-// - add a builder so that we can RLE the start and end of the bitvector, only storing the middle chunk.
-//   - not entirely sure how best to do this
-//     - a trim() method on RawBitVec? then we can't set beyond the trimmed after
-//     - a builder that preallocates the full thing and trims on build?
-//     - a builder that reallocates as you go?
-//     - or if the ones are sorted, can just look at the first and last.
-// - [same idea, refined] implement a "default value" that we can compress out of the top and bottom – or maybe always zero.
-//   ie., store only the middle section and return the default value outside it.
-
-// todo:
-// - does this need to use Ones as the input to eg. .get?
-//   - we can't actually store more than usize::MAX elements in a slice...
 
 #[derive(Debug)]
 pub struct BitBuf<Block: BitBlock = u8> {
