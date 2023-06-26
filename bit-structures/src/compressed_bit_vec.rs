@@ -1,4 +1,4 @@
-/*
+// NOTE: Incomplete, and not currently used. Add to lib.rs once ready.
 // Inspired by Roaring and BitMagic.
 // Unlike Roaring, we store all containers, including empty ones, for faster rank queries.
 // https://arxiv.org/pdf/1709.07821.pdf
@@ -44,5 +44,3 @@ impl CompressedBitVec {
     // rank1:
     // select1: binary search high blocks using partition_point, then
 }
-
-*/

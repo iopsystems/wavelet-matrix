@@ -7,7 +7,6 @@ use wasm_bindgen::prelude::*;
 mod bit_block;
 mod bit_buf;
 mod bit_vec;
-mod compressed_bit_vec;
 mod dense_bit_vec;
 mod histogram;
 mod int_vec;
