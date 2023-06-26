@@ -611,6 +611,6 @@ mod tests {
                 range.end,
             );
         }
-        assert!(false)
+        panic!("wm");
     }
 }
