@@ -11,6 +11,7 @@
 use crate::bit_block::BitBlock;
 use crate::utils::div_ceil;
 
+
 // todo:
 // - add a builder so that we can RLE the start and end of the bitvector, only storing the middle chunk.
 //   - not entirely sure how best to do this
