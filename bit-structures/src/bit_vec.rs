@@ -121,7 +121,9 @@ pub trait BitVec<Ones: BitBlock> {
 // TODO: For these types:
 // - len/num_ones need not be of type Ones, ie. you could have Ones=u8 but have 1 billion elements.
 // - there should be no rank0/select0/num_zeros unless they are specifically implemented to be multiplicity-aware.
-pub trait MultiBitVec<Ones: BitBlock>: BitVec<Ones> {}
+pub trait MultiBitVec: BitVec<Self::Ones> {
+    type Ones: BitBlock;
+}
 
 // We export these defaults so that implementors of this trait have the option of
 // calling these functions, eg. after doing some bookkeeping work. For example,

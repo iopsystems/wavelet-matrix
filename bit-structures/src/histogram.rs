@@ -17,7 +17,7 @@ where
     // Ones is the type used to represent cumulative bin counts
     Ones: BitBlock,
     // Zero bins in the PDF manifest as repetitions in the CDF, so require a MultiBitVec
-    BV: MultiBitVec<Ones>,
+    BV: MultiBitVec<Ones = Ones>,
 {
     params: HistogramParams,
 
@@ -31,7 +31,7 @@ where
 impl<Ones, BV> Histogram<Ones, BV>
 where
     Ones: BitBlock,
-    BV: MultiBitVec<Ones>,
+    BV: MultiBitVec<Ones = Ones>,
 {
     pub fn new(params: HistogramParams, cdf: BV) -> Histogram<Ones, BV> {
         let num_ones = cdf.num_ones();

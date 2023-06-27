@@ -167,7 +167,9 @@ impl<Ones: BitBlock> BitVec<Ones> for SparseBitVec<Ones> {
     }
 }
 
-impl<Ones: BitBlock> MultiBitVec<Ones> for SparseBitVec<Ones> {}
+impl<Ones: BitBlock> MultiBitVec for SparseBitVec<Ones> {
+    type Ones = Ones;
+}
 
 #[cfg(test)]
 mod tests {

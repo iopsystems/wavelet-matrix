@@ -79,7 +79,9 @@ impl<Ones: BitBlock> BitVec<Ones> for SliceBitVec<Ones> {
     }
 }
 
-impl<Ones: BitBlock> MultiBitVec<Ones> for SliceBitVec<Ones> {}
+impl<Ones: BitBlock> MultiBitVec for SliceBitVec<Ones> {
+    type Ones = Ones;
+}
 
 #[cfg(test)]
 mod tests {
