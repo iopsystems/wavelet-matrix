@@ -11,7 +11,7 @@ pub struct WaveletMatrix<T: BitVec> {
     len: T::Ones,
 }
 
-type Dense = DenseBitVec<u32, u8>;
+type Dense = DenseBitVec<u32>;
 
 // Wavelet matrix construction algorithm optimized for the case where we can afford to build a
 // dense histogram that counts the number of occurrences of each symbol. Heuristically,

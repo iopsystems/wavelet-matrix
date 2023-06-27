@@ -10,13 +10,13 @@ use crate::dense_bit_vec::DenseBitVec;
 use crate::int_vec::IntVec;
 
 pub struct SparseBitVec<Ones: BitBlock> {
-    high: DenseBitVec<u32, u8>, // High bit buckets in unary encoding
-    low: IntVec,                // Low bits in fixed-width encoding
-    num_ones: Ones,             // Number of elements (n)
-    len: Ones,                  // Maximum representable integer plus one
-    low_bit_width: Ones,        // Number of low bits per element
-    low_mask: Ones,             // Mask with the low_bit_width lowest bits set to 1
-    has_multiplicity: bool,     // Whether any element is repeated more than once
+    high: DenseBitVec<u32>, // High bit buckets in unary encoding
+    low: IntVec,            // Low bits in fixed-width encoding
+    num_ones: Ones,         // Number of elements (n)
+    len: Ones,              // Maximum representable integer plus one
+    low_bit_width: Ones,    // Number of low bits per element
+    low_mask: Ones,         // Mask with the low_bit_width lowest bits set to 1
+    has_multiplicity: bool, // Whether any element is repeated more than once
 }
 
 impl<Ones: BitBlock> SparseBitVec<Ones> {

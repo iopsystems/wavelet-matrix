@@ -3,7 +3,7 @@ use crate::{bit_buf::BitBuf, bit_vec::BitVec, dense_bit_vec::DenseBitVec, wasm_b
 type Ones = u32;
 
 #[wasm_bindgen]
-pub struct DenseBitVec32(DenseBitVec<Ones, u8>);
+pub struct DenseBitVec32(DenseBitVec<Ones>);
 
 #[wasm_bindgen]
 impl DenseBitVec32 {
@@ -13,7 +13,7 @@ impl DenseBitVec32 {
         for &one in ones {
             buf.set(one.try_into().unwrap());
         }
-        DenseBitVec32(DenseBitVec::<Ones, u8>::new(buf, 10, 10))
+        DenseBitVec32(DenseBitVec::<Ones>::new(buf, 10, 10))
     }
     pub fn rank1(&self, index: Ones) -> Ones {
         self.0.rank1(index)

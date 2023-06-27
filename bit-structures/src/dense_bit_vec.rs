@@ -14,7 +14,7 @@ use std::debug_assert;
 // todo: describe what each rank/select sample holds.
 
 #[derive(Debug)]
-pub struct DenseBitVec<Ones, Raw>
+pub struct DenseBitVec<Ones, Raw = u8>
 where
     // Type of the 1-bits stored in this BitVec
     Ones: BitBlock,
