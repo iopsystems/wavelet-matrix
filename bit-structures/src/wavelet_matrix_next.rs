@@ -21,7 +21,7 @@ impl<BV: BitVec> WaveletMatrix<BV> {
             .enumerate()
             .map(|(index, bits)| Level {
                 num_zeros: bits.rank0(bits.len()),
-                bit: BV::Ones::one() << (max_level - index),
+                bit: BV::one() << (max_level - index),
                 bv: bits,
             })
             .collect();
@@ -32,15 +32,54 @@ impl<BV: BitVec> WaveletMatrix<BV> {
         }
     }
 
-    fn get(&self, index: BV::Ones) -> BV::Ones {
+    pub fn get(&self, index: BV::Ones) -> BV::Ones {
         let mut index = index;
-        let mut symbol = BV::Ones::zero();
+        let mut symbol = BV::zero();
         for level in self.levels(0) {
-            if level.bv.get(index) {
+            if !level.bv.get(index) {
+                // go left
+                index = level.bv.rank0(index);
+            } else {
+                // go right
                 symbol += level.bit;
                 index = level.num_zeros + level.bv.rank1(index);
+            }
+        }
+        symbol
+    }
+
+    pub fn rank(&self, symbol: BV::Ones, range: Range<BV::Ones>) -> BV::Ones {
+        let mut range = range;
+        for level in self.levels(0) {
+            let start = level.ranks(range.start);
+            let end = level.ranks(range.end);
+            if (symbol & level.bit).is_zero() {
+                // go left
+                range = start.0..end.0;
             } else {
-                index = level.bv.rank0(index);
+                // go right
+                range = level.num_zeros + start.1..level.num_zeros + end.1;
+            }
+        }
+        range.end - range.start
+    }
+
+    pub fn quantile(&self, k: BV::Ones, range: Range<BV::Ones>) -> BV::Ones {
+        let mut k = k;
+        let mut range = range;
+        let mut symbol = BV::zero();
+        for level in self.levels(0) {
+            let start = level.ranks(range.start);
+            let end = level.ranks(range.end);
+            let left_count = end.0 - start.0;
+            if k < left_count  {
+                // go left
+                range = start.0..end.0;
+            } else {
+                // go right
+                k -= left_count;
+                symbol += level.bit;
+                range = level.num_zeros + start.1..level.num_zeros + end.1;
             }
         }
         symbol
@@ -252,7 +291,7 @@ impl<BV: BitVec> Level<BV> {
         leftmost_symbol: BV::Ones,
     ) -> bool {
         let left_start = leftmost_symbol;
-        let left_end_inclusive = left_start | (self.bit - BV::Ones::one());
+        let left_end_inclusive = left_start | (self.bit - BV::one());
         Self::intervals_overlap_inclusive(
             left_start,
             left_end_inclusive,
@@ -267,7 +306,7 @@ impl<BV: BitVec> Level<BV> {
         leftmost_symbol: BV::Ones,
     ) -> bool {
         let right_start = leftmost_symbol | self.bit;
-        let right_end_inclusive = right_start | (self.bit - BV::Ones::one());
+        let right_end_inclusive = right_start | (self.bit - BV::one());
         Self::intervals_overlap_inclusive(
             right_start,
             right_end_inclusive,
@@ -277,9 +316,10 @@ impl<BV: BitVec> Level<BV> {
     }
 
     // Returns (rank0(index), rank1(index))
+    // This means that if x = ranks(index), x.0 is rank0 and x.1 is rank1.
     pub fn ranks(&self, index: BV::Ones) -> (BV::Ones, BV::Ones) {
         if index.is_zero() {
-            return (BV::Ones::zero(), BV::Ones::zero());
+            return (BV::zero(), BV::zero());
         }
         let num_ones = self.bv.rank1(index);
         let num_zeros = index - num_ones;
@@ -314,11 +354,14 @@ mod tests {
 
     #[test]
     fn test_get() {
-        let symbols = vec![1, 2, 3, 3, 2, 1, 4, 5, 6, 7, 8, 9, 10];
+        let symbols = vec![1, 2, 3, 3, 2, 1, 4, 5, 6, 7, 8, 2, 9, 10];
         let max_symbol = symbols.iter().max().copied().unwrap_or(0);
         let wm = WaveletMatrix::from_data(symbols.clone(), max_symbol);
         for (i, sym) in symbols.iter().copied().enumerate() {
             assert_eq!(sym, wm.get(i as u32));
+            // dbg!(sym, wm.rank(sym, 0..wm.len()));
+            dbg!(i, wm.quantile(i as u32, 0..wm.len()));
         }
+        panic!("get");
     }
 }

@@ -190,7 +190,7 @@ impl<BV: BitVec> Level<BV> {
     // (rank0(index), rank1(index))
     pub fn ranks(&self, index: BV::Ones) -> (BV::Ones, BV::Ones) {
         if index.is_zero() {
-            return (BV::Ones::zero(), BV::Ones::zero());
+            return (BV::zero(), BV::zero());
         }
         let num_ones = self.bv.rank1(index);
         let num_zeros = index - num_ones;
@@ -293,12 +293,12 @@ impl<BV: BitVec> WaveletMatrix<BV> {
                 let end = level.ranks(range.end);
 
                 let left_count = end.0 - start.0;
-                let go_left = left_count > BV::Ones::zero()
-                    && level.overlaps_left_child(&symbol_range, symbol);
+                let go_left =
+                    left_count > BV::zero() && level.overlaps_left_child(&symbol_range, symbol);
 
                 let right_count = end.1 - start.1;
-                let go_right = right_count > BV::Ones::zero()
-                    && level.overlaps_right_child(&symbol_range, symbol);
+                let go_right =
+                    right_count > BV::zero() && level.overlaps_right_child(&symbol_range, symbol);
 
                 use GoMulti::*;
                 match (go_left, go_right) {

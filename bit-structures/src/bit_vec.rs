@@ -1,5 +1,6 @@
 use crate::bit_block::BitBlock;
 use num::One;
+use num::Zero;
 
 // BitVec is the general vector trait. MultiBitVec is the trait for bitvectors with multiplicity.
 
@@ -117,6 +118,14 @@ pub trait BitVec {
         // This could be done more efficiently but is a reasonable default.
         let ones_count = self.rank1(index + Self::Ones::one()) - self.rank1(index);
         ones_count.is_one()
+    }
+
+    fn zero() -> Self::Ones {
+        Self::Ones::zero()
+    }
+
+    fn one() -> Self::Ones {
+        Self::Ones::one()
     }
 }
 
