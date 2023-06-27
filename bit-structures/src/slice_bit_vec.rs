@@ -42,7 +42,9 @@ impl<Ones: BitBlock> SliceBitVec<Ones> {
     }
 }
 
-impl<Ones: BitBlock> BitVec<Ones> for SliceBitVec<Ones> {
+impl<Ones: BitBlock> BitVec for SliceBitVec<Ones> {
+    type Ones = Ones;
+
     fn rank1(&self, i: Ones) -> Ones {
         if i >= self.len() {
             return self.num_ones();
@@ -79,9 +81,7 @@ impl<Ones: BitBlock> BitVec<Ones> for SliceBitVec<Ones> {
     }
 }
 
-impl<Ones: BitBlock> MultiBitVec for SliceBitVec<Ones> {
-    type Ones = Ones;
-}
+impl<Ones: BitBlock> MultiBitVec for SliceBitVec<Ones> {}
 
 #[cfg(test)]
 mod tests {

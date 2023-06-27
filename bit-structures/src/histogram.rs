@@ -10,70 +10,63 @@
 use crate::bit_block::BitBlock;
 use crate::bit_vec::MultiBitVec;
 use crate::slice_bit_vec::SliceBitVec;
+use num::One;
+use num::Zero;
 use std::debug_assert;
 
-pub struct Histogram<Ones, BV>
-where
-    // Ones is the type used to represent cumulative bin counts
-    Ones: BitBlock,
-    // Zero bins in the PDF manifest as repetitions in the CDF, so require a MultiBitVec
-    BV: MultiBitVec<Ones = Ones>,
-{
+// Zero bins in the PDF manifest as repetitions in the CDF, so require a MultiBitVec
+pub struct Histogram<T: MultiBitVec> {
     params: HistogramParams,
 
     // A bitvector representing the cumulative counts for each bin.
-    cdf: BV,
+    cdf: T,
 
     // The total number of values added to this histogram
-    count: Ones,
+    count: T::Ones,
 }
 
-impl<Ones, BV> Histogram<Ones, BV>
-where
-    Ones: BitBlock,
-    BV: MultiBitVec<Ones = Ones>,
-{
-    pub fn new(params: HistogramParams, cdf: BV) -> Histogram<Ones, BV> {
+impl<T: MultiBitVec> Histogram<T> {
+    pub fn new(params: HistogramParams, cdf: T) -> Histogram<T> {
         let num_ones = cdf.num_ones();
-        debug_assert!(num_ones == Ones::from_u32(params.num_bins()));
+        debug_assert!(num_ones == T::Ones::from_u32(params.num_bins()));
         let count = if num_ones.is_zero() {
-            Ones::zero()
+            T::Ones::zero()
         } else {
-            cdf.select1(num_ones - Ones::one()).unwrap()
+            cdf.select1(num_ones - T::Ones::one()).unwrap()
         };
         Histogram { params, cdf, count }
     }
 
     /// Return an upper bound on the number of observations at or below `value`.
-    pub fn cumulative_count(&self, value: Ones) -> Ones {
+    pub fn cumulative_count(&self, value: T::Ones) -> T::Ones {
         // What is the index of the bin containing `value`?
         let bin_index = self.params.bin_index(value.into());
         // How many observations are in or below that bin?
-        self.cdf.select1(Ones::from_u32(bin_index)).unwrap()
+        self.cdf.select1(T::Ones::from_u32(bin_index)).unwrap()
     }
 
     /// Return an upper bound on the value of the q-th quantile.
-    pub fn quantile(&self, q: f64) -> Ones {
+    pub fn quantile(&self, q: f64) -> T::Ones {
         // Number of observations at or below the q-th quantile
         let k = self.quantile_to_count(q);
         // Bin index of the bin containing the k-th observation
-        let bin_index = self.cdf.rank1(k + Ones::one());
+        let bin_index = self.cdf.rank1(k + T::Ones::one());
         // Maximum value in that bin
         let high = self.params.high(bin_index.u32());
-        Ones::from_u64(high)
+        T::Ones::from_u64(high)
     }
 
     /// Return the number of observations that lie at or below the q-th quantile.
-    pub fn quantile_to_count(&self, q: f64) -> Ones {
+    pub fn quantile_to_count(&self, q: f64) -> T::Ones {
         debug_assert!((0.0..=1.0).contains(&q));
         // Using `as` to convert an `f64` into any integer type will
         // round towards zero inside representable range.
         // This will equal self.count if and only if q == 1.0.
         let count = (q * self.count.f64()) as u32;
-        Ones::from_u32(count)
+        T::Ones::from_u32(count)
     }
 
-    pub fn count(&self) -> Ones {
+    pub fn count(&self) -> T::Ones {
         self.count
     }
 
@@ -81,7 +74,7 @@ where
         self.params
     }
 
-    pub fn builder(a: u32, b: u32, n: u32) -> HistogramBuilder<Ones> {
+    pub fn builder(a: u32, b: u32, n: u32) -> HistogramBuilder<T::Ones> {
         HistogramBuilder::new(a, b, n)
     }
 }
@@ -104,7 +97,7 @@ impl<Ones: BitBlock> HistogramBuilder<Ones> {
         self.pdf[bin_index as usize] += count;
     }
 
-    pub fn build(self) -> Histogram<Ones, SliceBitVec<Ones>> {
+    pub fn build(self) -> Histogram<SliceBitVec<Ones>> {
         let mut acc = Ones::zero();
         let mut cdf = self.pdf;
         for x in cdf.iter_mut() {
@@ -283,7 +276,7 @@ mod tests {
 
     #[test]
     fn test_quantile_to_count() {
-        let mut h = Histogram::<u32, SliceBitVec<u32>>::builder(0, 1, 10);
+        let mut h = Histogram::<SliceBitVec<u32>>::builder(0, 1, 10);
         h.increment(0, 2);
         let h = h.build();
         assert_eq!(h.quantile_to_count(0.00), 0);
@@ -294,7 +287,7 @@ mod tests {
 
     #[test]
     fn percentiles_1() {
-        let mut h = Histogram::<u32, SliceBitVec<u32>>::builder(0, 1, 10);
+        let mut h = Histogram::<SliceBitVec<u32>>::builder(0, 1, 10);
         for v in 1..1024 {
             h.increment(v, 1);
         }
@@ -319,7 +312,7 @@ mod tests {
 
     #[test]
     fn percentiles_2() {
-        let mut h = Histogram::<u32, SliceBitVec<u32>>::builder(0, 4, 10);
+        let mut h = Histogram::<SliceBitVec<u32>>::builder(0, 4, 10);
         for v in 1..1024 {
             h.increment(v, 1);
         }
@@ -344,7 +337,7 @@ mod tests {
     }
 
     fn percentiles_3() {
-        let mut h = Histogram::<u32, SliceBitVec<u32>>::builder(0, 9, 30);
+        let mut h = Histogram::<SliceBitVec<u32>>::builder(0, 9, 30);
         h.increment(1, 1);
         h.increment(10_000_000, 1);
         let h = h.build();

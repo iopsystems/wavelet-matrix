@@ -1,4 +1,5 @@
 use crate::bit_block::BitBlock;
+use num::One;
 
 // BitVec is the general vector trait. MultiBitVec is the trait for bitvectors with multiplicity.
 
@@ -12,32 +13,34 @@ use crate::bit_block::BitBlock;
 
 // todo: consider removing default impl of rank1 since it is not used by any current subtypes
 
-pub trait BitVec<Ones: BitBlock> {
-    fn rank1(&self, index: Ones) -> Ones {
+pub trait BitVec {
+    type Ones: BitBlock;
+
+    fn rank1(&self, index: Self::Ones) -> Self::Ones {
         self.default_rank1(index)
     }
 
-    fn rank0(&self, index: Ones) -> Ones {
+    fn rank0(&self, index: Self::Ones) -> Self::Ones {
         self.default_rank0(index)
     }
 
-    fn select1(&self, n: Ones) -> Option<Ones> {
+    fn select1(&self, n: Self::Ones) -> Option<Self::Ones> {
         self.default_select1(n)
     }
 
-    fn select0(&self, n: Ones) -> Option<Ones> {
+    fn select0(&self, n: Self::Ones) -> Option<Self::Ones> {
         self.default_select0(n)
     }
 
-    fn get(&self, index: Ones) -> bool {
+    fn get(&self, index: Self::Ones) -> bool {
         self.default_get(index)
     }
 
-    fn num_ones(&self) -> Ones {
+    fn num_ones(&self) -> Self::Ones {
         self.len() - self.num_zeros()
     }
 
-    fn num_zeros(&self) -> Ones {
+    fn num_zeros(&self) -> Self::Ones {
         self.len() - self.num_ones()
     }
 
@@ -61,7 +64,7 @@ pub trait BitVec<Ones: BitBlock> {
     // which would compute rank1(i+1) and work even when
     // i+1 and the resulting rank would exceed the bit width
     // of Ones.
-    fn len(&self) -> Ones;
+    fn len(&self) -> Self::Ones;
 
     // todo: return the total size in bytes using std::mem::size_of plus the
     // same recursively for all constituents behind a pointer?
@@ -77,7 +80,7 @@ pub trait BitVec<Ones: BitBlock> {
     // }
 
     /// Default impl of rank1 using rank0
-    fn default_rank1(&self, index: Ones) -> Ones {
+    fn default_rank1(&self, index: Self::Ones) -> Self::Ones {
         if index >= self.len() {
             return self.num_ones();
         }
@@ -85,7 +88,7 @@ pub trait BitVec<Ones: BitBlock> {
     }
 
     /// Default impl of rank0 using rank1
-    fn default_rank0(&self, index: Ones) -> Ones {
+    fn default_rank0(&self, index: Self::Ones) -> Self::Ones {
         if index >= self.len() {
             return self.num_zeros();
         }
@@ -93,26 +96,26 @@ pub trait BitVec<Ones: BitBlock> {
     }
 
     /// Default impl of select1 using binary search over ranks
-    fn default_select0(&self, n: Ones) -> Option<Ones> {
+    fn default_select0(&self, n: Self::Ones) -> Option<Self::Ones> {
         if n >= self.num_zeros() {
             return None;
         }
         let index = self.len().partition_point(|i| self.rank0(i) <= n);
-        Some(index - Ones::one())
+        Some(index - Self::Ones::one())
     }
 
     /// Default impl of select0 using binary search over ranks
-    fn default_select1(&self, n: Ones) -> Option<Ones> {
+    fn default_select1(&self, n: Self::Ones) -> Option<Self::Ones> {
         if n >= self.num_ones() {
             return None;
         }
         let index = self.len().partition_point(|i| self.rank1(i) <= n);
-        Some(index - Ones::one())
+        Some(index - Self::Ones::one())
     }
 
-    fn default_get(&self, index: Ones) -> bool {
+    fn default_get(&self, index: Self::Ones) -> bool {
         // This could be done more efficiently but is a reasonable default.
-        let ones_count = self.rank1(index + Ones::one()) - self.rank1(index);
+        let ones_count = self.rank1(index + Self::Ones::one()) - self.rank1(index);
         ones_count.is_one()
     }
 }
@@ -121,16 +124,14 @@ pub trait BitVec<Ones: BitBlock> {
 // TODO: For these types:
 // - len/num_ones need not be of type Ones, ie. you could have Ones=u8 but have 1 billion elements.
 // - there should be no rank0/select0/num_zeros unless they are specifically implemented to be multiplicity-aware.
-pub trait MultiBitVec: BitVec<Self::Ones> {
-    type Ones: BitBlock;
-}
+pub trait MultiBitVec: BitVec {}
 
 // We export these defaults so that implementors of this trait have the option of
 // calling these functions, eg. after doing some bookkeeping work. For example,
 // the sparse bitvec checks whether it contains multiplicity before calling select0 or rank0.
 
 #[cfg(test)]
-pub fn test_bitvector<T: BitVec<u32>>(new: impl Fn(&[u32], u32) -> T) {
+pub fn test_bitvector<T: BitVec<Ones = u32>>(new: impl Fn(&[u32], u32) -> T) {
     let bv = new(&[1, 2, 3], 4);
     assert_eq!(bv.len(), 4);
     assert_eq!(bv.num_ones(), 3);
@@ -161,7 +162,7 @@ pub fn test_bitvector<T: BitVec<u32>>(new: impl Fn(&[u32], u32) -> T) {
 }
 
 #[cfg(test)]
-pub fn test_bitvector_vs_naive<T: BitVec<u32>>(new: impl Fn(&[u32], u32) -> T) {
+pub fn test_bitvector_vs_naive<T: BitVec<Ones = u32>>(new: impl Fn(&[u32], u32) -> T) {
     use exhaustigen::Gen;
 
     use crate::slice_bit_vec::SliceBitVec;

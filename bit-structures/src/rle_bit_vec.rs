@@ -58,7 +58,9 @@ impl<Ones: BitBlock> RLEBitVec<Ones> {
     }
 }
 
-impl<Ones: BitBlock> BitVec<Ones> for RLEBitVec<Ones> {
+impl<Ones: BitBlock> BitVec for RLEBitVec<Ones> {
+    type Ones = Ones;
+
     fn rank1(&self, index: Ones) -> Ones {
         if index >= self.len {
             return self.num_ones;

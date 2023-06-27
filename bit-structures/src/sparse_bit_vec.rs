@@ -82,7 +82,8 @@ impl<Ones: BitBlock> SparseBitVec<Ones> {
     }
 }
 
-impl<Ones: BitBlock> BitVec<Ones> for SparseBitVec<Ones> {
+impl<Ones: BitBlock> BitVec for SparseBitVec<Ones> {
+    type Ones = Ones;
     //     3: index of the first guy of the next group
     //  1: index of the first guy of this group
     // -1--33----7
@@ -167,9 +168,7 @@ impl<Ones: BitBlock> BitVec<Ones> for SparseBitVec<Ones> {
     }
 }
 
-impl<Ones: BitBlock> MultiBitVec for SparseBitVec<Ones> {
-    type Ones = Ones;
-}
+impl<Ones: BitBlock> MultiBitVec for SparseBitVec<Ones> {}
 
 #[cfg(test)]
 mod tests {

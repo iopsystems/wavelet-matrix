@@ -146,7 +146,9 @@ impl<Ones: BitBlock, Raw: BitBlock> DenseBitVec<Ones, Raw> {
     }
 }
 
-impl<Ones: BitBlock, Raw: BitBlock> BitVec<Ones> for DenseBitVec<Ones, Raw> {
+impl<Ones: BitBlock, Raw: BitBlock> BitVec for DenseBitVec<Ones, Raw> {
+    type Ones = Ones;
+
     fn rank1(&self, index: Ones) -> Ones {
         if index >= self.len() {
             return self.num_ones();
