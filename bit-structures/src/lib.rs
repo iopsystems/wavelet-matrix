@@ -20,6 +20,7 @@ mod wasm_dense_bit_vec_32;
 mod wasm_histogram32;
 mod wasm_sparse_bit_vec_32;
 mod wasm_utils;
+mod wavelet_matrix_next;
 
 // Called by our JS entry point
 #[wasm_bindgen(start)]

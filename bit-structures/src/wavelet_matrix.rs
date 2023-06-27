@@ -5,10 +5,10 @@ use std::iter;
 use std::ops::{Range, RangeInclusive};
 
 #[derive(Debug)]
-pub struct WaveletMatrix<T: BitVec> {
-    levels: Vec<Level<T>>,
+pub struct WaveletMatrix<BV: BitVec> {
+    levels: Vec<Level<BV>>,
     max_symbol: u32,
-    len: T::Ones,
+    len: BV::Ones,
 }
 
 type Dense = DenseBitVec<u32>;
@@ -17,7 +17,7 @@ type Dense = DenseBitVec<u32>;
 // dense histogram that counts the number of occurrences of each symbol. Heuristically,
 // this is roughly the case where the alphabet size does not exceed the number of data points.
 // Implements Algorithm 1 (seq.pc) from the paper "Practical Wavelet Tree Construction".
-fn build_levels(data: Vec<u32>, num_levels: usize) -> Vec<Dense> {
+fn build_bitvecs(data: Vec<u32>, num_levels: usize) -> Vec<Dense> {
     let mut levels = vec![BitBuf::new(data.len()); num_levels];
     let mut hist = vec![0; 1 << num_levels];
     let mut borders = vec![0; 1 << num_levels];
@@ -88,7 +88,7 @@ fn build_levels(data: Vec<u32>, num_levels: usize) -> Vec<Dense> {
 // Returns an array of level bitvectors built from `data`.
 // Handles the sparse case where the alphabet size exceeds the number of data points and
 // building a histogram with an entry for each symbol is expensive
-fn build_levels_large_alphabet(mut data: Vec<u32>, num_levels: usize) -> Vec<Dense> {
+fn build_bitvecs_large_alphabet(mut data: Vec<u32>, num_levels: usize) -> Vec<Dense> {
     let mut levels = Vec::with_capacity(num_levels);
     let max_level = num_levels - 1;
 
@@ -134,29 +134,29 @@ fn build_levels_large_alphabet(mut data: Vec<u32>, num_levels: usize) -> Vec<Den
 }
 
 #[derive(Debug)]
-struct Level<T: BitVec> {
-    bits: T,
-    num_zeros: T::Ones,
+struct Level<BV: BitVec> {
+    bv: BV,
+    num_zeros: BV::Ones,
     // unsigned int with a single bit set signifying
     // the magnitude represented at that level.
-    // e.g.  levels[0].bitmask == 1 << levels.len() - 1
-    bitmask: u32, // todo: rename to mag?
+    // e.g.  levels[0].bit == 1 << levels.len() - 1
+    bit: u32,
 }
 
-impl<T: BitVec> Level<T> {
-    fn to_left_index(&self, index: T::Ones) -> T::Ones {
+impl<BV: BitVec> Level<BV> {
+    fn to_left_index(&self, index: BV::Ones) -> BV::Ones {
         index
     }
 
-    fn to_right_index(&self, index: T::Ones) -> T::Ones {
+    fn to_right_index(&self, index: BV::Ones) -> BV::Ones {
         self.num_zeros + index
     }
 
-    fn to_left_range(&self, range: Range<T::Ones>) -> Range<T::Ones> {
+    fn to_left_range(&self, range: Range<BV::Ones>) -> Range<BV::Ones> {
         range
     }
 
-    fn to_right_range(&self, range: Range<T::Ones>) -> Range<T::Ones> {
+    fn to_right_range(&self, range: Range<BV::Ones>) -> Range<BV::Ones> {
         let nz = self.num_zeros;
         nz + range.start..nz + range.end
     }
@@ -166,18 +166,18 @@ impl<T: BitVec> Level<T> {
     }
 
     fn to_right_symbol(&self, symbol: u32) -> u32 {
-        symbol | self.bitmask
+        symbol | self.bit
     }
 
     fn overlaps_left_child(&self, range: &RangeInclusive<u32>, leftmost_symbol: u32) -> bool {
         let left_start = leftmost_symbol;
-        let left_end_inclusive = left_start | (self.bitmask - 1);
+        let left_end_inclusive = left_start | (self.bit - 1);
         intervals_overlap_inclusive(left_start, left_end_inclusive, *range.start(), *range.end())
     }
 
     fn overlaps_right_child(&self, range: &RangeInclusive<u32>, leftmost_symbol: u32) -> bool {
-        let right_start = leftmost_symbol | self.bitmask;
-        let right_end_inclusive = right_start | (self.bitmask - 1);
+        let right_start = leftmost_symbol | self.bit;
+        let right_end_inclusive = right_start | (self.bit - 1);
         intervals_overlap_inclusive(
             right_start,
             right_end_inclusive,
@@ -188,14 +188,25 @@ impl<T: BitVec> Level<T> {
 
     // Returns the rank0 and rank1 at `index `:
     // (rank0(index), rank1(index))
-    pub fn ranks(&self, index: T::Ones) -> (T::Ones, T::Ones) {
+    pub fn ranks(&self, index: BV::Ones) -> (BV::Ones, BV::Ones) {
         if index.is_zero() {
-            return (T::Ones::zero(), T::Ones::zero());
+            return (BV::Ones::zero(), BV::Ones::zero());
         }
-        let num_ones = self.bits.rank1(index);
+        let num_ones = self.bv.rank1(index);
         let num_zeros = index - num_ones;
         (num_zeros, num_ones)
     }
+}
+
+/// Reverse the lowest `numBits` bits of `v`. For example:
+///
+/// assert!(reverse_low_bits(0b0000100100, 6) == 0b0000001001)
+/// //                     ^^^^^^              ^^^^^^
+///
+// (todo: figure out how to import this function so the doctest
+// can be run...)
+fn reverse_low_bits(x: usize, num_bits: usize) -> usize {
+    x.reverse_bits() >> (usize::BITS as usize - num_bits)
 }
 
 impl WaveletMatrix<Dense> {
@@ -208,27 +219,27 @@ impl WaveletMatrix<Dense> {
         // is less than 2^num_levels, and if so use the scalable algorithm, and otherise use the
         // the efficient algorithm.
         let levels = if num_levels < (data.len().ilog2() as usize) {
-            build_levels(data, num_levels)
+            build_bitvecs(data, num_levels)
         } else {
-            build_levels_large_alphabet(data, num_levels)
+            build_bitvecs_large_alphabet(data, num_levels)
         };
 
         WaveletMatrix::from_levels(levels, max_symbol)
     }
 }
 
-impl<T: BitVec> WaveletMatrix<T> {
-    pub fn from_levels(levels: Vec<T>, max_symbol: u32) -> WaveletMatrix<T> {
+impl<BV: BitVec> WaveletMatrix<BV> {
+    pub fn from_levels(levels: Vec<BV>, max_symbol: u32) -> WaveletMatrix<BV> {
         let max_level = levels.len() - 1;
         let len = levels.first().map(|level| level.len()).unwrap();
 
-        let levels: Vec<Level<T>> = levels
+        let levels: Vec<Level<BV>> = levels
             .into_iter()
             .enumerate()
             .map(|(index, bits)| Level {
                 num_zeros: bits.rank0(bits.len()),
-                bitmask: 1 << (max_level - index),
-                bits,
+                bit: 1 << (max_level - index),
+                bv: bits,
             })
             .collect();
 
@@ -241,16 +252,16 @@ impl<T: BitVec> WaveletMatrix<T> {
 
     pub fn get_batch<'a>(
         &'a self,
-        indices: impl IntoIterator<Item = T::Ones>,
-        ignore_bits: T::Ones,
-        traversal: &'a mut Traversal<BatchValue<T::Ones, (T::Ones, u32)>>,
-    ) -> impl Iterator<Item = &BatchValue<T::Ones, (T::Ones, u32)>> {
+        indices: impl IntoIterator<Item = BV::Ones>,
+        ignore_bits: BV::Ones,
+        traversal: &'a mut Traversal<BatchValue<BV::Ones, (BV::Ones, u32)>>,
+    ) -> impl Iterator<Item = &BatchValue<BV::Ones, (BV::Ones, u32)>> {
         // stores (index, symbol) batches
         traversal.init(indices.into_iter().map(|index| (index, 0)));
         for level in self.levels(ignore_bits) {
             traversal.traverse(|&(index, symbol)| {
                 let (index0, index1) = level.ranks(index);
-                match level.bits.get(index) {
+                match level.bv.get(index) {
                     false => Go::Left((level.to_left_index(index0), level.to_left_symbol(symbol))),
                     true => {
                         Go::Right((level.to_right_index(index1), level.to_right_symbol(symbol)))
@@ -269,11 +280,11 @@ impl<T: BitVec> WaveletMatrix<T> {
     // todo: subcode_separator
     pub fn counts<'a>(
         &'a self,
-        index_range: Range<T::Ones>,
+        index_range: Range<BV::Ones>,
         symbol_range: RangeInclusive<u32>,
-        ignore_bits: T::Ones,
-        traversal: &'a mut Traversal<BatchValue<T::Ones, (Range<T::Ones>, u32)>>,
-    ) -> impl Iterator<Item = &BatchValue<T::Ones, (Range<T::Ones>, u32)>> {
+        ignore_bits: BV::Ones,
+        traversal: &'a mut Traversal<BatchValue<BV::Ones, (Range<BV::Ones>, u32)>>,
+    ) -> impl Iterator<Item = &BatchValue<BV::Ones, (Range<BV::Ones>, u32)>> {
         // stores (range, symbol) batches
         traversal.init(iter::once((index_range, 0)));
         for level in self.levels(ignore_bits) {
@@ -282,11 +293,11 @@ impl<T: BitVec> WaveletMatrix<T> {
                 let end = level.ranks(range.end);
 
                 let left_count = end.0 - start.0;
-                let go_left = left_count > T::Ones::zero()
+                let go_left = left_count > BV::Ones::zero()
                     && level.overlaps_left_child(&symbol_range, symbol);
 
                 let right_count = end.1 - start.1;
-                let go_right = right_count > T::Ones::zero()
+                let go_right = right_count > BV::Ones::zero()
                     && level.overlaps_right_child(&symbol_range, symbol);
 
                 use GoMulti::*;
@@ -318,17 +329,17 @@ impl<T: BitVec> WaveletMatrix<T> {
 
     pub fn count_batch<'a>(
         &'a self,
-        index_ranges: impl IntoIterator<Item = Range<T::Ones>>,
-        ignore_bits: T::Ones,
-        traversal: &'a mut Traversal<BatchValue<T::Ones, (Range<T::Ones>, u32)>>,
-    ) -> impl Iterator<Item = &BatchValue<T::Ones, (Range<T::Ones>, u32)>> {
+        index_ranges: impl IntoIterator<Item = Range<BV::Ones>>,
+        ignore_bits: BV::Ones,
+        traversal: &'a mut Traversal<BatchValue<BV::Ones, (Range<BV::Ones>, u32)>>,
+    ) -> impl Iterator<Item = &BatchValue<BV::Ones, (Range<BV::Ones>, u32)>> {
         // stores (range, symbol) batches
         traversal.init(index_ranges.into_iter().map(|r| (r, 0)));
         for level in self.levels(ignore_bits) {
             traversal.traverse(|&(ref range, symbol)| {
                 let start = level.ranks(range.start);
                 let end = level.ranks(range.end);
-                match symbol & level.bitmask {
+                match symbol & level.bit {
                     0 => Go::Left((
                         level.to_left_range(start.0..end.0),
                         level.to_left_symbol(symbol),
@@ -352,10 +363,10 @@ impl<T: BitVec> WaveletMatrix<T> {
     #[allow(clippy::type_complexity)] // !
     pub fn quantile_batch<'a>(
         &'a self,
-        index_range: Range<T::Ones>, // todo: impl intoiterator
-        offsets: impl IntoIterator<Item = T::Ones>,
-        traversal: &'a mut Traversal<BatchValue<T::Ones, (Range<T::Ones>, u32, T::Ones)>>,
-    ) -> impl Iterator<Item = &BatchValue<T::Ones, (Range<T::Ones>, u32, T::Ones)>> {
+        index_range: Range<BV::Ones>, // todo: impl intoiterator
+        offsets: impl IntoIterator<Item = BV::Ones>,
+        traversal: &'a mut Traversal<BatchValue<BV::Ones, (Range<BV::Ones>, u32, BV::Ones)>>,
+    ) -> impl Iterator<Item = &BatchValue<BV::Ones, (Range<BV::Ones>, u32, BV::Ones)>> {
         // stores (range, symbol, offset) batches
         traversal.init(
             offsets
@@ -387,13 +398,13 @@ impl<T: BitVec> WaveletMatrix<T> {
 
     // Returns an iterator over levels from the high bit downwards, ignoring the
     // bottom `ignore_bits` levels.
-    fn levels(&self, ignore_bits: T::Ones) -> impl Iterator<Item = &Level<T>> {
+    fn levels(&self, ignore_bits: BV::Ones) -> impl Iterator<Item = &Level<BV>> {
         self.levels
             .iter()
             .take(self.levels.len() - ignore_bits.usize())
     }
 
-    pub fn len(&self) -> T::Ones {
+    pub fn len(&self) -> BV::Ones {
         self.len
     }
 
@@ -405,11 +416,11 @@ impl<T: BitVec> WaveletMatrix<T> {
         symbol <= self.max_symbol
     }
 
-    pub fn is_valid_index(&self, index: T::Ones) -> bool {
+    pub fn is_valid_index(&self, index: BV::Ones) -> bool {
         index < self.len
     }
 
-    pub fn is_valid_index_range(&self, range: Range<T::Ones>) -> bool {
+    pub fn is_valid_index_range(&self, range: Range<BV::Ones>) -> bool {
         range.start < self.len && range.end <= self.len && range.start <= range.end
     }
 
@@ -418,7 +429,7 @@ impl<T: BitVec> WaveletMatrix<T> {
     }
 }
 
-// todo: is this bit_ceil?
+// todo: is this bit_ceil? seems to be bit_ceil(symbol-1)
 pub fn num_levels_for_symbol(symbol: u32) -> usize {
     // Equivalent to max(1, ceil(log2(alphabet_size))), which ensures
     // that we always have at least one level even if all symbols are 0.
@@ -426,17 +437,6 @@ pub fn num_levels_for_symbol(symbol: u32) -> usize {
         .max(1)
         .try_into()
         .unwrap()
-}
-
-/// Reverse the lowest `numBits` bits of `v`. For example:
-///
-/// assert!(reverse_low_bits(0b0000100100, 6) == 0b0000001001)
-/// //                     ^^^^^^              ^^^^^^
-///
-// (todo: figure out how to import this function so the doctest
-// can be run...)
-fn reverse_low_bits(x: usize, num_bits: usize) -> usize {
-    x.reverse_bits() >> (usize::BITS as usize - num_bits)
 }
 
 fn intervals_overlap_inclusive(a_lo: u32, a_hi: u32, b_lo: u32, b_hi: u32) -> bool {
