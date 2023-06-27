@@ -26,6 +26,8 @@ pub trait BitBlock:
     + Into<u64>
 {
     const BITS: u32; // number of bits in the representation of this type
+
+    // todo: this is not the bit width... BITS is the bit width. This is BITS_WIDTH... o_O
     const BIT_WIDTH: u32 = Self::BITS.ilog2(); // bit width
 
     /// Bit index of the `i`-th bit within its block (mask off the high bits)
