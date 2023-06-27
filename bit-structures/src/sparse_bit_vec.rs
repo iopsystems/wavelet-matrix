@@ -10,13 +10,13 @@ use crate::dense_bit_vec::DenseBitVec;
 use crate::int_vec::IntVec;
 
 pub struct SparseBitVec<Ones: BitBlock> {
-    high: DenseBitVec<u32>, // High bit buckets in unary encoding
-    low: IntVec,            // Low bits in fixed-width encoding
-    num_ones: Ones,         // Number of elements (n)
-    len: Ones,              // Maximum representable integer plus one
-    low_bit_width: Ones,    // Number of low bits per element
-    low_mask: Ones,         // Mask with the low_bit_width lowest bits set to 1
-    has_multiplicity: bool, // Whether any element is repeated more than once
+    high: DenseBitVec<Ones>, // High bit buckets in unary encoding
+    low: IntVec,             // Low bits in fixed-width encoding
+    num_ones: Ones,          // Number of elements (n)
+    len: Ones,               // Maximum representable integer plus one
+    low_bit_width: Ones,     // Number of low bits per element
+    low_mask: Ones,          // Mask with the low_bit_width lowest bits set to 1
+    has_multiplicity: bool,  // Whether any element is repeated more than once
 }
 
 impl<Ones: BitBlock> SparseBitVec<Ones> {
@@ -60,7 +60,7 @@ impl<Ones: BitBlock> SparseBitVec<Ones> {
         }
 
         // todo: allow tuning of the block parameters
-        let high = DenseBitVec::new(high, 8, 8);
+        let high = DenseBitVec::new(high, Ones::from_u32(10), Ones::from_u32(10));
 
         Self {
             high,
@@ -98,32 +98,17 @@ impl<Ones: BitBlock> BitVec for SparseBitVec<Ones> {
         let quotient = self.quotient(index);
         let (lower_bound, upper_bound) = if quotient.is_zero() {
             let lower_bound = Ones::zero();
-            let upper_bound = self
-                .high
-                .select0(0)
-                .map(Ones::from_u32)
-                .unwrap_or(self.num_ones);
+            let upper_bound = self.high.select0(Ones::zero()).unwrap_or(self.num_ones);
             (lower_bound, upper_bound)
         } else {
             // compute the lower..upper range to search within the low bits
             // since the dense bitvec has Ones = u32, convert the quotient.
             // todo: try the equivalent of "as u32" if we can assert in the
             // constructor that we don't go beyond u32::MAX bits.
-            let quotient = quotient.u32();
-            let i = quotient - 1;
-            let lower_bound = self
-                .high
-                .select0(i)
-                .map(|x| x - i)
-                .map(Ones::from_u32)
-                .unwrap_or(Ones::zero());
+            let i = quotient - Ones::one();
+            let lower_bound = self.high.select0(i).map(|x| x - i).unwrap_or(Ones::zero());
             let i = quotient;
-            let upper_bound = self
-                .high
-                .select0(i)
-                .map(|x| x - i)
-                .map(Ones::from_u32)
-                .unwrap_or(self.num_ones);
+            let upper_bound = self.high.select0(i).map(|x| x - i).unwrap_or(self.num_ones);
             (lower_bound, upper_bound)
         };
 
@@ -144,7 +129,7 @@ impl<Ones: BitBlock> BitVec for SparseBitVec<Ones> {
     }
 
     fn select1(&self, n: Ones) -> Option<Ones> {
-        let quotient = Ones::from_u32(self.high.rank0(self.high.select1(n.u32())?));
+        let quotient = self.high.rank0(self.high.select1(n)?);
         let remainder = Ones::from_u32(self.low.get(n.usize()));
         Some((quotient << self.low_bit_width) + remainder)
     }
