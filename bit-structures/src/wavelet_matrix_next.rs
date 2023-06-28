@@ -1,5 +1,5 @@
 use crate::{bit_buf::BitBuf, bit_vec::BitVec, dense_bit_vec::DenseBitVec};
-use num::Zero;
+use num::{One, Zero};
 use std::{
     collections::VecDeque,
     ops::{Range, RangeInclusive},
@@ -129,8 +129,8 @@ impl<V: BitVec> WaveletMatrix<V> {
                 range = level.num_zeros + start.1..level.num_zeros + end.1;
             }
         }
-        let frequency = range.end - range.start;
-        (symbol, frequency)
+        let count = range.end - range.start;
+        (symbol, count)
     }
 
     pub fn select(&self, symbol: V::Ones, k: V::Ones, range: Range<V::Ones>) -> Option<V::Ones> {
@@ -174,9 +174,26 @@ impl<V: BitVec> WaveletMatrix<V> {
         Some(index)
     }
 
+    // Return the majority element, if one exists.
+    // The majority element is one whose frequency is larger than 50% of the range.
+    fn simple_majority(&self, range: Range<V::Ones>) -> Option<V::Ones> {
+        let len = range.end - range.start;
+        let half_len = len >> V::Ones::one();
+        let (symbol, count) = self.quantile(half_len, range);
+        if count > half_len {
+            Some(symbol)
+        } else {
+            None
+        }
+    }
+
+    // todo: fn majority(&self, k, range) { ... }
+    // Returns the 1/k-majority. Ie. for k = 4, return the elements (if any) with
+    // frequency larger than 1/4th (25%) of the specified index range.
+
     pub fn get_batch(&self, indices: &[V::Ones]) -> VecDeque<BatchValue<(V::Ones, V::Ones)>> {
         let zero = V::Ones::zero();
-        // stores (index, symbol);
+        // stores (index, symbol)
         let mut cur = VecDeque::from_iter(
             indices
                 .iter()
@@ -473,15 +490,28 @@ pub fn num_levels_for_symbol(symbol: u32) -> usize {
         .unwrap()
 }
 
-// // note: we want to be able to batch rank calls.
-// struct Scratch<T> {
-//     cur: VecDeque<BatchValue<T>>,
-//     next: VecDeque<BatchValue<T>>,
-//     num_left: u64,
-// }
+// todo: we might want to batch-get all indices, and batch-query all ranks.
+// whatever abstraction we design has to be compatible with that. it should
+// probably get cur as an iterator, then push_left or push_right
+struct Scratch<T> {
+    cur: VecDeque<BatchValue<T>>,
+    next: VecDeque<BatchValue<T>>,
+    num_left: usize,
+}
 
-// impl Scratch {
-//     fn iter() {}
+// impl<T> Scratch<T> {
+//     fn iter(&mut self) {
+//         self.cur.clear();
+//         self.next.make_contiguous()[self.num_left..].reverse();
+//         mem::swap(&mut self.next, &mut self.cur);
+//         self.num_left = 0;
+//     }
+//     fn push_left(&mut self, x: T) {
+//         next.push_front(x.with_value((index, symbol)));
+//     }
+//     fn push_right(&mut self, x: T) {
+//         next.push_back(x.with_value((index, symbol)));
+//     }
 // }
 
 #[cfg(test)]
