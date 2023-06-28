@@ -87,12 +87,14 @@ impl<V: BitVec> WaveletMatrix<V> {
         symbol
     }
 
-    pub fn rank(&self, symbol: V::Ones, range: Range<V::Ones>) -> V::Ones {
+    // return the range of this symbol on the virtual bottom level, restricted to the query range.
+    fn symbol_range(&self, symbol: V::Ones, range: Range<V::Ones>) -> Range<V::Ones> {
         let mut range = range;
         for level in self.levels(0) {
             let start = level.ranks(range.start);
             let end = level.ranks(range.end);
-            if (symbol & level.bit).is_zero() {
+            let symbol_is_in_left_child = (symbol & level.bit).is_zero();
+            if symbol_is_in_left_child {
                 // go left
                 range = start.0..end.0;
             } else {
@@ -100,7 +102,12 @@ impl<V: BitVec> WaveletMatrix<V> {
                 range = level.num_zeros + start.1..level.num_zeros + end.1;
             }
         }
-        range.end - range.start
+        range
+    }
+
+    pub fn count(&self, symbol: V::Ones, range: Range<V::Ones>) -> V::Ones {
+        let r = self.symbol_range(symbol, range);
+        r.end - r.start
     }
 
     pub fn quantile(&self, k: V::Ones, range: Range<V::Ones>) -> (V::Ones, V::Ones) {
@@ -126,10 +133,50 @@ impl<V: BitVec> WaveletMatrix<V> {
         (symbol, frequency)
     }
 
+    pub fn select(&self, symbol: V::Ones, k: V::Ones, range: Range<V::Ones>) -> Option<V::Ones> {
+        // track the symbol down to a range on the bottom level
+        let r = self.symbol_range(symbol, range);
+
+        // If there are fewer than `k+1` copies of `symbol` in the range, return early.
+        if k < (r.end - r.start) {
+            return None;
+        }
+
+        // track the k-th occurrence of the symbol up from the bottom-most virtual level
+        let mut index = r.start + k;
+
+        for level in self.levels.iter().rev() {
+            let nz = level.num_zeros;
+            // `index` represents an index on the level below this one, which may be
+            // the bottom-most 'virtual' layer that contains all symbols in sorted order.
+            //
+            // We want to determine the position of the element represented by `index` on
+            // this level, which we can do by "mapping" the index up to its parent node.
+            //
+            // `nz` tells us how many bits on the level below come from left children of
+            // the wavelet tree represented by this wavelet matrix. If the index < nz, that
+            // means that the index on the level below came from a left child on this level,
+            // which means that it must be represented by a 0-bit on this level; specifically,
+            // the `index`-th 0-bit, since the WT always represents a stable sort of its elements.
+            //
+            // On the other hand, if `index` came from a right child on this level, then it
+            // is represented by a 1-bit on this level; specifically, the `index - nz`-th 1-bit.
+            //
+            // In either case, we can use bitvector select to compute the index on this level.
+            if index < nz {
+                // `index` represents a left child on this level, represented by the `index`-th 0-bit.
+                index = level.bv.select0(index).unwrap();
+            } else {
+                // `index` represents a right child on this level, represented by the `index-nz`-th 1-bit.
+                index = level.bv.select1(index - nz).unwrap();
+            }
+        }
+        Some(index)
+    }
+
     pub fn get_batch(&self, indices: &[V::Ones]) -> VecDeque<BatchValue<(V::Ones, V::Ones)>> {
-        // create two vecdeques
-        // store (index, symbol);
         let zero = V::Ones::zero();
+        // stores (index, symbol);
         let mut cur = VecDeque::from_iter(
             indices
                 .iter()
@@ -451,11 +498,13 @@ mod tests {
             // dbg!(sym, wm.rank(sym, 0..wm.len()));
             dbg!(i, wm.quantile(i as u32, 0..wm.len()));
         }
-        let indices = &[0, 1, 2, 2, 1, 0, 13];
-        let mut xs = wm.get_batch(indices);
-        let xs = xs.make_contiguous();
-        xs.sort_by_key(|x| x.index);
-        dbg!(xs);
+
+        // dbg!(wm.select(10, 1, 0..wm.len()));
+        // let indices = &[0, 1, 2, 2, 1, 0, 13];
+        // let mut xs = wm.get_batch(indices);
+        // let xs = xs.make_contiguous();
+        // xs.sort_by_key(|x| x.index);
+        // dbg!(xs);
         // dbg!(i, wm.quantile(i as u32, 0..wm.len()));
 
         panic!("get");
