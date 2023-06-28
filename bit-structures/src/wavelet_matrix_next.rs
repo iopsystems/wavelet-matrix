@@ -1,6 +1,9 @@
 use crate::{bit_buf::BitBuf, bit_vec::BitVec, dense_bit_vec::DenseBitVec};
 use num::Zero;
-use std::ops::{Range, RangeInclusive};
+use std::{
+    collections::VecDeque,
+    ops::{Range, RangeInclusive},
+};
 
 // todo
 // - simple majority
@@ -17,22 +20,22 @@ use std::ops::{Range, RangeInclusive};
 type Dense = DenseBitVec<u32>;
 
 #[derive(Debug)]
-pub struct WaveletMatrix<BV: BitVec> {
-    levels: Vec<Level<BV>>,
+pub struct WaveletMatrix<V: BitVec> {
+    levels: Vec<Level<V>>,
     max_symbol: u32,
-    len: BV::Ones,
+    len: V::Ones,
 }
 
-impl<BV: BitVec> WaveletMatrix<BV> {
-    pub fn from_bitvecs(levels: Vec<BV>, max_symbol: u32) -> WaveletMatrix<BV> {
+impl<V: BitVec> WaveletMatrix<V> {
+    pub fn from_bitvecs(levels: Vec<V>, max_symbol: u32) -> WaveletMatrix<V> {
         let max_level = levels.len() - 1;
         let len = levels.first().map(|level| level.len()).unwrap();
-        let levels: Vec<Level<BV>> = levels
+        let levels: Vec<Level<V>> = levels
             .into_iter()
             .enumerate()
             .map(|(index, bits)| Level {
                 num_zeros: bits.rank0(bits.len()),
-                bit: BV::one() << (max_level - index),
+                bit: V::one() << (max_level - index),
                 bv: bits,
             })
             .collect();
@@ -43,9 +46,23 @@ impl<BV: BitVec> WaveletMatrix<BV> {
         }
     }
 
-    pub fn get(&self, index: BV::Ones) -> BV::Ones {
-        let mut index = index;
-        let mut symbol = BV::zero();
+    // todo:
+    // - prototype batch_get with a VecDeque
+    // - try seeing if we can make it one continuous loop somehow
+    // - this will still alternate left and right, unless we have a temporary storage to put right-recursers in...
+    // - or: treat it as scratch space, push_left left guys and push_right right guys; order gets reversed...
+    //   unless we push_left right children and push_right left children, which will reverse the order but
+    //   be contiguous. interesting.
+    // - so: maybe two vec_deques to toggle between? clear the previous one (keeping the storage), iterate the
+    //   current one; can encapsulate them into a "scratch" datastructure
+    pub fn get_batch(&self, indices: &[V::Ones]) -> V::Ones {
+        // create two vecdeques
+        let mut cur = VecDeque::<V::Ones>::with_capacity(indices.len());
+        cur.extend(indices.iter().copied());
+        let mut next = VecDeque::<V::Ones>::new();
+
+        let mut index = indices.first().copied().unwrap();
+        let mut symbol = V::zero();
         for level in self.levels(0) {
             if !level.bv.get(index) {
                 // go left
@@ -59,7 +76,23 @@ impl<BV: BitVec> WaveletMatrix<BV> {
         symbol
     }
 
-    pub fn rank(&self, symbol: BV::Ones, range: Range<BV::Ones>) -> BV::Ones {
+    pub fn get(&self, index: V::Ones) -> V::Ones {
+        let mut index = index;
+        let mut symbol = V::zero();
+        for level in self.levels(0) {
+            if !level.bv.get(index) {
+                // go left
+                index = level.bv.rank0(index);
+            } else {
+                // go right
+                symbol += level.bit;
+                index = level.num_zeros + level.bv.rank1(index);
+            }
+        }
+        symbol
+    }
+
+    pub fn rank(&self, symbol: V::Ones, range: Range<V::Ones>) -> V::Ones {
         let mut range = range;
         for level in self.levels(0) {
             let start = level.ranks(range.start);
@@ -75,11 +108,11 @@ impl<BV: BitVec> WaveletMatrix<BV> {
         range.end - range.start
     }
 
-    pub fn quantile(&self, k: BV::Ones, range: Range<BV::Ones>) -> (BV::Ones, BV::Ones) {
+    pub fn quantile(&self, k: V::Ones, range: Range<V::Ones>) -> (V::Ones, V::Ones) {
         assert!(k < range.end - range.start);
         let mut k = k;
         let mut range = range;
-        let mut symbol = BV::zero();
+        let mut symbol = V::zero();
         for level in self.levels(0) {
             let start = level.ranks(range.start);
             let end = level.ranks(range.end);
@@ -100,11 +133,11 @@ impl<BV: BitVec> WaveletMatrix<BV> {
 
     // Returns an iterator over levels from the high bit downwards, ignoring the
     // bottom `ignore_bits` levels.
-    fn levels(&self, ignore_bits: usize) -> impl Iterator<Item = &Level<BV>> {
+    fn levels(&self, ignore_bits: usize) -> impl Iterator<Item = &Level<V>> {
         self.levels.iter().take(self.levels.len() - ignore_bits)
     }
 
-    pub fn len(&self) -> BV::Ones {
+    pub fn len(&self) -> V::Ones {
         self.len
     }
 
@@ -254,57 +287,57 @@ fn build_bitvecs_large_alphabet(mut data: Vec<u32>, num_levels: usize) -> Vec<De
 }
 
 #[derive(Debug)]
-struct Level<BV: BitVec> {
-    bv: BV,
-    num_zeros: BV::Ones,
+struct Level<V: BitVec> {
+    bv: V,
+    num_zeros: V::Ones,
     // unsigned int with a single bit set signifying
     // the magnitude represented at that level.
     // e.g.  levels[0].bit == 1 << levels.len() - 1
-    bit: BV::Ones,
+    bit: V::Ones,
 }
 
-impl<BV: BitVec> Level<BV> {
-    fn to_left_index(&self, index: BV::Ones) -> BV::Ones {
+impl<V: BitVec> Level<V> {
+    fn to_left_index(&self, index: V::Ones) -> V::Ones {
         index
     }
 
-    fn to_right_index(&self, index: BV::Ones) -> BV::Ones {
+    fn to_right_index(&self, index: V::Ones) -> V::Ones {
         self.num_zeros + index
     }
 
-    fn to_left_range(&self, range: Range<BV::Ones>) -> Range<BV::Ones> {
+    fn to_left_range(&self, range: Range<V::Ones>) -> Range<V::Ones> {
         range
     }
 
-    fn to_right_range(&self, range: Range<BV::Ones>) -> Range<BV::Ones> {
+    fn to_right_range(&self, range: Range<V::Ones>) -> Range<V::Ones> {
         let nz = self.num_zeros;
         nz + range.start..nz + range.end
     }
 
-    fn to_left_symbol(&self, symbol: BV::Ones) -> BV::Ones {
+    fn to_left_symbol(&self, symbol: V::Ones) -> V::Ones {
         symbol
     }
 
-    fn to_right_symbol(&self, symbol: BV::Ones) -> BV::Ones {
+    fn to_right_symbol(&self, symbol: V::Ones) -> V::Ones {
         symbol | self.bit
     }
 
     fn intervals_overlap_inclusive(
-        a_lo: BV::Ones,
-        a_hi: BV::Ones,
-        b_lo: BV::Ones,
-        b_hi: BV::Ones,
+        a_lo: V::Ones,
+        a_hi: V::Ones,
+        b_lo: V::Ones,
+        b_hi: V::Ones,
     ) -> bool {
         a_lo <= b_hi && b_lo <= a_hi
     }
 
     fn overlaps_left_child(
         &self,
-        range: &RangeInclusive<BV::Ones>,
-        leftmost_symbol: BV::Ones,
+        range: &RangeInclusive<V::Ones>,
+        leftmost_symbol: V::Ones,
     ) -> bool {
         let left_start = leftmost_symbol;
-        let left_end_inclusive = left_start | (self.bit - BV::one());
+        let left_end_inclusive = left_start | (self.bit - V::one());
         Self::intervals_overlap_inclusive(
             left_start,
             left_end_inclusive,
@@ -315,11 +348,11 @@ impl<BV: BitVec> Level<BV> {
 
     fn overlaps_right_child(
         &self,
-        range: &RangeInclusive<BV::Ones>,
-        leftmost_symbol: BV::Ones,
+        range: &RangeInclusive<V::Ones>,
+        leftmost_symbol: V::Ones,
     ) -> bool {
         let right_start = leftmost_symbol | self.bit;
-        let right_end_inclusive = right_start | (self.bit - BV::one());
+        let right_end_inclusive = right_start | (self.bit - V::one());
         Self::intervals_overlap_inclusive(
             right_start,
             right_end_inclusive,
@@ -330,9 +363,9 @@ impl<BV: BitVec> Level<BV> {
 
     // Returns (rank0(index), rank1(index))
     // This means that if x = ranks(index), x.0 is rank0 and x.1 is rank1.
-    pub fn ranks(&self, index: BV::Ones) -> (BV::Ones, BV::Ones) {
+    pub fn ranks(&self, index: V::Ones) -> (V::Ones, V::Ones) {
         if index.is_zero() {
-            return (BV::zero(), BV::zero());
+            return (V::zero(), V::zero());
         }
         let num_ones = self.bv.rank1(index);
         let num_zeros = index - num_ones;

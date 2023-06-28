@@ -15,58 +15,58 @@ use num::Zero;
 use std::debug_assert;
 
 // Zero bins in the PDF manifest as repetitions in the CDF, so require a MultiBitVec
-pub struct Histogram<BV: MultiBitVec> {
+pub struct Histogram<V: MultiBitVec> {
     params: HistogramParams,
 
     // A bitvector representing the cumulative counts for each bin.
-    cdf: BV,
+    cdf: V,
 
     // The total number of values added to this histogram
-    count: BV::Ones,
+    count: V::Ones,
 }
 
-impl<BV: MultiBitVec> Histogram<BV> {
-    pub fn new(params: HistogramParams, cdf: BV) -> Histogram<BV> {
+impl<V: MultiBitVec> Histogram<V> {
+    pub fn new(params: HistogramParams, cdf: V) -> Histogram<V> {
         let num_ones = cdf.num_ones();
-        debug_assert!(num_ones == BV::Ones::from_u32(params.num_bins()));
+        debug_assert!(num_ones == V::Ones::from_u32(params.num_bins()));
         let count = if num_ones.is_zero() {
-            BV::Ones::zero()
+            V::Ones::zero()
         } else {
-            cdf.select1(num_ones - BV::Ones::one()).unwrap()
+            cdf.select1(num_ones - V::Ones::one()).unwrap()
         };
         Histogram { params, cdf, count }
     }
 
     /// Return an upper bound on the number of observations at or below `value`.
-    pub fn cumulative_count(&self, value: BV::Ones) -> BV::Ones {
+    pub fn cumulative_count(&self, value: V::Ones) -> V::Ones {
         // What is the index of the bin containing `value`?
         let bin_index = self.params.bin_index(value.into());
         // How many observations are in or below that bin?
-        self.cdf.select1(BV::Ones::from_u32(bin_index)).unwrap()
+        self.cdf.select1(V::Ones::from_u32(bin_index)).unwrap()
     }
 
     /// Return an upper bound on the value of the q-th quantile.
-    pub fn quantile(&self, q: f64) -> BV::Ones {
+    pub fn quantile(&self, q: f64) -> V::Ones {
         // Number of observations at or below the q-th quantile
         let k = self.quantile_to_count(q);
         // Bin index of the bin containing the k-th observation
-        let bin_index = self.cdf.rank1(k + BV::Ones::one());
+        let bin_index = self.cdf.rank1(k + V::Ones::one());
         // Maximum value in that bin
         let high = self.params.high(bin_index.u32());
-        BV::Ones::from_u64(high)
+        V::Ones::from_u64(high)
     }
 
     /// Return the number of observations that lie at or below the q-th quantile.
-    pub fn quantile_to_count(&self, q: f64) -> BV::Ones {
+    pub fn quantile_to_count(&self, q: f64) -> V::Ones {
         debug_assert!((0.0..=1.0).contains(&q));
         // Using `as` to convert an `f64` into any integer type will
         // round towards zero inside representable range.
         // This will equal self.count if and only if q == 1.0.
         let count = (q * self.count.f64()) as u32;
-        BV::Ones::from_u32(count)
+        V::Ones::from_u32(count)
     }
 
-    pub fn count(&self) -> BV::Ones {
+    pub fn count(&self) -> V::Ones {
         self.count
     }
 
@@ -74,7 +74,7 @@ impl<BV: MultiBitVec> Histogram<BV> {
         self.params
     }
 
-    pub fn builder(a: u32, b: u32, n: u32) -> HistogramBuilder<BV::Ones> {
+    pub fn builder(a: u32, b: u32, n: u32) -> HistogramBuilder<V::Ones> {
         HistogramBuilder::new(a, b, n)
     }
 }
