@@ -25,6 +25,10 @@ impl<T> BatchValue<T> {
     fn new(index: usize, value: T) -> BatchValue<T> {
         BatchValue { index, value }
     }
+    // construct a BatchValue from an (index, value) tuple
+    fn tuple((index, value): (usize, T)) -> BatchValue<T> {
+        BatchValue { index, value }
+    }
     fn map<U>(self, f: impl FnOnce(T) -> U) -> BatchValue<U> {
         BatchValue {
             index: self.index,
@@ -208,16 +212,19 @@ impl<V: BitVec> WaveletMatrix<V> {
     //     *ranges*. so rather than saying "these symbols have frequency >25%" we can say "these symbol ranges have
     //     frequency >25%", for power of two frequencies (or actually arbitrary ones, based on the quantiles...right?)
 
-    pub fn get_batch(&self, indices: &[V::Ones]) -> VecDeque<BatchValue<(V::Ones, V::Ones)>> {
+    pub fn get_batch(&self, indices: &[V::Ones]) -> Vec<V::Ones> {
         let zero = V::Ones::zero();
-        // stores (index, symbol)
+
+        // stores (wm index, symbol) batches, with each batch corresponding to an input index.
         let mut cur = VecDeque::from_iter(
             indices
                 .iter()
                 .copied()
+                .map(|index| (index, zero))
                 .enumerate()
-                .map(|(i, index)| BatchValue::new(i, (index, zero))),
+                .map(BatchValue::tuple),
         );
+
         let mut next = VecDeque::new();
 
         for level in self.levels(0) {
@@ -227,21 +234,27 @@ impl<V: BitVec> WaveletMatrix<V> {
                 if !level.bv.get(index) {
                     // go left
                     let index = level.bv.rank0(index);
+                    // left children are appended to the front of the queue
                     next.push_front(x.with_value((index, symbol)));
                     num_left += 1;
                 } else {
                     // go right
                     let index = level.num_zeros + level.bv.rank1(index);
                     let symbol = symbol + level.bit;
+                    // right children are appended to the back of the queue
                     next.push_back(x.with_value((index, symbol)));
                 }
             }
-            // reverse the right children
-            next.make_contiguous()[num_left..].reverse();
+            // reverse the left children so that the elements are in wm left-to-right orde
+            next.make_contiguous()[..num_left].reverse();
             cur.clear();
             (next, cur) = (cur, next);
         }
-        cur
+        // for a nicer interface, sort the batches in input order
+        // and return a vec of the symbols, analogous to `get`.
+        let slice = cur.make_contiguous();
+        slice.sort_by_key(|x| x.index);
+        slice.iter().map(|x| x.value.1).collect()
     }
 
     // Returns an iterator over levels from the high bit downwards, ignoring the
@@ -543,17 +556,13 @@ mod tests {
         for (i, sym) in symbols.iter().copied().enumerate() {
             assert_eq!(sym, wm.get(i as u32));
             // dbg!(sym, wm.rank(sym, 0..wm.len()));
-            dbg!(i, wm.quantile(i as u32, 0..wm.len()));
+            // dbg!(i, wm.quantile(i as u32, 0..wm.len()));
         }
 
         // dbg!(wm.select(10, 1, 0..wm.len()));
         // let indices = &[0, 1, 2, 2, 1, 0, 13];
-        // let mut xs = wm.get_batch(indices);
-        // let xs = xs.make_contiguous();
-        // xs.sort_by_key(|x| x.index);
+        // let xs = wm.get_batch(indices);
         // dbg!(xs);
-        // dbg!(i, wm.quantile(i as u32, 0..wm.len()));
-
         // panic!("get");
     }
 }
