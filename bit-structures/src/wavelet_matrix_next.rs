@@ -19,6 +19,31 @@ use std::{
 // - set operations on multiple ranges: union, intersection, ...
 type Dense = DenseBitVec<u32>;
 
+// The traversal order means that outputs do not appear in the same order as inputs and
+// there may be multiple outputs per input (e.g. symbols found within a given index range)
+// so associating each batch with an index allows us to track the association between inputs
+// and outputs.
+#[derive(Debug, Copy, Clone, PartialEq)]
+pub struct BatchValue<T> {
+    pub index: usize,
+    pub value: T,
+}
+
+impl<T> BatchValue<T> {
+    fn new(index: usize, value: T) -> BatchValue<T> {
+        BatchValue { index, value }
+    }
+    fn map<U>(self, f: impl FnOnce(T) -> U) -> BatchValue<U> {
+        BatchValue {
+            index: self.index,
+            value: f(self.value),
+        }
+    }
+    fn with_value(self, value: T) -> BatchValue<T> {
+        BatchValue { value, ..self }
+    }
+}
+
 #[derive(Debug)]
 pub struct WaveletMatrix<V: BitVec> {
     levels: Vec<Level<V>>,
@@ -44,36 +69,6 @@ impl<V: BitVec> WaveletMatrix<V> {
             max_symbol,
             len,
         }
-    }
-
-    // todo:
-    // - prototype batch_get with a VecDeque
-    // - try seeing if we can make it one continuous loop somehow
-    // - this will still alternate left and right, unless we have a temporary storage to put right-recursers in...
-    // - or: treat it as scratch space, push_left left guys and push_right right guys; order gets reversed...
-    //   unless we push_left right children and push_right left children, which will reverse the order but
-    //   be contiguous. interesting.
-    // - so: maybe two vec_deques to toggle between? clear the previous one (keeping the storage), iterate the
-    //   current one; can encapsulate them into a "scratch" datastructure
-    pub fn get_batch(&self, indices: &[V::Ones]) -> V::Ones {
-        // create two vecdeques
-        let mut cur = VecDeque::<V::Ones>::with_capacity(indices.len());
-        cur.extend(indices.iter().copied());
-        let mut next = VecDeque::<V::Ones>::new();
-
-        let mut index = indices.first().copied().unwrap();
-        let mut symbol = V::zero();
-        for level in self.levels(0) {
-            if !level.bv.get(index) {
-                // go left
-                index = level.bv.rank0(index);
-            } else {
-                // go right
-                symbol += level.bit;
-                index = level.num_zeros + level.bv.rank1(index);
-            }
-        }
-        symbol
     }
 
     pub fn get(&self, index: V::Ones) -> V::Ones {
@@ -129,6 +124,43 @@ impl<V: BitVec> WaveletMatrix<V> {
         }
         let frequency = range.end - range.start;
         (symbol, frequency)
+    }
+
+    pub fn get_batch(&self, indices: &[V::Ones]) -> VecDeque<BatchValue<(V::Ones, V::Ones)>> {
+        // create two vecdeques
+        // store (index, symbol);
+        let zero = V::Ones::zero();
+        let mut cur = VecDeque::from_iter(
+            indices
+                .iter()
+                .copied()
+                .enumerate()
+                .map(|(i, index)| BatchValue::new(i, (index, zero))),
+        );
+        let mut next = VecDeque::new();
+
+        for level in self.levels(0) {
+            let mut num_left = 0;
+            for x in cur.iter() {
+                let (index, symbol) = x.value;
+                if !level.bv.get(index) {
+                    // go left
+                    let index = level.bv.rank0(index);
+                    next.push_front(x.with_value((index, symbol)));
+                    num_left += 1;
+                } else {
+                    // go right
+                    let index = level.num_zeros + level.bv.rank1(index);
+                    let symbol = symbol + level.bit;
+                    next.push_back(x.with_value((index, symbol)));
+                }
+            }
+            // reverse the right children
+            next.make_contiguous()[num_left..].reverse();
+            cur.clear();
+            (next, cur) = (cur, next);
+        }
+        cur
     }
 
     // Returns an iterator over levels from the high bit downwards, ignoring the
@@ -394,6 +426,17 @@ pub fn num_levels_for_symbol(symbol: u32) -> usize {
         .unwrap()
 }
 
+// // note: we want to be able to batch rank calls.
+// struct Scratch<T> {
+//     cur: VecDeque<BatchValue<T>>,
+//     next: VecDeque<BatchValue<T>>,
+//     num_left: u64,
+// }
+
+// impl Scratch {
+//     fn iter() {}
+// }
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -408,6 +451,13 @@ mod tests {
             // dbg!(sym, wm.rank(sym, 0..wm.len()));
             dbg!(i, wm.quantile(i as u32, 0..wm.len()));
         }
+        let indices = &[0, 1, 2, 2, 1, 0, 13];
+        let mut xs = wm.get_batch(indices);
+        let xs = xs.make_contiguous();
+        xs.sort_by_key(|x| x.index);
+        dbg!(xs);
+        // dbg!(i, wm.quantile(i as u32, 0..wm.len()));
+
         panic!("get");
     }
 }
