@@ -25,6 +25,8 @@ pub trait BitBlock:
     + BitOrAssign
     + BitAndAssign
     + SaturatingSub
+    + Sized
+    + Copy
     + Clone
     + Debug
     + Into<u64>
