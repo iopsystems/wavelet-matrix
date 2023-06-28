@@ -14,13 +14,13 @@ mod rle_bit_vec;
 mod slice_bit_vec;
 mod sparse_bit_vec;
 pub mod utils;
-mod wavelet_matrix;
 // todo: put the wasm-related structs in a submodule?
 mod wasm_dense_bit_vec_32;
 mod wasm_histogram32;
 mod wasm_sparse_bit_vec_32;
 mod wasm_utils;
-mod wavelet_matrix_next;
+mod wasm_wavelet_matrix;
+mod wavelet_matrix;
 
 // Called by our JS entry point
 #[wasm_bindgen(start)]
