@@ -6,16 +6,8 @@ use std::{
 };
 
 // todo
-// - simple majority
-// - k-majority
-//   - note: could we use this with ignore_bits to check if eg. half of the values are in the bottom half/quarter?
-//   - ie. doing majority queries on the high bits lets us make some statements about the density of values across
-//     *ranges*. so rather than saying "these symbols have frequency >25%" we can say "these symbol ranges have
-//     frequency >25%", for power of two frequencies (or actually arbitrary ones, based on the quantiles...right?)
-// - quantile, rank w/ frequency
-// - select
-// - count = ranged rank
-// - count symbols less than
+// - ignore_bits
+// - batch queries
 // - set operations on multiple ranges: union, intersection, ...
 type Dense = DenseBitVec<u32>;
 
@@ -87,27 +79,47 @@ impl<V: BitVec> WaveletMatrix<V> {
         symbol
     }
 
-    // return the range of this symbol on the virtual bottom level, restricted to the query range.
-    fn symbol_range(&self, symbol: V::Ones, range: Range<V::Ones>) -> Range<V::Ones> {
+    // Returns two things:
+    // - the number of symbols preceding this one in sorted order
+    // - the range of this symbol on the virtual bottom level
+    // both restricted to the query range.
+    // This function is designed for internal use, where knowing
+    // the range on the virtual level can be useful, e.g. for select queries.
+    // We compute both of these in one function since it's pretty cheap to do so.
+    fn symbol_stats(
+        &self,
+        symbol: V::Ones,
+        range: Range<V::Ones>,
+        ignore_bits: usize,
+    ) -> (V::Ones, Range<V::Ones>) {
+        let mut preceding_count = V::Ones::zero();
         let mut range = range;
-        for level in self.levels(0) {
+        for level in self.levels(ignore_bits) {
             let start = level.ranks(range.start);
             let end = level.ranks(range.end);
-            let symbol_is_in_left_child = (symbol & level.bit).is_zero();
-            if symbol_is_in_left_child {
+            // check if the symbol's level bit is set to determine whether it should be mapped
+            // to the left or right child node
+            if (symbol & level.bit).is_zero() {
                 // go left
                 range = start.0..end.0;
             } else {
-                // go right
+                // count the symbols in the left child before going right
+                preceding_count += end.0 - start.0;
                 range = level.num_zeros + start.1..level.num_zeros + end.1;
             }
         }
-        range
+        (preceding_count, range)
     }
 
+    // number of symbols less than this one, restricted to the query range
+    pub fn preceding_count(&self, symbol: V::Ones, range: Range<V::Ones>) -> V::Ones {
+        self.symbol_stats(symbol, range, 0).0
+    }
+
+    // number of times the symbol appears in the query range
     pub fn count(&self, symbol: V::Ones, range: Range<V::Ones>) -> V::Ones {
-        let r = self.symbol_range(symbol, range);
-        r.end - r.start
+        let range = self.symbol_stats(symbol, range, 0).1;
+        range.end - range.start
     }
 
     pub fn quantile(&self, k: V::Ones, range: Range<V::Ones>) -> (V::Ones, V::Ones) {
@@ -135,15 +147,15 @@ impl<V: BitVec> WaveletMatrix<V> {
 
     pub fn select(&self, symbol: V::Ones, k: V::Ones, range: Range<V::Ones>) -> Option<V::Ones> {
         // track the symbol down to a range on the bottom level
-        let r = self.symbol_range(symbol, range);
+        let range = self.symbol_stats(symbol, range, 0).1;
 
         // If there are fewer than `k+1` copies of `symbol` in the range, return early.
-        if k < (r.end - r.start) {
+        if k < (range.end - range.start) {
             return None;
         }
 
         // track the k-th occurrence of the symbol up from the bottom-most virtual level
-        let mut index = r.start + k;
+        let mut index = range.start + k;
 
         for level in self.levels.iter().rev() {
             let nz = level.num_zeros;
@@ -187,9 +199,13 @@ impl<V: BitVec> WaveletMatrix<V> {
         }
     }
 
-    // todo: fn majority(&self, k, range) { ... }
+    // todo: fn k_majority(&self, k, range) { ... }
     // Returns the 1/k-majority. Ie. for k = 4, return the elements (if any) with
     // frequency larger than 1/4th (25%) of the specified index range.
+    //   - note: could we use this with ignore_bits to check if eg. half of the values are in the bottom half/quarter?
+    //   - ie. doing majority queries on the high bits lets us make some statements about the density of values across
+    //     *ranges*. so rather than saying "these symbols have frequency >25%" we can say "these symbol ranges have
+    //     frequency >25%", for power of two frequencies (or actually arbitrary ones, based on the quantiles...right?)
 
     pub fn get_batch(&self, indices: &[V::Ones]) -> VecDeque<BatchValue<(V::Ones, V::Ones)>> {
         let zero = V::Ones::zero();
@@ -537,6 +553,6 @@ mod tests {
         // dbg!(xs);
         // dbg!(i, wm.quantile(i as u32, 0..wm.len()));
 
-        panic!("get");
+        // panic!("get");
     }
 }
