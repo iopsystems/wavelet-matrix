@@ -1,5 +1,6 @@
 use num::traits::{CheckedShr, SaturatingSub, WrappingSub};
 use num::{PrimInt, Unsigned};
+use serde::{Deserialize, Serialize};
 use std::fmt::Debug;
 use std::ops::{
     AddAssign, BitAnd, BitAndAssign, BitOr, BitOrAssign, Shl, Shr, ShrAssign, SubAssign,
@@ -30,6 +31,8 @@ pub trait BitBlock:
     + Clone
     + Debug
     + Into<u64>
+    + Serialize
+    + for<'a> Deserialize<'a>
 {
     const BITS: u32; // number of bits in the representation of this type
 
