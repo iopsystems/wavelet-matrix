@@ -79,12 +79,13 @@ impl<V: BitVec> WaveletMatrix<V> {
         symbol
     }
 
-    // Returns two things:
+    // Returns two things, both restricted to the query range:
     // - the number of symbols preceding this one in sorted order
     // - the range of this symbol on the virtual bottom level
-    // both restricted to the query range.
     // This function is designed for internal use, where knowing
     // the range on the virtual level can be useful, e.g. for select queries.
+    // Since the range also tells us the count of this symbol in the range, we
+    // can combine the two pieces of data together for a count-<= query.
     // We compute both of these in one function since it's pretty cheap to do so.
     fn symbol_stats(
         &self,
