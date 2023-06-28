@@ -1,8 +1,19 @@
 use crate::{bit_buf::BitBuf, bit_vec::BitVec, dense_bit_vec::DenseBitVec};
-use num::One;
 use num::Zero;
 use std::ops::{Range, RangeInclusive};
 
+// todo
+// - simple majority
+// - k-majority
+//   - note: could we use this with ignore_bits to check if eg. half of the values are in the bottom half/quarter?
+//   - ie. doing majority queries on the high bits lets us make some statements about the density of values across
+//     *ranges*. so rather than saying "these symbols have frequency >25%" we can say "these symbol ranges have
+//     frequency >25%", for power of two frequencies (or actually arbitrary ones, based on the quantiles...right?)
+// - quantile, rank w/ frequency
+// - select
+// - count = ranged rank
+// - count symbols less than
+// - set operations on multiple ranges: union, intersection, ...
 type Dense = DenseBitVec<u32>;
 
 #[derive(Debug)]
@@ -64,7 +75,8 @@ impl<BV: BitVec> WaveletMatrix<BV> {
         range.end - range.start
     }
 
-    pub fn quantile(&self, k: BV::Ones, range: Range<BV::Ones>) -> BV::Ones {
+    pub fn quantile(&self, k: BV::Ones, range: Range<BV::Ones>) -> (BV::Ones, BV::Ones) {
+        assert!(k < range.end - range.start);
         let mut k = k;
         let mut range = range;
         let mut symbol = BV::zero();
@@ -72,7 +84,7 @@ impl<BV: BitVec> WaveletMatrix<BV> {
             let start = level.ranks(range.start);
             let end = level.ranks(range.end);
             let left_count = end.0 - start.0;
-            if k < left_count  {
+            if k < left_count {
                 // go left
                 range = start.0..end.0;
             } else {
@@ -82,7 +94,8 @@ impl<BV: BitVec> WaveletMatrix<BV> {
                 range = level.num_zeros + start.1..level.num_zeros + end.1;
             }
         }
-        symbol
+        let frequency = range.end - range.start;
+        (symbol, frequency)
     }
 
     // Returns an iterator over levels from the high bit downwards, ignoring the
