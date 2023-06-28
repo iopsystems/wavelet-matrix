@@ -1,6 +1,8 @@
 use crate::dense_bit_vec::DenseBitVec;
 use crate::{wasm_bindgen, wavelet_matrix::WaveletMatrix};
 
+// note: the Ones type refers to the length of the WM (since that is what determines bitvec size).
+// currently the symbol type is always u32.
 type Ones = u32;
 
 #[wasm_bindgen]

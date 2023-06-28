@@ -9,6 +9,9 @@ use std::{
 // - ignore_bits
 // - batch queries
 // - set operations on multiple ranges: union, intersection, ...
+// - functions that accept symbol or index ranges should accept .. and x.. and ..x
+//   - i think this can be implemented with a trait that has an 'expand' method, or
+//     by accepting a RangeBounds and writing a  fn that replaces unbounded with 0 or len/whatever.
 type Dense = DenseBitVec<u32>;
 
 // The traversal order means that outputs do not appear in the same order as inputs and
@@ -211,6 +214,7 @@ impl<V: BitVec> WaveletMatrix<V> {
     //   - ie. doing majority queries on the high bits lets us make some statements about the density of values across
     //     *ranges*. so rather than saying "these symbols have frequency >25%" we can say "these symbol ranges have
     //     frequency >25%", for power of two frequencies (or actually arbitrary ones, based on the quantiles...right?)
+    // note: even more useful would be a k_majority_candidates function that returns all the samples, which can then be filtered down.
 
     pub fn get_batch(&self, indices: &[V::Ones]) -> Vec<V::Ones> {
         let zero = V::Ones::zero();

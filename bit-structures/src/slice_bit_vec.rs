@@ -1,5 +1,6 @@
 // SliceBitVec is a sparse bit vector backed by sorted integer slice. Allows multiplicity.
 // todo: test this type independently from the comparison tests which check it against the other bitvecs.
+// todo: implement batch_rank using multi-value binary search
 
 use crate::bit_block::BitBlock;
 use crate::bit_vec::{BitVec, MultiBitVec};
