@@ -48,10 +48,10 @@ pub struct WaveletMatrix<V: BitVec> {
     len: V::Ones,
 }
 
-impl<V: BitVec + 'static> bincode::Encode for WaveletMatrix<V> {
+impl<V: BitVec> bincode::Encode for WaveletMatrix<V> {
     encode_impl!(levels, max_symbol, len);
 }
-impl<V: BitVec + 'static> bincode::Decode for WaveletMatrix<V> {
+impl<V: BitVec> bincode::Decode for WaveletMatrix<V> {
     decode_impl!(levels, max_symbol, len);
 }
 impl<'de, V: BitVec> bincode::BorrowDecode<'de> for WaveletMatrix<V> {
@@ -282,6 +282,17 @@ impl<V: BitVec> WaveletMatrix<V> {
 
     pub fn max_symbol(&self) -> u32 {
         self.max_symbol
+    }
+
+    pub fn encode(&self) -> Vec<u8> {
+        let config = bincode::config::standard().with_fixed_int_encoding();
+        bincode::encode_to_vec(self, config).unwrap()
+    }
+
+    pub fn decode(data: Vec<u8>) -> Self {
+        let config = bincode::config::standard().with_fixed_int_encoding();
+        let (ret, _) = bincode::decode_from_slice(&data, config).unwrap();
+        ret
     }
 }
 

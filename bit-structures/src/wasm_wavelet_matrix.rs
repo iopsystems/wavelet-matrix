@@ -50,13 +50,9 @@ impl WaveletMatrix32 {
     }
 
     pub fn encode(&self) -> Vec<u8> {
-        let config = bincode::config::standard().with_fixed_int_encoding();
-        bincode::encode_to_vec(&self.0, config).unwrap()
+        self.0.encode()
     }
-
     pub fn decode(data: Vec<u8>) -> Self {
-        let config = bincode::config::standard().with_fixed_int_encoding();
-        let (wm, _) = bincode::decode_from_slice(&data, config).unwrap();
-        Self(wm)
+        Self(WaveletMatrix::decode(data))
     }
 }

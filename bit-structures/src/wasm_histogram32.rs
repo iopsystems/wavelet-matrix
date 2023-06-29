@@ -27,4 +27,10 @@ impl Histogram32 {
     pub fn count(&self) -> Ones {
         self.0.count()
     }
+    pub fn encode(&self) -> Vec<u8> {
+        self.0.encode()
+    }
+    pub fn decode(data: Vec<u8>) -> Self {
+        Self(Histogram::decode(data))
+    }
 }

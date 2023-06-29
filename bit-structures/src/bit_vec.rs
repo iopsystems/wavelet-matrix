@@ -22,7 +22,10 @@ use num::Zero;
 
 // todo: consider removing default impl of rank1 since it is not used by any current subtypes
 
-pub trait BitVec: bincode::Encode + bincode::Decode + for<'de> bincode::BorrowDecode<'de> {
+// todo: what does the 'static mean
+pub trait BitVec:
+    'static + bincode::Encode + bincode::Decode + for<'de> bincode::BorrowDecode<'de>
+{
     type Ones: BitBlock;
 
     fn rank1(&self, index: Self::Ones) -> Self::Ones {
