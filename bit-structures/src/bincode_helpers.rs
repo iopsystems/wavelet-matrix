@@ -1,11 +1,14 @@
 // Helper function for more concise bincode definitions.
 // They need to be manually kept up to date with the type.
 //
-// You might ask why this is needed. It turns out that deriving implementations is incompatible with
-// specifying constraints on generic struct parameters (eg. SparseBitVec<Ones: BitBlock> is not allowed,
-// even though it is necessary to type some fields of that struct).
-// There were also some compilation errors with being able to use derive at the same time as specifing
-// default values for generic struct parameters.
+// You might ask why this is needed. It turns out that deriving implementations is
+// incompatible with specifying constraints on generic struct parameters, eg.
+// #[derive(bincode::Decode)]
+// struct SparseBitVec<Ones: BitBlock> { ... },
+// will error even though constaining the Ones type is necessary to type some fields of that struct.
+// There were also compilation errors that prevented the use of derive at the same time
+// as specifing default values for generic struct parameters, eg.
+// struct Foo<T: BitBlock = u8> { ... }
 
 // todo:
 // - can we add serialization to the bitvec trait and test roundtrips?

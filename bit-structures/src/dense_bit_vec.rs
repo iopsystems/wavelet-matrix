@@ -5,7 +5,6 @@
 // todo:
 //  - benchmark the effect on nonuniformly distributed 1 bits; i bet it helps more when the data are clustered
 //  - try split_last in select1
-// use crate::bincode_helpers;
 use crate::bincode_helpers;
 use crate::bit_block::BitBlock;
 use crate::bit_buf::BitBuf;
