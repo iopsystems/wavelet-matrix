@@ -121,7 +121,7 @@ pub trait BitBlock:
     fn ilog2(self) -> u32;
 }
 
-// used to make bitblock closed and not able to be subtyped from the outside.
+// we use a private trait to prevent BitBlock from being subtyped outside this package
 mod private {
     pub trait Sealed {}
 }
