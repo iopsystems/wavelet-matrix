@@ -1,13 +1,14 @@
 // Elias-Fano-encoded sparse bitvector
 
+use crate::bincode_helpers::{
+    bincode_borrow_decode_impl, bincode_decode_impl, bincode_encode_impl,
+};
 use crate::bit_block::BitBlock;
-use std::debug_assert;
-
 use crate::bit_buf::BitBuf;
-
 use crate::bit_vec::{BitVec, MultiBitVec};
 use crate::dense_bit_vec::DenseBitVec;
 use crate::int_vec::IntVec;
+use std::debug_assert;
 
 #[derive(Debug)]
 pub struct SparseBitVec<Ones: BitBlock> {
@@ -21,50 +22,38 @@ pub struct SparseBitVec<Ones: BitBlock> {
 }
 
 impl<Ones: BitBlock> bincode::Encode for SparseBitVec<Ones> {
-    fn encode<E: bincode::enc::Encoder>(
-        &self,
-        encoder: &mut E,
-    ) -> core::result::Result<(), bincode::error::EncodeError> {
-        bincode::Encode::encode(&self.high, encoder)?;
-        bincode::Encode::encode(&self.low, encoder)?;
-        bincode::Encode::encode(&self.num_ones, encoder)?;
-        bincode::Encode::encode(&self.len, encoder)?;
-        bincode::Encode::encode(&self.low_bit_width, encoder)?;
-        bincode::Encode::encode(&self.low_mask, encoder)?;
-        bincode::Encode::encode(&self.has_multiplicity, encoder)?;
-        Ok(())
-    }
+    bincode_encode_impl!(
+        high,
+        low,
+        num_ones,
+        len,
+        low_bit_width,
+        low_mask,
+        has_multiplicity
+    );
 }
 
 impl<Ones: BitBlock> bincode::Decode for SparseBitVec<Ones> {
-    fn decode<D: bincode::de::Decoder>(
-        decoder: &mut D,
-    ) -> core::result::Result<Self, bincode::error::DecodeError> {
-        Ok(Self {
-            high: bincode::Decode::decode(decoder)?,
-            low: bincode::Decode::decode(decoder)?,
-            num_ones: bincode::Decode::decode(decoder)?,
-            len: bincode::Decode::decode(decoder)?,
-            low_bit_width: bincode::Decode::decode(decoder)?,
-            low_mask: bincode::Decode::decode(decoder)?,
-            has_multiplicity: bincode::Decode::decode(decoder)?,
-        })
-    }
+    bincode_decode_impl!(
+        high,
+        low,
+        num_ones,
+        len,
+        low_bit_width,
+        low_mask,
+        has_multiplicity
+    );
 }
 impl<'de, Ones: BitBlock> bincode::BorrowDecode<'de> for SparseBitVec<Ones> {
-    fn borrow_decode<D: bincode::de::BorrowDecoder<'de>>(
-        decoder: &mut D,
-    ) -> core::result::Result<Self, bincode::error::DecodeError> {
-        Ok(Self {
-            high: bincode::BorrowDecode::borrow_decode(decoder)?,
-            low: bincode::BorrowDecode::borrow_decode(decoder)?,
-            num_ones: bincode::BorrowDecode::borrow_decode(decoder)?,
-            len: bincode::BorrowDecode::borrow_decode(decoder)?,
-            low_bit_width: bincode::BorrowDecode::borrow_decode(decoder)?,
-            low_mask: bincode::BorrowDecode::borrow_decode(decoder)?,
-            has_multiplicity: bincode::BorrowDecode::borrow_decode(decoder)?,
-        })
-    }
+    bincode_borrow_decode_impl!(
+        high,
+        low,
+        num_ones,
+        len,
+        low_bit_width,
+        low_mask,
+        has_multiplicity
+    );
 }
 
 impl<Ones: BitBlock> SparseBitVec<Ones> {

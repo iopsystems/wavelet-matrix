@@ -2,11 +2,14 @@
 // The rank0/rank1 functions are efficient, and select0 is efficient; select1 requires a binary search over the full range.
 // We could implement a "flipped" bitvector wrapper to make select1 efficient.
 
+use crate::bincode_helpers::{
+    bincode_borrow_decode_impl, bincode_decode_impl, bincode_encode_impl,
+};
 use crate::bit_block::BitBlock;
 use crate::bit_vec::BitVec;
 use crate::sparse_bit_vec::SparseBitVec;
 
-#[derive(Debug, bincode::Encode)]
+#[derive(Debug)]
 pub struct RLEBitVec<Ones: BitBlock> {
     // z[i]: Cumulative number of zeros before the start of the i-th 1-run;
     // can be thought of as pointing to the index of the first 1 in a 01-run.
@@ -19,31 +22,15 @@ pub struct RLEBitVec<Ones: BitBlock> {
     num_ones: Ones,
 }
 
+impl<Ones: BitBlock> bincode::Encode for RLEBitVec<Ones> {
+    bincode_encode_impl!(z, zo, len, num_zeros, num_ones);
+}
+
 impl<Ones: BitBlock> bincode::Decode for RLEBitVec<Ones> {
-    fn decode<D: bincode::de::Decoder>(
-        decoder: &mut D,
-    ) -> core::result::Result<Self, bincode::error::DecodeError> {
-        Ok(Self {
-            z: bincode::Decode::decode(decoder)?,
-            zo: bincode::Decode::decode(decoder)?,
-            len: bincode::Decode::decode(decoder)?,
-            num_ones: bincode::Decode::decode(decoder)?,
-            num_zeros: bincode::Decode::decode(decoder)?,
-        })
-    }
+    bincode_decode_impl!(z, zo, len, num_zeros, num_ones);
 }
 impl<'de, Ones: BitBlock> bincode::BorrowDecode<'de> for RLEBitVec<Ones> {
-    fn borrow_decode<D: bincode::de::BorrowDecoder<'de>>(
-        decoder: &mut D,
-    ) -> core::result::Result<Self, bincode::error::DecodeError> {
-        Ok(Self {
-            z: bincode::BorrowDecode::borrow_decode(decoder)?,
-            zo: bincode::BorrowDecode::borrow_decode(decoder)?,
-            len: bincode::BorrowDecode::borrow_decode(decoder)?,
-            num_ones: bincode::BorrowDecode::borrow_decode(decoder)?,
-            num_zeros: bincode::BorrowDecode::borrow_decode(decoder)?,
-        })
-    }
+    bincode_borrow_decode_impl!(z, zo, len, num_zeros, num_ones);
 }
 
 impl<Ones: BitBlock> RLEBitVec<Ones> {

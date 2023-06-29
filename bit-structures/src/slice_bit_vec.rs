@@ -2,15 +2,29 @@
 // todo: test this type independently from the comparison tests which check it against the other bitvecs.
 // todo: implement batch_rank using multi-value binary search
 
+use crate::bincode_helpers::{
+    bincode_borrow_decode_impl, bincode_decode_impl, bincode_encode_impl,
+};
 use crate::bit_block::BitBlock;
 use crate::bit_vec::{BitVec, MultiBitVec};
 use std::debug_assert;
 
-#[derive(Debug, bincode::Encode, bincode::Decode)]
-pub struct SliceBitVec<Ones: 'static> {
+#[derive(Debug)]
+pub struct SliceBitVec<Ones: BitBlock> {
     ones: Box<[Ones]>,      // Sorted slice of values
     len: Ones,              // Maximum representable integer plus one
     has_multiplicity: bool, // Whether any element is repeated more than once
+}
+
+impl<Ones: BitBlock> bincode::Encode for SliceBitVec<Ones> {
+    bincode_encode_impl!(ones, len, has_multiplicity);
+}
+
+impl<Ones: BitBlock> bincode::Decode for SliceBitVec<Ones> {
+    bincode_decode_impl!(ones, len, has_multiplicity);
+}
+impl<'de, Ones: BitBlock> bincode::BorrowDecode<'de> for SliceBitVec<Ones> {
+    bincode_borrow_decode_impl!(ones, len, has_multiplicity);
 }
 
 impl<Ones: BitBlock> SliceBitVec<Ones> {

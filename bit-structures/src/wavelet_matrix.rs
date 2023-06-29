@@ -1,3 +1,6 @@
+use crate::bincode_helpers::{
+    bincode_borrow_decode_impl, bincode_decode_impl, bincode_encode_impl,
+};
 use crate::{bit_buf::BitBuf, bit_vec::BitVec, dense_bit_vec::DenseBitVec};
 use num::{One, Zero};
 use std::{
@@ -51,39 +54,13 @@ pub struct WaveletMatrix<V: BitVec> {
 }
 
 impl<V: BitVec + 'static> bincode::Encode for WaveletMatrix<V> {
-    fn encode<E: bincode::enc::Encoder>(
-        &self,
-        encoder: &mut E,
-    ) -> core::result::Result<(), bincode::error::EncodeError> {
-        bincode::Encode::encode(&self.levels, encoder)?;
-        bincode::Encode::encode(&self.max_symbol, encoder)?;
-        bincode::Encode::encode(&self.len, encoder)?;
-        Ok(())
-    }
+    bincode_encode_impl!(levels, max_symbol, len);
 }
-
 impl<V: BitVec + 'static> bincode::Decode for WaveletMatrix<V> {
-    fn decode<D: bincode::de::Decoder>(
-        decoder: &mut D,
-    ) -> core::result::Result<Self, bincode::error::DecodeError> {
-        Ok(Self {
-            levels: bincode::Decode::decode(decoder)?,
-            max_symbol: bincode::Decode::decode(decoder)?,
-            len: bincode::Decode::decode(decoder)?,
-        })
-    }
+    bincode_decode_impl!(levels, max_symbol, len);
 }
-
 impl<'de, V: BitVec> bincode::BorrowDecode<'de> for WaveletMatrix<V> {
-    fn borrow_decode<D: bincode::de::BorrowDecoder<'de>>(
-        decoder: &mut D,
-    ) -> core::result::Result<Self, bincode::error::DecodeError> {
-        Ok(Self {
-            levels: bincode::BorrowDecode::borrow_decode(decoder)?,
-            max_symbol: bincode::BorrowDecode::borrow_decode(decoder)?,
-            len: bincode::BorrowDecode::borrow_decode(decoder)?,
-        })
-    }
+    bincode_borrow_decode_impl!(levels, max_symbol, len);
 }
 
 impl<V: BitVec> WaveletMatrix<V> {
@@ -452,30 +429,7 @@ fn build_bitvecs_large_alphabet(mut data: Vec<u32>, num_levels: usize) -> Vec<De
     levels
 }
 
-impl<V: BitVec> bincode::Decode for Level<V> {
-    fn decode<D: bincode::de::Decoder>(
-        decoder: &mut D,
-    ) -> core::result::Result<Self, bincode::error::DecodeError> {
-        Ok(Self {
-            bv: bincode::Decode::decode(decoder)?,
-            num_zeros: bincode::Decode::decode(decoder)?,
-            bit: bincode::Decode::decode(decoder)?,
-        })
-    }
-}
-impl<'de, V: BitVec> bincode::BorrowDecode<'de> for Level<V> {
-    fn borrow_decode<D: bincode::de::BorrowDecoder<'de>>(
-        decoder: &mut D,
-    ) -> core::result::Result<Self, bincode::error::DecodeError> {
-        Ok(Self {
-            bv: bincode::BorrowDecode::borrow_decode(decoder)?,
-            num_zeros: bincode::BorrowDecode::borrow_decode(decoder)?,
-            bit: bincode::BorrowDecode::borrow_decode(decoder)?,
-        })
-    }
-}
-
-#[derive(Debug, bincode::Encode)]
+#[derive(Debug)]
 struct Level<V: BitVec> {
     bv: V,
     num_zeros: V::Ones,
@@ -483,6 +437,16 @@ struct Level<V: BitVec> {
     // the magnitude represented at that level.
     // e.g.  levels[0].bit == 1 << levels.len() - 1
     bit: V::Ones,
+}
+
+impl<V: BitVec> bincode::Encode for Level<V> {
+    bincode_encode_impl!(bv, num_zeros, bit);
+}
+impl<V: BitVec> bincode::Decode for Level<V> {
+    bincode_decode_impl!(bv, num_zeros, bit);
+}
+impl<'de, V: BitVec> bincode::BorrowDecode<'de> for Level<V> {
+    bincode_borrow_decode_impl!(bv, num_zeros, bit);
 }
 
 impl<V: BitVec> Level<V> {

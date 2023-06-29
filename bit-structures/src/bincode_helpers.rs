@@ -10,8 +10,9 @@
 // as specifing default values for generic struct parameters, eg.
 //   struct Foo<T: BitBlock = u8> { ... }
 
-// todo:
-// - can we add serialization to the bitvec trait and test roundtrips?
+// Fortuntely, the decode macros will throw an error if the fields or names change, which gives us an opportunity
+// to also update the corresponding encode macro (which by itself could easily get out of sync).
+// It would be nice to add construction and (de)serialization to the bitvec trait and test it automatically.
 
 // fn encode<E: bincode::enc::Encoder>(
 //     &self,

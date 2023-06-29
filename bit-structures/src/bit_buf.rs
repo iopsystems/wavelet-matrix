@@ -2,6 +2,9 @@
 // Supports random bit read and write. Intended as a data representation for dense bitvectors.
 // Not designed for general fixed-width encoding; we can use the bitbuffer library for that.
 
+use crate::bincode_helpers::{
+    bincode_borrow_decode_impl, bincode_decode_impl, bincode_encode_impl,
+};
 use crate::bit_block::BitBlock;
 use crate::utils::div_ceil;
 
@@ -12,36 +15,13 @@ pub struct BitBuf<Block> {
 }
 
 impl<Block: BitBlock> bincode::Encode for BitBuf<Block> {
-    fn encode<E: bincode::enc::Encoder>(
-        &self,
-        encoder: &mut E,
-    ) -> core::result::Result<(), bincode::error::EncodeError> {
-        bincode::Encode::encode(&self.blocks, encoder)?;
-        bincode::Encode::encode(&self.len, encoder)?;
-        Ok(())
-    }
+    bincode_encode_impl!(blocks, len);
 }
-
 impl<Block: BitBlock> bincode::Decode for BitBuf<Block> {
-    fn decode<D: bincode::de::Decoder>(
-        decoder: &mut D,
-    ) -> core::result::Result<Self, bincode::error::DecodeError> {
-        Ok(Self {
-            blocks: bincode::Decode::decode(decoder)?,
-            len: bincode::Decode::decode(decoder)?,
-        })
-    }
+    bincode_decode_impl!(blocks, len);
 }
-
 impl<'de, Block: BitBlock> bincode::BorrowDecode<'de> for BitBuf<Block> {
-    fn borrow_decode<D: bincode::de::BorrowDecoder<'de>>(
-        decoder: &mut D,
-    ) -> core::result::Result<Self, bincode::error::DecodeError> {
-        Ok(Self {
-            blocks: bincode::BorrowDecode::borrow_decode(decoder)?,
-            len: bincode::BorrowDecode::borrow_decode(decoder)?,
-        })
-    }
+    bincode_borrow_decode_impl!(blocks, len);
 }
 
 impl<Block: BitBlock> BitBuf<Block> {
