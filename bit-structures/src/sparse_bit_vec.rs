@@ -9,7 +9,7 @@ use crate::bit_vec::{BitVec, MultiBitVec};
 use crate::dense_bit_vec::DenseBitVec;
 use crate::int_vec::IntVec;
 
-#[derive(Debug, bincode::Encode)]
+#[derive(Debug)]
 pub struct SparseBitVec<Ones: BitBlock> {
     high: DenseBitVec<Ones>, // High bit buckets in unary encoding
     low: IntVec,             // Low bits in fixed-width encoding
@@ -18,6 +18,22 @@ pub struct SparseBitVec<Ones: BitBlock> {
     low_bit_width: Ones,     // Number of low bits per element
     low_mask: Ones,          // Mask with the low_bit_width lowest bits set to 1
     has_multiplicity: bool,  // Whether any element is repeated more than once
+}
+
+impl<Ones: BitBlock + 'static> bincode::Encode for SparseBitVec<Ones> {
+    fn encode<E: bincode::enc::Encoder>(
+        &self,
+        encoder: &mut E,
+    ) -> core::result::Result<(), bincode::error::EncodeError> {
+        bincode::Encode::encode(&self.high, encoder)?;
+        bincode::Encode::encode(&self.low, encoder)?;
+        bincode::Encode::encode(&self.num_ones, encoder)?;
+        bincode::Encode::encode(&self.len, encoder)?;
+        bincode::Encode::encode(&self.low_bit_width, encoder)?;
+        bincode::Encode::encode(&self.low_mask, encoder)?;
+        bincode::Encode::encode(&self.has_multiplicity, encoder)?;
+        Ok(())
+    }
 }
 
 impl<Ones: BitBlock> bincode::Decode for SparseBitVec<Ones> {

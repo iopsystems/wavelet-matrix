@@ -5,10 +5,43 @@
 use crate::bit_block::BitBlock;
 use crate::utils::div_ceil;
 
-#[derive(Debug, Clone, bincode::Encode, bincode::Decode)]
-pub struct BitBuf<Block: 'static> {
+#[derive(Debug, Clone)]
+pub struct BitBuf<Block> {
     blocks: Box<[Block]>,
     len: usize,
+}
+
+impl<Block: BitBlock + 'static> bincode::Encode for BitBuf<Block> {
+    fn encode<E: bincode::enc::Encoder>(
+        &self,
+        encoder: &mut E,
+    ) -> core::result::Result<(), bincode::error::EncodeError> {
+        bincode::Encode::encode(&self.blocks, encoder)?;
+        bincode::Encode::encode(&self.len, encoder)?;
+        Ok(())
+    }
+}
+
+impl<Block: BitBlock + 'static> bincode::Decode for BitBuf<Block> {
+    fn decode<D: bincode::de::Decoder>(
+        decoder: &mut D,
+    ) -> core::result::Result<Self, bincode::error::DecodeError> {
+        Ok(Self {
+            blocks: bincode::Decode::decode(decoder)?,
+            len: bincode::Decode::decode(decoder)?,
+        })
+    }
+}
+
+impl<'de, Block: BitBlock + 'static> bincode::BorrowDecode<'de> for BitBuf<Block> {
+    fn borrow_decode<D: bincode::de::BorrowDecoder<'de>>(
+        decoder: &mut D,
+    ) -> core::result::Result<Self, bincode::error::DecodeError> {
+        Ok(Self {
+            blocks: bincode::BorrowDecode::borrow_decode(decoder)?,
+            len: bincode::BorrowDecode::borrow_decode(decoder)?,
+        })
+    }
 }
 
 impl<Block: BitBlock> BitBuf<Block> {

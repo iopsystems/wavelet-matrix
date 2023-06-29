@@ -30,20 +30,34 @@ where
     num_ones: Ones,
 }
 
-impl<Ones: BitBlock, Raw: BitBlock> bincode::Encode for DenseBitVec<Ones, Raw> {
-    fn encode<E: bincode::enc::Encoder>(
-        &self,
-        encoder: &mut E,
-    ) -> core::result::Result<(), bincode::error::EncodeError> {
-        bincode::Encode::encode(&self.raw, encoder)?;
-        bincode::Encode::encode(&self.sr_pow2, encoder)?;
-        bincode::Encode::encode(&self.ss_pow2, encoder)?;
-        bincode::Encode::encode(&self.r, encoder)?;
-        bincode::Encode::encode(&self.s0, encoder)?;
-        bincode::Encode::encode(&self.s1, encoder)?;
-        bincode::Encode::encode(&self.num_ones, encoder)?;
+// macro_rules! foo {
+//      ($($t:ident)*) => ($(
+//         bincode::Encode::encode(&self.$t, encoder)?;
+//      )*)
+//  }
+
+// macro_rules! get_fields {
+//     ($f:expr, $s:expr, $encoder: expr, $($t:ident),* $(,)?) => (
+//         $(
+//             $f(&$s.$t, $encoder)?;
+//         )*
+//     )
+// }
+
+macro_rules! bincode_encode_impl {
+    ($($t:ident),* $(,)?) => (
+        fn encode<E: bincode::enc::Encoder>(
+            &self,
+            encoder: &mut E,
+        ) -> core::result::Result<(), bincode::error::EncodeError> {
+        $(bincode::Encode::encode(&self.$t, encoder)?;)*
         Ok(())
     }
+    )
+}
+
+impl<Ones: BitBlock + 'static, Raw: BitBlock> bincode::Encode for DenseBitVec<Ones, Raw> {
+    bincode_encode_impl!(raw, sr_pow2, ss_pow2, r, s0, s1, num_ones);
 }
 
 impl<Ones: BitBlock, Raw: BitBlock> bincode::Decode for DenseBitVec<Ones, Raw> {
@@ -193,7 +207,7 @@ impl<Ones: BitBlock, Raw: BitBlock> DenseBitVec<Ones, Raw> {
     }
 }
 
-impl<Ones: BitBlock, Raw: BitBlock> BitVec for DenseBitVec<Ones, Raw> {
+impl<Ones: BitBlock + 'static, Raw: BitBlock> BitVec for DenseBitVec<Ones, Raw> {
     type Ones = Ones;
 
     fn rank1(&self, index: Ones) -> Ones {
