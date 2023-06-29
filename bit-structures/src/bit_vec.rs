@@ -127,6 +127,17 @@ pub trait BitVec: bincode::Encode + bincode::Decode + for<'de> bincode::BorrowDe
     fn one() -> Self::Ones {
         Self::Ones::one()
     }
+
+    fn encode(&self) -> Vec<u8> {
+        let config = bincode::config::standard().with_fixed_int_encoding();
+        bincode::encode_to_vec(self, config).unwrap()
+    }
+
+    fn decode(data: Vec<u8>) -> Self {
+        let config = bincode::config::standard().with_fixed_int_encoding();
+        let (ret, _) = bincode::decode_from_slice(&data, config).unwrap();
+        ret
+    }
 }
 
 // For bitvector types that allow multiplicity

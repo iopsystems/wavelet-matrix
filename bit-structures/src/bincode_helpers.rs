@@ -4,7 +4,7 @@
 // You might ask why this is needed. It turns out that deriving implementations is
 // incompatible with specifying constraints on generic struct parameters, eg.
 //   #[derive(bincode::Decode)]
-//   struct SparseBitVec<Ones: BitBlock> { ... },
+//   struct SparseBitVec<BV: BitVec> { num_ones: BV::Ones },
 // will error even though constaining the Ones type is necessary to type some fields of that struct.
 // There were also compilation errors that prevented the use of derive at the same time
 // as specifing default values for generic struct parameters, eg.

@@ -3,10 +3,7 @@ use crate::bincode_helpers::{
 };
 use crate::{bit_buf::BitBuf, bit_vec::BitVec, dense_bit_vec::DenseBitVec};
 use num::{One, Zero};
-use std::{
-    collections::VecDeque,
-    ops::{Range, RangeInclusive},
-};
+use std::{collections::VecDeque, ops::Range};
 
 // todo
 // - ignore_bits
@@ -99,15 +96,16 @@ impl<V: BitVec> WaveletMatrix<V> {
         symbol
     }
 
+    // Locates a symbol on the virtual bottom level of the wavelet tree.
     // Returns two things, both restricted to the query range:
-    // - the number of symbols preceding this one in sorted order
+    // - the number of symbols preceding this one in sorted order (less than)
     // - the range of this symbol on the virtual bottom level
-    // This function is designed for internal use, where knowing
-    // the range on the virtual level can be useful, e.g. for select queries.
+    // This function is designed for internal use, where knowing the precise
+    // range on the virtual level can be useful, e.g. for select queries.
     // Since the range also tells us the count of this symbol in the range, we
-    // can combine the two pieces of data together for a count-<= query.
+    // can combine the two pieces of data together for a count-less-than-or-equal query.
     // We compute both of these in one function since it's pretty cheap to do so.
-    fn symbol_stats(
+    fn locate(
         &self,
         symbol: V::Ones,
         range: Range<V::Ones>,
@@ -134,12 +132,12 @@ impl<V: BitVec> WaveletMatrix<V> {
 
     // number of symbols less than this one, restricted to the query range
     pub fn preceding_count(&self, symbol: V::Ones, range: Range<V::Ones>) -> V::Ones {
-        self.symbol_stats(symbol, range, 0).0
+        self.locate(symbol, range, 0).0
     }
 
     // number of times the symbol appears in the query range
     pub fn count(&self, symbol: V::Ones, range: Range<V::Ones>) -> V::Ones {
-        let range = self.symbol_stats(symbol, range, 0).1;
+        let range = self.locate(symbol, range, 0).1;
         range.end - range.start
     }
 
@@ -168,7 +166,7 @@ impl<V: BitVec> WaveletMatrix<V> {
 
     pub fn select(&self, symbol: V::Ones, k: V::Ones, range: Range<V::Ones>) -> Option<V::Ones> {
         // track the symbol down to a range on the bottom level
-        let range = self.symbol_stats(symbol, range, 0).1;
+        let range = self.locate(symbol, range, 0).1;
 
         // If there are fewer than `k+1` copies of `symbol` in the range, return early.
         if k < (range.end - range.start) {
@@ -450,70 +448,6 @@ impl<'de, V: BitVec> bincode::BorrowDecode<'de> for Level<V> {
 }
 
 impl<V: BitVec> Level<V> {
-    fn to_left_index(&self, index: V::Ones) -> V::Ones {
-        index
-    }
-
-    fn to_right_index(&self, index: V::Ones) -> V::Ones {
-        self.num_zeros + index
-    }
-
-    fn to_left_range(&self, range: Range<V::Ones>) -> Range<V::Ones> {
-        range
-    }
-
-    fn to_right_range(&self, range: Range<V::Ones>) -> Range<V::Ones> {
-        let nz = self.num_zeros;
-        nz + range.start..nz + range.end
-    }
-
-    fn to_left_symbol(&self, symbol: V::Ones) -> V::Ones {
-        symbol
-    }
-
-    fn to_right_symbol(&self, symbol: V::Ones) -> V::Ones {
-        symbol | self.bit
-    }
-
-    fn intervals_overlap_inclusive(
-        a_lo: V::Ones,
-        a_hi: V::Ones,
-        b_lo: V::Ones,
-        b_hi: V::Ones,
-    ) -> bool {
-        a_lo <= b_hi && b_lo <= a_hi
-    }
-
-    fn overlaps_left_child(
-        &self,
-        range: &RangeInclusive<V::Ones>,
-        leftmost_symbol: V::Ones,
-    ) -> bool {
-        let left_start = leftmost_symbol;
-        let left_end_inclusive = left_start | (self.bit - V::one());
-        Self::intervals_overlap_inclusive(
-            left_start,
-            left_end_inclusive,
-            *range.start(),
-            *range.end(),
-        )
-    }
-
-    fn overlaps_right_child(
-        &self,
-        range: &RangeInclusive<V::Ones>,
-        leftmost_symbol: V::Ones,
-    ) -> bool {
-        let right_start = leftmost_symbol | self.bit;
-        let right_end_inclusive = right_start | (self.bit - V::one());
-        Self::intervals_overlap_inclusive(
-            right_start,
-            right_end_inclusive,
-            *range.start(),
-            *range.end(),
-        )
-    }
-
     // Returns (rank0(index), rank1(index))
     // This means that if x = ranks(index), x.0 is rank0 and x.1 is rank1.
     pub fn ranks(&self, index: V::Ones) -> (V::Ones, V::Ones) {

@@ -49,9 +49,9 @@ impl WaveletMatrix32 {
         self.0.select(symbol, k, range_lo..range_hi)
     }
 
-    pub fn encode(self) -> Vec<u8> {
+    pub fn encode(&self) -> Vec<u8> {
         let config = bincode::config::standard().with_fixed_int_encoding();
-        bincode::encode_to_vec(self.0, config).unwrap()
+        bincode::encode_to_vec(&self.0, config).unwrap()
     }
 
     pub fn decode(data: Vec<u8>) -> Self {
