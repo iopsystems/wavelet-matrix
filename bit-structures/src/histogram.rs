@@ -74,14 +74,24 @@ impl<V: MultiBitVec> Histogram<V> {
     }
 
     /// Return an upper bound on the number of observations that lie
-    /// at or below the q-th quantile. If there are 2 observations,
+    /// at or below the q-th quantile. E.g. if there are 2 observations,
     /// quantile_to_count(0) == 1, quantile_to_count(0.25) == 1,
     /// quantile_to_count(0.75) == 2, quantile_to_count(1.0) == 2
     /// todo: clarify this docstring - this returns a value in [1, count]
     pub fn quantile_to_count(&self, q: f64) -> V::Ones {
         debug_assert!((0.0..=1.0).contains(&q));
-        let count = (q * self.count.f64()).ceil() as u32;
-        V::Ones::from_u32(count.max(1))
+        if q == 0.0 {
+            return V::one();
+        }
+
+        // Using `as` to convert an `f64` into any integer type will
+        // round towards zero inside representable range, so we take
+        // the complement of q and round it down as a way to round up.
+        // This will equal 0 if and only if q == 0.0, so we handle that
+        // case with the preceding check.
+        let q = 1.0 - q;
+        let count = (q * self.count.f64()) as u64;
+        self.count - V::Ones::from_u64(count)
     }
 
     pub fn count(&self) -> V::Ones {
