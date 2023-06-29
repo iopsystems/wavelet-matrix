@@ -3,12 +3,12 @@
 //
 // You might ask why this is needed. It turns out that deriving implementations is
 // incompatible with specifying constraints on generic struct parameters, eg.
-// #[derive(bincode::Decode)]
-// struct SparseBitVec<Ones: BitBlock> { ... },
+//   #[derive(bincode::Decode)]
+//   struct SparseBitVec<Ones: BitBlock> { ... },
 // will error even though constaining the Ones type is necessary to type some fields of that struct.
 // There were also compilation errors that prevented the use of derive at the same time
 // as specifing default values for generic struct parameters, eg.
-// struct Foo<T: BitBlock = u8> { ... }
+//   struct Foo<T: BitBlock = u8> { ... }
 
 // todo:
 // - can we add serialization to the bitvec trait and test roundtrips?
@@ -38,6 +38,10 @@ macro_rules! bincode_encode_impl {
     )
 }
 
+// Note: The macro assumes that the relevant generic lifetime is called 'de:
+//   impl<'de> bincode::BorrowDecode<'de> for T { ... }
+//
+// This implements shorthand for:
 // fn decode<D: bincode::de::Decoder>(
 //     decoder: &mut D,
 // ) -> core::result::Result<Self, bincode::error::DecodeError> {
