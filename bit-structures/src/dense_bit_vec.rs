@@ -15,7 +15,7 @@ use std::debug_assert;
 // todo: describe what each rank/select sample holds.
 
 #[derive(Debug)]
-pub struct DenseBitVec<Ones, Raw: 'static = u8>
+pub struct DenseBitVec<Ones, Raw = u8>
 where
     // Type of the 1-bits stored in this BitVec
     Ones: BitBlock,
@@ -34,7 +34,6 @@ where
 impl<Ones: BitBlock, Raw: BitBlock> bincode::Encode for DenseBitVec<Ones, Raw> {
     bincode_helpers::bincode_encode_impl!(raw, sr_pow2, ss_pow2, r, s0, s1, num_ones);
 }
-
 impl<Ones: BitBlock, Raw: BitBlock> bincode::Decode for DenseBitVec<Ones, Raw> {
     bincode_helpers::bincode_decode_impl!(raw, sr_pow2, ss_pow2, r, s0, s1, num_ones);
 }
@@ -158,7 +157,7 @@ impl<Ones: BitBlock, Raw: BitBlock> DenseBitVec<Ones, Raw> {
     }
 }
 
-impl<Ones: BitBlock + 'static, Raw: BitBlock> BitVec for DenseBitVec<Ones, Raw> {
+impl<Ones: BitBlock, Raw: BitBlock> BitVec for DenseBitVec<Ones, Raw> {
     type Ones = Ones;
 
     fn rank1(&self, index: Ones) -> Ones {

@@ -20,7 +20,7 @@ pub struct SparseBitVec<Ones: BitBlock> {
     has_multiplicity: bool,  // Whether any element is repeated more than once
 }
 
-impl<Ones: BitBlock + 'static> bincode::Encode for SparseBitVec<Ones> {
+impl<Ones: BitBlock> bincode::Encode for SparseBitVec<Ones> {
     fn encode<E: bincode::enc::Encoder>(
         &self,
         encoder: &mut E,

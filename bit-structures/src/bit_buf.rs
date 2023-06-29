@@ -11,7 +11,7 @@ pub struct BitBuf<Block> {
     len: usize,
 }
 
-impl<Block: BitBlock + 'static> bincode::Encode for BitBuf<Block> {
+impl<Block: BitBlock> bincode::Encode for BitBuf<Block> {
     fn encode<E: bincode::enc::Encoder>(
         &self,
         encoder: &mut E,
@@ -22,7 +22,7 @@ impl<Block: BitBlock + 'static> bincode::Encode for BitBuf<Block> {
     }
 }
 
-impl<Block: BitBlock + 'static> bincode::Decode for BitBuf<Block> {
+impl<Block: BitBlock> bincode::Decode for BitBuf<Block> {
     fn decode<D: bincode::de::Decoder>(
         decoder: &mut D,
     ) -> core::result::Result<Self, bincode::error::DecodeError> {
@@ -33,7 +33,7 @@ impl<Block: BitBlock + 'static> bincode::Decode for BitBuf<Block> {
     }
 }
 
-impl<'de, Block: BitBlock + 'static> bincode::BorrowDecode<'de> for BitBuf<Block> {
+impl<'de, Block: BitBlock> bincode::BorrowDecode<'de> for BitBuf<Block> {
     fn borrow_decode<D: bincode::de::BorrowDecoder<'de>>(
         decoder: &mut D,
     ) -> core::result::Result<Self, bincode::error::DecodeError> {
