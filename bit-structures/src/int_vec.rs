@@ -6,6 +6,7 @@ use std::debug_assert;
 
 type BT = u32; // Block type
 
+#[derive(Debug, bincode::Encode, bincode::Decode)]
 pub struct IntVec {
     data: Box<[BT]>,
     /// Number of elements

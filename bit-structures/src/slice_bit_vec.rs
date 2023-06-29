@@ -2,14 +2,12 @@
 // todo: test this type independently from the comparison tests which check it against the other bitvecs.
 // todo: implement batch_rank using multi-value binary search
 
-use serde::{Deserialize, Serialize};
-
 use crate::bit_block::BitBlock;
 use crate::bit_vec::{BitVec, MultiBitVec};
 use std::debug_assert;
 
-#[derive(Debug, Serialize, Deserialize)]
-pub struct SliceBitVec<Ones: BitBlock> {
+#[derive(Debug, bincode::Encode, bincode::Decode)]
+pub struct SliceBitVec<Ones: 'static> {
     ones: Box<[Ones]>,      // Sorted slice of values
     len: Ones,              // Maximum representable integer plus one
     has_multiplicity: bool, // Whether any element is repeated more than once

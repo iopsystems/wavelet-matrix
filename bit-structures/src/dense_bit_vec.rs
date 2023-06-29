@@ -14,7 +14,7 @@ use std::debug_assert;
 // todo: describe what each rank/select sample holds.
 
 #[derive(Debug)]
-pub struct DenseBitVec<Ones, Raw = u8>
+pub struct DenseBitVec<Ones, Raw: 'static = u8>
 where
     // Type of the 1-bits stored in this BitVec
     Ones: BitBlock,
@@ -28,6 +28,53 @@ where
     s0: Box<[Ones]>,  // select0 samples
     s1: Box<[Ones]>,  // select1 samples
     num_ones: Ones,
+}
+
+impl<Ones: BitBlock, Raw: BitBlock> bincode::Encode for DenseBitVec<Ones, Raw> {
+    fn encode<E: bincode::enc::Encoder>(
+        &self,
+        encoder: &mut E,
+    ) -> core::result::Result<(), bincode::error::EncodeError> {
+        bincode::Encode::encode(&self.raw, encoder)?;
+        bincode::Encode::encode(&self.sr_pow2, encoder)?;
+        bincode::Encode::encode(&self.ss_pow2, encoder)?;
+        bincode::Encode::encode(&self.r, encoder)?;
+        bincode::Encode::encode(&self.s0, encoder)?;
+        bincode::Encode::encode(&self.s1, encoder)?;
+        bincode::Encode::encode(&self.num_ones, encoder)?;
+        Ok(())
+    }
+}
+
+impl<Ones: BitBlock, Raw: BitBlock> bincode::Decode for DenseBitVec<Ones, Raw> {
+    fn decode<D: bincode::de::Decoder>(
+        decoder: &mut D,
+    ) -> core::result::Result<Self, bincode::error::DecodeError> {
+        Ok(Self {
+            raw: bincode::Decode::decode(decoder)?,
+            sr_pow2: bincode::Decode::decode(decoder)?,
+            ss_pow2: bincode::Decode::decode(decoder)?,
+            r: bincode::Decode::decode(decoder)?,
+            s0: bincode::Decode::decode(decoder)?,
+            s1: bincode::Decode::decode(decoder)?,
+            num_ones: bincode::Decode::decode(decoder)?,
+        })
+    }
+}
+impl<'de, Ones: BitBlock, Raw: BitBlock> bincode::BorrowDecode<'de> for DenseBitVec<Ones, Raw> {
+    fn borrow_decode<D: bincode::de::BorrowDecoder<'de>>(
+        decoder: &mut D,
+    ) -> core::result::Result<Self, bincode::error::DecodeError> {
+        Ok(Self {
+            raw: bincode::BorrowDecode::borrow_decode(decoder)?,
+            sr_pow2: bincode::BorrowDecode::borrow_decode(decoder)?,
+            ss_pow2: bincode::BorrowDecode::borrow_decode(decoder)?,
+            r: bincode::BorrowDecode::borrow_decode(decoder)?,
+            s0: bincode::BorrowDecode::borrow_decode(decoder)?,
+            s1: bincode::BorrowDecode::borrow_decode(decoder)?,
+            num_ones: bincode::BorrowDecode::borrow_decode(decoder)?,
+        })
+    }
 }
 
 impl<Ones: BitBlock, Raw: BitBlock> DenseBitVec<Ones, Raw> {

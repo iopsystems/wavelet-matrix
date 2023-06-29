@@ -3,7 +3,7 @@ use crate::{bit_buf::BitBuf, bit_vec::BitVec, dense_bit_vec::DenseBitVec, wasm_b
 type Ones = u32;
 
 #[wasm_bindgen]
-pub struct DenseBitVec32(DenseBitVec<Ones>);
+pub struct DenseBitVec32(DenseBitVec<Ones, u8>);
 
 #[wasm_bindgen]
 impl DenseBitVec32 {

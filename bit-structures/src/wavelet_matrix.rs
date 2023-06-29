@@ -12,13 +12,13 @@ use std::{
 // - functions that accept symbol or index ranges should accept .. and x.. and ..x
 //   - i think this can be implemented with a trait that has an 'expand' method, or
 //     by accepting a RangeBounds and writing a  fn that replaces unbounded with 0 or len/whatever.
-type Dense = DenseBitVec<u32>;
+type Dense = DenseBitVec<u32, u8>;
 
 // The traversal order means that outputs do not appear in the same order as inputs and
 // there may be multiple outputs per input (e.g. symbols found within a given index range)
 // so associating each batch with an index allows us to track the association between inputs
 // and outputs.
-#[derive(Debug, Copy, Clone, PartialEq)]
+#[derive(Debug, Copy, Clone, PartialEq, bincode::Encode, bincode::Decode)]
 pub struct BatchValue<T> {
     pub index: usize,
     pub value: T,
@@ -43,11 +43,47 @@ impl<T> BatchValue<T> {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug)] // , bincode::Decode
 pub struct WaveletMatrix<V: BitVec> {
     levels: Vec<Level<V>>,
     max_symbol: u32,
     len: V::Ones,
+}
+
+impl<V: BitVec + 'static> bincode::Encode for WaveletMatrix<V> {
+    fn encode<E: bincode::enc::Encoder>(
+        &self,
+        encoder: &mut E,
+    ) -> core::result::Result<(), bincode::error::EncodeError> {
+        bincode::Encode::encode(&self.levels, encoder)?;
+        bincode::Encode::encode(&self.max_symbol, encoder)?;
+        bincode::Encode::encode(&self.len, encoder)?;
+        Ok(())
+    }
+}
+
+impl<V: BitVec + 'static> bincode::Decode for WaveletMatrix<V> {
+    fn decode<D: bincode::de::Decoder>(
+        decoder: &mut D,
+    ) -> core::result::Result<Self, bincode::error::DecodeError> {
+        Ok(Self {
+            levels: bincode::Decode::decode(decoder)?,
+            max_symbol: bincode::Decode::decode(decoder)?,
+            len: bincode::Decode::decode(decoder)?,
+        })
+    }
+}
+
+impl<'de, V: BitVec> bincode::BorrowDecode<'de> for WaveletMatrix<V> {
+    fn borrow_decode<D: bincode::de::BorrowDecoder<'de>>(
+        decoder: &mut D,
+    ) -> core::result::Result<Self, bincode::error::DecodeError> {
+        Ok(Self {
+            levels: bincode::BorrowDecode::borrow_decode(decoder)?,
+            max_symbol: bincode::BorrowDecode::borrow_decode(decoder)?,
+            len: bincode::BorrowDecode::borrow_decode(decoder)?,
+        })
+    }
 }
 
 impl<V: BitVec> WaveletMatrix<V> {
@@ -416,7 +452,30 @@ fn build_bitvecs_large_alphabet(mut data: Vec<u32>, num_levels: usize) -> Vec<De
     levels
 }
 
-#[derive(Debug)]
+impl<V: BitVec> bincode::Decode for Level<V> {
+    fn decode<D: bincode::de::Decoder>(
+        decoder: &mut D,
+    ) -> core::result::Result<Self, bincode::error::DecodeError> {
+        Ok(Self {
+            bv: bincode::Decode::decode(decoder)?,
+            num_zeros: bincode::Decode::decode(decoder)?,
+            bit: bincode::Decode::decode(decoder)?,
+        })
+    }
+}
+impl<'de, V: BitVec> bincode::BorrowDecode<'de> for Level<V> {
+    fn borrow_decode<D: bincode::de::BorrowDecoder<'de>>(
+        decoder: &mut D,
+    ) -> core::result::Result<Self, bincode::error::DecodeError> {
+        Ok(Self {
+            bv: bincode::BorrowDecode::borrow_decode(decoder)?,
+            num_zeros: bincode::BorrowDecode::borrow_decode(decoder)?,
+            bit: bincode::BorrowDecode::borrow_decode(decoder)?,
+        })
+    }
+}
+
+#[derive(Debug, bincode::Encode)]
 struct Level<V: BitVec> {
     bv: V,
     num_zeros: V::Ones,

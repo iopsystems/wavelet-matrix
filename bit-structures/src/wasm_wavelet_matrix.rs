@@ -48,4 +48,15 @@ impl WaveletMatrix32 {
     pub fn select(&self, symbol: Ones, k: Ones, range_lo: Ones, range_hi: Ones) -> Option<Ones> {
         self.0.select(symbol, k, range_lo..range_hi)
     }
+
+    pub fn encode(self) -> Vec<u8> {
+        let config = bincode::config::standard().with_fixed_int_encoding();
+        bincode::encode_to_vec(self.0, config).unwrap()
+    }
+
+    pub fn decode(data: Vec<u8>) -> Self {
+        let config = bincode::config::standard().with_fixed_int_encoding();
+        let (wm, _) = bincode::decode_from_slice(&data, config).unwrap();
+        Self(wm)
+    }
 }

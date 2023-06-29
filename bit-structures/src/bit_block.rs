@@ -1,6 +1,5 @@
 use num::traits::{CheckedShr, SaturatingSub, WrappingSub};
 use num::{PrimInt, Unsigned};
-use serde::{Deserialize, Serialize};
 use std::fmt::Debug;
 use std::ops::{
     AddAssign, BitAnd, BitAndAssign, BitOr, BitOrAssign, Shl, Shr, ShrAssign, SubAssign,
@@ -12,7 +11,8 @@ use std::ops::{
 /// Trait representing an unsigned integer type used as a block of bits,
 /// which allows our bit-based structures to be generic over block sizes.
 pub trait BitBlock:
-    Unsigned
+    'static
+    + Unsigned
     + PrimInt
     + WrappingSub
     + CheckedShr
@@ -31,8 +31,9 @@ pub trait BitBlock:
     + Clone
     + Debug
     + Into<u64>
-    + Serialize
-    + for<'a> Deserialize<'a>
+    + bincode::Encode
+    + bincode::Decode
+    + for<'de> bincode::BorrowDecode<'de>
 {
     const BITS: u32; // number of bits in the representation of this type
 

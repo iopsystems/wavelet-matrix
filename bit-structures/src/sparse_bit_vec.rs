@@ -9,6 +9,7 @@ use crate::bit_vec::{BitVec, MultiBitVec};
 use crate::dense_bit_vec::DenseBitVec;
 use crate::int_vec::IntVec;
 
+#[derive(Debug, bincode::Encode)]
 pub struct SparseBitVec<Ones: BitBlock> {
     high: DenseBitVec<Ones>, // High bit buckets in unary encoding
     low: IntVec,             // Low bits in fixed-width encoding
@@ -17,6 +18,37 @@ pub struct SparseBitVec<Ones: BitBlock> {
     low_bit_width: Ones,     // Number of low bits per element
     low_mask: Ones,          // Mask with the low_bit_width lowest bits set to 1
     has_multiplicity: bool,  // Whether any element is repeated more than once
+}
+
+impl<Ones: BitBlock> bincode::Decode for SparseBitVec<Ones> {
+    fn decode<D: bincode::de::Decoder>(
+        decoder: &mut D,
+    ) -> core::result::Result<Self, bincode::error::DecodeError> {
+        Ok(Self {
+            high: bincode::Decode::decode(decoder)?,
+            low: bincode::Decode::decode(decoder)?,
+            num_ones: bincode::Decode::decode(decoder)?,
+            len: bincode::Decode::decode(decoder)?,
+            low_bit_width: bincode::Decode::decode(decoder)?,
+            low_mask: bincode::Decode::decode(decoder)?,
+            has_multiplicity: bincode::Decode::decode(decoder)?,
+        })
+    }
+}
+impl<'de, Ones: BitBlock> bincode::BorrowDecode<'de> for SparseBitVec<Ones> {
+    fn borrow_decode<D: bincode::de::BorrowDecoder<'de>>(
+        decoder: &mut D,
+    ) -> core::result::Result<Self, bincode::error::DecodeError> {
+        Ok(Self {
+            high: bincode::BorrowDecode::borrow_decode(decoder)?,
+            low: bincode::BorrowDecode::borrow_decode(decoder)?,
+            num_ones: bincode::BorrowDecode::borrow_decode(decoder)?,
+            len: bincode::BorrowDecode::borrow_decode(decoder)?,
+            low_bit_width: bincode::BorrowDecode::borrow_decode(decoder)?,
+            low_mask: bincode::BorrowDecode::borrow_decode(decoder)?,
+            has_multiplicity: bincode::BorrowDecode::borrow_decode(decoder)?,
+        })
+    }
 }
 
 impl<Ones: BitBlock> SparseBitVec<Ones> {

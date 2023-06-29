@@ -1,7 +1,6 @@
 use crate::bit_block::BitBlock;
 use num::One;
 use num::Zero;
-use serde::{Deserialize, Serialize};
 
 // BitVec is the general vector trait. MultiBitVec is the trait for bitvectors with multiplicity.
 
@@ -15,7 +14,7 @@ use serde::{Deserialize, Serialize};
 
 // todo: consider removing default impl of rank1 since it is not used by any current subtypes
 
-pub trait BitVec: Serialize + for<'a> Deserialize<'a> {
+pub trait BitVec: bincode::Encode + bincode::Decode + for<'de> bincode::BorrowDecode<'de> {
     type Ones: BitBlock;
 
     fn rank1(&self, index: Self::Ones) -> Self::Ones {

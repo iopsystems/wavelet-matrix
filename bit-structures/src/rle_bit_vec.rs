@@ -6,6 +6,7 @@ use crate::bit_block::BitBlock;
 use crate::bit_vec::BitVec;
 use crate::sparse_bit_vec::SparseBitVec;
 
+#[derive(Debug, bincode::Encode)]
 pub struct RLEBitVec<Ones: BitBlock> {
     // z[i]: Cumulative number of zeros before the start of the i-th 1-run;
     // can be thought of as pointing to the index of the first 1 in a 01-run.
@@ -16,6 +17,33 @@ pub struct RLEBitVec<Ones: BitBlock> {
     len: Ones,
     num_zeros: Ones,
     num_ones: Ones,
+}
+
+impl<Ones: BitBlock> bincode::Decode for RLEBitVec<Ones> {
+    fn decode<D: bincode::de::Decoder>(
+        decoder: &mut D,
+    ) -> core::result::Result<Self, bincode::error::DecodeError> {
+        Ok(Self {
+            z: bincode::Decode::decode(decoder)?,
+            zo: bincode::Decode::decode(decoder)?,
+            len: bincode::Decode::decode(decoder)?,
+            num_ones: bincode::Decode::decode(decoder)?,
+            num_zeros: bincode::Decode::decode(decoder)?,
+        })
+    }
+}
+impl<'de, Ones: BitBlock> bincode::BorrowDecode<'de> for RLEBitVec<Ones> {
+    fn borrow_decode<D: bincode::de::BorrowDecoder<'de>>(
+        decoder: &mut D,
+    ) -> core::result::Result<Self, bincode::error::DecodeError> {
+        Ok(Self {
+            z: bincode::BorrowDecode::borrow_decode(decoder)?,
+            zo: bincode::BorrowDecode::borrow_decode(decoder)?,
+            len: bincode::BorrowDecode::borrow_decode(decoder)?,
+            num_ones: bincode::BorrowDecode::borrow_decode(decoder)?,
+            num_zeros: bincode::BorrowDecode::borrow_decode(decoder)?,
+        })
+    }
 }
 
 impl<Ones: BitBlock> RLEBitVec<Ones> {
