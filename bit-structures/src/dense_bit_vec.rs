@@ -5,6 +5,8 @@
 // todo:
 //  - benchmark the effect on nonuniformly distributed 1 bits; i bet it helps more when the data are clustered
 //  - try split_last in select1
+// use crate::bincode_helpers;
+use crate::bincode_helpers;
 use crate::bit_block::BitBlock;
 use crate::bit_buf::BitBuf;
 use crate::bit_vec::BitVec;
@@ -30,65 +32,15 @@ where
     num_ones: Ones,
 }
 
-// macro_rules! foo {
-//      ($($t:ident)*) => ($(
-//         bincode::Encode::encode(&self.$t, encoder)?;
-//      )*)
-//  }
-
-// macro_rules! get_fields {
-//     ($f:expr, $s:expr, $encoder: expr, $($t:ident),* $(,)?) => (
-//         $(
-//             $f(&$s.$t, $encoder)?;
-//         )*
-//     )
-// }
-
-macro_rules! bincode_encode_impl {
-    ($($t:ident),* $(,)?) => (
-        fn encode<E: bincode::enc::Encoder>(
-            &self,
-            encoder: &mut E,
-        ) -> core::result::Result<(), bincode::error::EncodeError> {
-        $(bincode::Encode::encode(&self.$t, encoder)?;)*
-        Ok(())
-    }
-    )
-}
-
-impl<Ones: BitBlock + 'static, Raw: BitBlock> bincode::Encode for DenseBitVec<Ones, Raw> {
-    bincode_encode_impl!(raw, sr_pow2, ss_pow2, r, s0, s1, num_ones);
+impl<Ones: BitBlock, Raw: BitBlock> bincode::Encode for DenseBitVec<Ones, Raw> {
+    bincode_helpers::bincode_encode_impl!(raw, sr_pow2, ss_pow2, r, s0, s1, num_ones);
 }
 
 impl<Ones: BitBlock, Raw: BitBlock> bincode::Decode for DenseBitVec<Ones, Raw> {
-    fn decode<D: bincode::de::Decoder>(
-        decoder: &mut D,
-    ) -> core::result::Result<Self, bincode::error::DecodeError> {
-        Ok(Self {
-            raw: bincode::Decode::decode(decoder)?,
-            sr_pow2: bincode::Decode::decode(decoder)?,
-            ss_pow2: bincode::Decode::decode(decoder)?,
-            r: bincode::Decode::decode(decoder)?,
-            s0: bincode::Decode::decode(decoder)?,
-            s1: bincode::Decode::decode(decoder)?,
-            num_ones: bincode::Decode::decode(decoder)?,
-        })
-    }
+    bincode_helpers::bincode_decode_impl!(raw, sr_pow2, ss_pow2, r, s0, s1, num_ones);
 }
 impl<'de, Ones: BitBlock, Raw: BitBlock> bincode::BorrowDecode<'de> for DenseBitVec<Ones, Raw> {
-    fn borrow_decode<D: bincode::de::BorrowDecoder<'de>>(
-        decoder: &mut D,
-    ) -> core::result::Result<Self, bincode::error::DecodeError> {
-        Ok(Self {
-            raw: bincode::BorrowDecode::borrow_decode(decoder)?,
-            sr_pow2: bincode::BorrowDecode::borrow_decode(decoder)?,
-            ss_pow2: bincode::BorrowDecode::borrow_decode(decoder)?,
-            r: bincode::BorrowDecode::borrow_decode(decoder)?,
-            s0: bincode::BorrowDecode::borrow_decode(decoder)?,
-            s1: bincode::BorrowDecode::borrow_decode(decoder)?,
-            num_ones: bincode::BorrowDecode::borrow_decode(decoder)?,
-        })
-    }
+    bincode_helpers::bincode_borrow_decode_impl!(raw, sr_pow2, ss_pow2, r, s0, s1, num_ones);
 }
 
 impl<Ones: BitBlock, Raw: BitBlock> DenseBitVec<Ones, Raw> {
