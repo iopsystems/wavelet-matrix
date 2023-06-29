@@ -1,11 +1,14 @@
 // Helper function for more concise bincode definitions.
-// They need to be manually kept up to date with the type
-// (todo: can we add serialization to the bitvec trait and test roundtrips?)
-// > bincode_encode_impl!(levels, max_symbol, len);
-// becomes
-// > bincode::Encode::encode(&self.levels, encoder)?;
-// > bincode::Encode::encode(&self.max_symbol, encoder)?;
-// > bincode::Encode::encode(&self.len, encoder)?;
+// They need to be manually kept up to date with the type.
+//
+// You might ask why this is needed. It turns out that deriving implementations is incompatible with
+// specifying constraints on generic struct parameters (eg. SparseBitVec<Ones: BitBlock> is not allowed,
+// even though it is necessary to type some fields of that struct).
+// There were also some compilation errors with being able to use derive at the same time as specifing
+// default values for generic struct parameters.
+
+// todo:
+// - can we add serialization to the bitvec trait and test roundtrips?
 
 // fn encode<E: bincode::enc::Encoder>(
 //     &self,
