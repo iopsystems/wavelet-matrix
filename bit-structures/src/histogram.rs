@@ -64,21 +64,24 @@ impl<V: MultiBitVec> Histogram<V> {
     pub fn quantile(&self, q: f64) -> V::Ones {
         // Number of observations at or below the q-th quantile
         let k = self.quantile_to_count(q);
+
         // Bin index of the bin containing the k-th observation
-        let bin_index = self.cdf.rank1(k + V::Ones::one());
+        let bin_index = self.cdf.rank1(k);
+
         // Maximum value in that bin
         let high = self.params.high(bin_index.u32());
         V::Ones::from_u64(high)
     }
 
-    /// Return the number of observations that lie at or below the q-th quantile.
+    /// Return an upper bound on the number of observations that lie
+    /// at or below the q-th quantile. If there are 2 observations,
+    /// quantile_to_count(0) == 1, quantile_to_count(0.25) == 1,
+    /// quantile_to_count(0.75) == 2, quantile_to_count(1.0) == 2
+    /// todo: clarify this docstring - this returns a value in [1, count]
     pub fn quantile_to_count(&self, q: f64) -> V::Ones {
         debug_assert!((0.0..=1.0).contains(&q));
-        // Using `as` to convert an `f64` into any integer type will
-        // round towards zero inside representable range.
-        // This will equal self.count if and only if q == 1.0.
-        let count = (q * self.count.f64()) as u32;
-        V::Ones::from_u32(count)
+        let count = (q * self.count.f64()).ceil() as u32;
+        V::Ones::from_u32(count.max(1))
     }
 
     pub fn count(&self) -> V::Ones {
@@ -130,7 +133,7 @@ impl<Ones: BitBlock> HistogramBuilder<Ones> {
             acc += *x;
             *x = acc;
         }
-        Histogram::new(self.params, SliceBitVec::new(&cdf, acc))
+        Histogram::new(self.params, SliceBitVec::new(&cdf, acc + One::one()))
     }
 }
 
@@ -305,8 +308,8 @@ mod tests {
         let mut h = Histogram::<SliceBitVec<u32>>::builder(0, 1, 10);
         h.increment(0, 2);
         let h = h.build();
-        assert_eq!(h.quantile_to_count(0.00), 0);
-        assert_eq!(h.quantile_to_count(0.49), 0);
+        assert_eq!(h.quantile_to_count(0.00), 1);
+        assert_eq!(h.quantile_to_count(0.49), 1);
         assert_eq!(h.quantile_to_count(0.50), 1);
         assert_eq!(h.quantile_to_count(1.00), 2);
     }

@@ -62,7 +62,9 @@ impl<Ones: BitBlock> BitVec for SliceBitVec<Ones> {
         if i >= self.len() {
             return self.num_ones();
         }
-        // Safety: n < num_ones and num_ones is derived from a array length, which is usize.
+
+        // Indexing safety: n < num_ones and num_ones is derived from an array length, which is usize.
+        // (if we want to later change this to .get_unchecked)
         self.num_ones()
             .partition_point(|n| self.ones[n.as_usize()] < i)
     }
@@ -71,7 +73,7 @@ impl<Ones: BitBlock> BitVec for SliceBitVec<Ones> {
         if n >= self.num_ones() {
             return None;
         }
-        // Safety: n < num_ones and num_ones is derived from a array length, which is usize.
+        // Indexing safety: n < num_ones and num_ones is derived from a array length, which is usize.
         Some(self.ones[n.as_usize()])
     }
 

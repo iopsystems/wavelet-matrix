@@ -2,6 +2,14 @@ use crate::bit_block::BitBlock;
 use num::One;
 use num::Zero;
 
+// todo
+// - current len() means universe size for bitvecs, but should mean num elements for multibitvecs (and wavelet matrix)
+//   - len could be less than, equal to, or greater than universe size
+// for some things you want the universe size (ie. max one index plus one)
+// for other things you want length - num_zeros + num_ones.
+// - what should len mean for multisets? number of one bits, or number of one plus zero bits? ie. universe size plus num extra elements...
+// - should we remove num_zeros from the multibitvec trait?
+
 // BitVec is the general vector trait. MultiBitVec is the trait for bitvectors with multiplicity.
 
 // Implementers should implement:
@@ -66,6 +74,8 @@ pub trait BitVec: bincode::Encode + bincode::Decode + for<'de> bincode::BorrowDe
     // i+1 and the resulting rank would exceed the bit width
     // of Ones.
     fn len(&self) -> Self::Ones;
+
+    // fn universe_size(&self) -> Self::Ones;
 
     // todo: return the total size in bytes using std::mem::size_of plus the
     // same recursively for all constituents behind a pointer?
