@@ -12,6 +12,7 @@ use std::ops::{
 /// which allows our bit-based structures to be generic over block sizes.
 pub trait BitBlock:
     'static
+    + private::Sealed
     + Unsigned
     + PrimInt
     + WrappingSub
@@ -120,8 +121,15 @@ pub trait BitBlock:
     fn ilog2(self) -> u32;
 }
 
+// used to make bitblock closed and not able to be subtyped from the outside.
+mod private {
+    pub trait Sealed {}
+}
+
 macro_rules! bit_block_impl {
      ($($t:ty)*) => ($(
+        impl private::Sealed for $t {}
+
         impl BitBlock for $t {
             const BITS: u32 = Self::BITS;
             fn ilog2(self) -> u32 {
