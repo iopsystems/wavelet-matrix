@@ -84,11 +84,10 @@ impl<V: MultiBitVec> Histogram<V> {
             return V::one();
         }
 
+        // Computes q*self.count rounded up by computing (1 - q)*count
+        // rounded down, with rounding done implicitly by the cast to u64.
         // Using `as` to convert an `f64` into any integer type will
-        // round towards zero inside representable range, so we take
-        // the complement of q and round it down as a way to round up.
-        // This will equal 0 if and only if q == 0.0, so we handle that
-        // case with the preceding check.
+        // round towards zero inside representable range.
         let q = 1.0 - q;
         let count = (q * self.count.f64()) as u64;
         self.count - V::Ones::from_u64(count)
@@ -319,6 +318,7 @@ mod tests {
         h.increment(0, 2);
         let h = h.build();
         assert_eq!(h.quantile_to_count(0.00), 1);
+        assert_eq!(h.quantile_to_count(0.000001), 1);
         assert_eq!(h.quantile_to_count(0.49), 1);
         assert_eq!(h.quantile_to_count(0.50), 1);
         assert_eq!(h.quantile_to_count(1.00), 2);
