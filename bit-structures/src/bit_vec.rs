@@ -22,11 +22,20 @@ use num::Zero;
 
 // todo: consider removing default impl of rank1 since it is not used by any current subtypes
 
+pub trait BitVecFromSorted: BitVec {
+    fn from_sorted(ones: &[Self::Ones], len: Self::Ones) -> Self;
+}
+
 // todo: what does the 'static mean
 pub trait BitVec:
     'static + bincode::Encode + bincode::Decode + for<'de> bincode::BorrowDecode<'de>
 {
     type Ones: BitBlock;
+
+    // experimental construction interface;
+    // todo:
+    // - needs to be able to pass configuration options somehow (eg. rank/select sampling rates)
+    // - does not make much sense for the RLE bitvec
 
     fn rank1(&self, index: Self::Ones) -> Self::Ones {
         self.default_rank1(index)
@@ -157,7 +166,8 @@ pub trait BitVec:
 // TODO: For these types:
 // - len/num_ones need not be of type Ones, ie. you could have Ones=u8 but have 1 billion elements.
 // - there should be no rank0/select0/num_zeros unless they are specifically implemented to be multiplicity-aware.
-pub trait MultiBitVec: BitVec {}
+// for now, from sorted
+pub trait MultiBitVec: BitVecFromSorted {}
 
 // We export these defaults so that implementors of this trait have the option of
 // calling these functions, eg. after doing some bookkeeping work. For example,

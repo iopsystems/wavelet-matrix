@@ -4,7 +4,7 @@
 
 use crate::bincode_helpers::{borrow_decode_impl, decode_impl, encode_impl};
 use crate::bit_block::BitBlock;
-use crate::bit_vec::{BitVec, MultiBitVec};
+use crate::bit_vec::{BitVec, BitVecFromSorted, MultiBitVec};
 use std::debug_assert;
 
 #[derive(Debug)]
@@ -52,6 +52,12 @@ impl<Ones: BitBlock> SliceBitVec<Ones> {
             len,
             has_multiplicity,
         }
+    }
+}
+
+impl<Ones: BitBlock> BitVecFromSorted for SliceBitVec<Ones> {
+    fn from_sorted(ones: &[Ones], len: Ones) -> Self {
+        Self::new(ones, len)
     }
 }
 

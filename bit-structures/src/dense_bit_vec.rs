@@ -8,7 +8,7 @@
 use crate::bincode_helpers::{borrow_decode_impl, decode_impl, encode_impl};
 use crate::bit_block::BitBlock;
 use crate::bit_buf::BitBuf;
-use crate::bit_vec::BitVec;
+use crate::bit_vec::{BitVec};
 use crate::utils::select1;
 use std::debug_assert;
 
@@ -156,6 +156,17 @@ impl<Ones: BitBlock, Raw: BitBlock> DenseBitVec<Ones, Raw> {
         (bit_pos, num_ones)
     }
 }
+
+// impl<Ones: BitBlock, Raw: BitBlock> BitVecFromSorted for DenseBitVec<Ones, Raw> {
+//     // very temporary prototype impl
+//     fn from_sorted(ones: &[Ones], len: Ones) -> Self {
+//         let mut buf = BitBuf::new(len.usize());
+//         for one in ones {
+//             buf.set(one.usize());
+//         }
+//         Self::new(buf, Ones::from_u32(10), Ones::from_u32(10))
+//     }
+// }
 
 impl<Ones: BitBlock, Raw: BitBlock> BitVec for DenseBitVec<Ones, Raw> {
     type Ones = Ones;

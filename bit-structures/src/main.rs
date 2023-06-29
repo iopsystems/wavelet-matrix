@@ -12,8 +12,8 @@ mod slice_bit_vec;
 
 fn main() {
     let mut h = Histogram::<SliceBitVec<u32>>::builder(0, 9, 30);
-    h.increment(1, 1);
-    h.increment(10_000_000, 1);
+    h.increment_value(1, 1);
+    h.increment_value(10_000_000, 1);
     let h = h.build();
     assert_eq!(h.quantile(0.0), 1);
     assert_eq!(h.quantile(0.25), 1);

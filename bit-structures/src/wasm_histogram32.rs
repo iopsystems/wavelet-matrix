@@ -1,17 +1,33 @@
-use crate::{histogram::Histogram, slice_bit_vec::SliceBitVec, wasm_bindgen};
+use crate::{
+    histogram::Histogram, slice_bit_vec::SliceBitVec, sparse_bit_vec::SparseBitVec, wasm_bindgen,
+};
 
 type Ones = u32;
+type V = SparseBitVec<Ones>;
 
 #[wasm_bindgen]
-pub struct Histogram32(Histogram<SliceBitVec<Ones>>);
+pub struct Histogram32(Histogram<V>);
 
 #[wasm_bindgen]
 impl Histogram32 {
     #[wasm_bindgen(constructor)]
     pub fn new(a: u32, b: u32, n: u32, values: &[Ones], counts: &[Ones]) -> Histogram32 {
-        let mut b = Histogram::<SliceBitVec<Ones>>::builder(a, b, n);
+        let mut b = Histogram::<V>::builder(a, b, n);
         for (&value, &count) in values.iter().zip(counts.iter()) {
-            b.increment(value, count)
+            b.increment_value(value, count)
+        }
+        Histogram32(b.build())
+    }
+    pub fn from_bin_counts(
+        a: u32,
+        b: u32,
+        n: u32,
+        bin_indices: &[usize],
+        counts: &[Ones],
+    ) -> Histogram32 {
+        let mut b = Histogram::<V>::builder(a, b, n);
+        for (&bin_index, &count) in bin_indices.iter().zip(counts.iter()) {
+            b.increment_index(bin_index, count)
         }
         Histogram32(b.build())
     }
@@ -32,5 +48,12 @@ impl Histogram32 {
     }
     pub fn decode(data: Vec<u8>) -> Self {
         Self(Histogram::decode(data))
+    }
+    // convenience
+    pub fn num_bins(&self) -> Ones {
+        self.0.params().num_bins()
+    }
+    pub fn bin_index(&self, value: u64) -> u32 {
+        self.0.params().bin_index(value)
     }
 }

@@ -3,7 +3,7 @@
 use crate::bincode_helpers::{borrow_decode_impl, decode_impl, encode_impl};
 use crate::bit_block::BitBlock;
 use crate::bit_buf::BitBuf;
-use crate::bit_vec::{BitVec, MultiBitVec};
+use crate::bit_vec::{BitVec, BitVecFromSorted, MultiBitVec};
 use crate::dense_bit_vec::DenseBitVec;
 use crate::int_vec::IntVec;
 use std::debug_assert;
@@ -117,14 +117,15 @@ impl<Ones: BitBlock> SparseBitVec<Ones> {
     }
 }
 
+impl<Ones: BitBlock> BitVecFromSorted for SparseBitVec<Ones> {
+    fn from_sorted(ones: &[Ones], len: Ones) -> Self {
+        Self::new(ones, len)
+    }
+}
+
 impl<Ones: BitBlock> BitVec for SparseBitVec<Ones> {
     type Ones = Ones;
-    //     3: index of the first guy of the next group
-    //  1: index of the first guy of this group
-    // -1--33----7
-    // 01234567890
-    // o|oo||oooo|oo|ooooo|
-    // 0 12  3456 78
+
     fn rank1(&self, index: Ones) -> Ones {
         if index >= self.len() {
             return self.num_ones();

@@ -9,14 +9,13 @@
 
 use crate::bincode_helpers::{borrow_decode_impl, decode_impl, encode_impl};
 use crate::bit_block::BitBlock;
-use crate::bit_vec::MultiBitVec;
-use crate::slice_bit_vec::SliceBitVec;
+use crate::bit_vec::{BitVecFromSorted, MultiBitVec};
 use num::One;
 use num::Zero;
 use std::debug_assert;
 
 // Zero bins in the PDF manifest as repetitions in the CDF, so require a MultiBitVec
-pub struct Histogram<V: MultiBitVec> {
+pub struct Histogram<V: MultiBitVec + BitVecFromSorted> {
     params: HistogramParams,
 
     // A bitvector representing the cumulative counts for each bin.
@@ -101,7 +100,7 @@ impl<V: MultiBitVec> Histogram<V> {
         self.params
     }
 
-    pub fn builder(a: u32, b: u32, n: u32) -> HistogramBuilder<V::Ones> {
+    pub fn builder(a: u32, b: u32, n: u32) -> HistogramBuilder<V> {
         HistogramBuilder::new(a, b, n)
     }
 
@@ -117,32 +116,39 @@ impl<V: MultiBitVec> Histogram<V> {
     }
 }
 
-pub struct HistogramBuilder<Ones: BitBlock> {
+pub struct HistogramBuilder<V: MultiBitVec> {
     params: HistogramParams,
-    pdf: Box<[Ones]>,
+    pdf: Box<[V::Ones]>,
 }
 
-impl<Ones: BitBlock> HistogramBuilder<Ones> {
-    pub fn new(a: u32, b: u32, n: u32) -> HistogramBuilder<Ones> {
+impl<V: MultiBitVec> HistogramBuilder<V> {
+    pub fn new(a: u32, b: u32, n: u32) -> HistogramBuilder<V> {
         let params = HistogramParams::new(a, b, n);
         let num_bins = params.num_bins();
-        let pdf = vec![Ones::zero(); num_bins as usize].into();
+        let pdf = vec![V::zero(); num_bins as usize].into();
         HistogramBuilder { params, pdf }
     }
 
-    pub fn increment(&mut self, value: Ones, count: Ones) {
+    // Increment the count in a bin corresponding to a data value
+    pub fn increment_value(&mut self, value: V::Ones, count: V::Ones) {
         let bin_index = self.params.bin_index(value.u64());
         self.pdf[bin_index as usize] += count;
     }
 
-    pub fn build(self) -> Histogram<SliceBitVec<Ones>> {
-        let mut acc = Ones::zero();
+    // Increment the count in a bin at a particular index
+    pub fn increment_index(&mut self, bin_index: usize, count: V::Ones) {
+        self.pdf[bin_index] += count;
+    }
+
+    pub fn build(self) -> Histogram<V> {
+        let mut acc = V::zero();
         let mut cdf = self.pdf;
         for x in cdf.iter_mut() {
             acc += *x;
             *x = acc;
         }
-        Histogram::new(self.params, SliceBitVec::new(&cdf, acc + One::one()))
+        // todo:
+        Histogram::new(self.params, V::from_sorted(&cdf[..], acc + One::one()))
     }
 }
 
@@ -296,6 +302,7 @@ impl HistogramParams {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::slice_bit_vec::SliceBitVec;
 
     #[test]
     fn test_bin_index() {
@@ -315,7 +322,7 @@ mod tests {
     #[test]
     fn test_quantile_to_count() {
         let mut h = Histogram::<SliceBitVec<u32>>::builder(0, 1, 10);
-        h.increment(0, 2);
+        h.increment_value(0, 2);
         let h = h.build();
         assert_eq!(h.quantile_to_count(0.00), 1);
         assert_eq!(h.quantile_to_count(0.000001), 1);
@@ -328,7 +335,7 @@ mod tests {
     fn percentiles_1() {
         let mut h = Histogram::<SliceBitVec<u32>>::builder(0, 1, 10);
         for v in 1..1024 {
-            h.increment(v, 1);
+            h.increment_value(v, 1);
         }
         let h = h.build();
         let q_lo_hi = &[
@@ -353,7 +360,7 @@ mod tests {
     fn percentiles_2() {
         let mut h = Histogram::<SliceBitVec<u32>>::builder(0, 4, 10);
         for v in 1..1024 {
-            h.increment(v, 1);
+            h.increment_value(v, 1);
         }
         let h = h.build();
 
@@ -378,8 +385,8 @@ mod tests {
     #[test]
     fn percentiles_3() {
         let mut h = Histogram::<SliceBitVec<u32>>::builder(0, 9, 30);
-        h.increment(1, 1);
-        h.increment(10_000_000, 1);
+        h.increment_value(1, 1);
+        h.increment_value(10_000_000, 1);
         let h = h.build();
         assert_eq!(h.quantile(0.0), 1);
         assert_eq!(h.quantile(0.25), 1);
