@@ -1,8 +1,6 @@
 // Fixed-width unsigned integer vector that bit-packs fixed-width (<= 64 bits) integers into a u64 array.
 
-use crate::bincode_helpers::{
-    bincode_borrow_decode_impl, bincode_decode_impl, bincode_encode_impl,
-};
+use crate::bincode_helpers::{borrow_decode_impl, decode_impl, encode_impl};
 use crate::bit_block::BitBlock;
 use crate::utils::div_ceil;
 use std::debug_assert;
@@ -21,13 +19,13 @@ pub struct IntVec {
 }
 
 impl bincode::Encode for IntVec {
-    bincode_encode_impl!(data, len, bit_width, write_cursor);
+    encode_impl!(data, len, bit_width, write_cursor);
 }
 impl bincode::Decode for IntVec {
-    bincode_decode_impl!(data, len, bit_width, write_cursor);
+    decode_impl!(data, len, bit_width, write_cursor);
 }
 impl<'de> bincode::BorrowDecode<'de> for IntVec {
-    bincode_borrow_decode_impl!(data, len, bit_width, write_cursor);
+    borrow_decode_impl!(data, len, bit_width, write_cursor);
 }
 
 impl IntVec {

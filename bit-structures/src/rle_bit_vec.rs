@@ -2,9 +2,7 @@
 // The rank0/rank1 functions are efficient, and select0 is efficient; select1 requires a binary search over the full range.
 // We could implement a "flipped" bitvector wrapper to make select1 efficient.
 
-use crate::bincode_helpers::{
-    bincode_borrow_decode_impl, bincode_decode_impl, bincode_encode_impl,
-};
+use crate::bincode_helpers::{borrow_decode_impl, decode_impl, encode_impl};
 use crate::bit_block::BitBlock;
 use crate::bit_vec::BitVec;
 use crate::sparse_bit_vec::SparseBitVec;
@@ -23,14 +21,14 @@ pub struct RLEBitVec<Ones: BitBlock> {
 }
 
 impl<Ones: BitBlock> bincode::Encode for RLEBitVec<Ones> {
-    bincode_encode_impl!(z, zo, len, num_zeros, num_ones);
+    encode_impl!(z, zo, len, num_zeros, num_ones);
 }
 
 impl<Ones: BitBlock> bincode::Decode for RLEBitVec<Ones> {
-    bincode_decode_impl!(z, zo, len, num_zeros, num_ones);
+    decode_impl!(z, zo, len, num_zeros, num_ones);
 }
 impl<'de, Ones: BitBlock> bincode::BorrowDecode<'de> for RLEBitVec<Ones> {
-    bincode_borrow_decode_impl!(z, zo, len, num_zeros, num_ones);
+    borrow_decode_impl!(z, zo, len, num_zeros, num_ones);
 }
 
 impl<Ones: BitBlock> RLEBitVec<Ones> {

@@ -1,8 +1,6 @@
 // Elias-Fano-encoded sparse bitvector
 
-use crate::bincode_helpers::{
-    bincode_borrow_decode_impl, bincode_decode_impl, bincode_encode_impl,
-};
+use crate::bincode_helpers::{borrow_decode_impl, decode_impl, encode_impl};
 use crate::bit_block::BitBlock;
 use crate::bit_buf::BitBuf;
 use crate::bit_vec::{BitVec, MultiBitVec};
@@ -22,7 +20,7 @@ pub struct SparseBitVec<Ones: BitBlock> {
 }
 
 impl<Ones: BitBlock> bincode::Encode for SparseBitVec<Ones> {
-    bincode_encode_impl!(
+    encode_impl!(
         high,
         low,
         num_ones,
@@ -34,7 +32,7 @@ impl<Ones: BitBlock> bincode::Encode for SparseBitVec<Ones> {
 }
 
 impl<Ones: BitBlock> bincode::Decode for SparseBitVec<Ones> {
-    bincode_decode_impl!(
+    decode_impl!(
         high,
         low,
         num_ones,
@@ -45,7 +43,7 @@ impl<Ones: BitBlock> bincode::Decode for SparseBitVec<Ones> {
     );
 }
 impl<'de, Ones: BitBlock> bincode::BorrowDecode<'de> for SparseBitVec<Ones> {
-    bincode_borrow_decode_impl!(
+    borrow_decode_impl!(
         high,
         low,
         num_ones,

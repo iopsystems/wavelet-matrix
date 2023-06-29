@@ -1,6 +1,4 @@
-use crate::bincode_helpers::{
-    bincode_borrow_decode_impl, bincode_decode_impl, bincode_encode_impl,
-};
+use crate::bincode_helpers::{borrow_decode_impl, decode_impl, encode_impl};
 use crate::{bit_buf::BitBuf, bit_vec::BitVec, dense_bit_vec::DenseBitVec};
 use num::{One, Zero};
 use std::{collections::VecDeque, ops::Range};
@@ -51,13 +49,13 @@ pub struct WaveletMatrix<V: BitVec> {
 }
 
 impl<V: BitVec + 'static> bincode::Encode for WaveletMatrix<V> {
-    bincode_encode_impl!(levels, max_symbol, len);
+    encode_impl!(levels, max_symbol, len);
 }
 impl<V: BitVec + 'static> bincode::Decode for WaveletMatrix<V> {
-    bincode_decode_impl!(levels, max_symbol, len);
+    decode_impl!(levels, max_symbol, len);
 }
 impl<'de, V: BitVec> bincode::BorrowDecode<'de> for WaveletMatrix<V> {
-    bincode_borrow_decode_impl!(levels, max_symbol, len);
+    borrow_decode_impl!(levels, max_symbol, len);
 }
 
 impl<V: BitVec> WaveletMatrix<V> {
@@ -438,13 +436,13 @@ struct Level<V: BitVec> {
 }
 
 impl<V: BitVec> bincode::Encode for Level<V> {
-    bincode_encode_impl!(bv, num_zeros, bit);
+    encode_impl!(bv, num_zeros, bit);
 }
 impl<V: BitVec> bincode::Decode for Level<V> {
-    bincode_decode_impl!(bv, num_zeros, bit);
+    decode_impl!(bv, num_zeros, bit);
 }
 impl<'de, V: BitVec> bincode::BorrowDecode<'de> for Level<V> {
-    bincode_borrow_decode_impl!(bv, num_zeros, bit);
+    borrow_decode_impl!(bv, num_zeros, bit);
 }
 
 impl<V: BitVec> Level<V> {

@@ -27,7 +27,7 @@
 //     bincode::Encode::encode(&self.num_ones, encoder)?;
 //     Ok(())
 // }
-macro_rules! bincode_encode_impl {
+macro_rules! encode_impl {
     ($($t:ident),* $(,)?) => (
         fn encode<E: bincode::enc::Encoder>(
             &self,
@@ -56,7 +56,7 @@ macro_rules! bincode_encode_impl {
 //         num_ones: bincode::Decode::decode(decoder)?,
 //     })
 // }
-macro_rules! bincode_decode_impl {
+macro_rules! decode_impl {
     ($($t:ident),* $(,)?) => (
         fn decode<D: bincode::de::Decoder>(
             decoder: &mut D,
@@ -81,7 +81,7 @@ macro_rules! bincode_decode_impl {
 //         num_ones: bincode::BorrowDecode::borrow_decode(decoder)?,
 //     })
 // }
-macro_rules! bincode_borrow_decode_impl {
+macro_rules! borrow_decode_impl {
     ($($t:ident),* $(,)?) => (
         fn borrow_decode<D: bincode::de::BorrowDecoder<'de>>(
             decoder: &mut D,
@@ -93,6 +93,6 @@ macro_rules! bincode_borrow_decode_impl {
     )
 }
 
-pub(crate) use bincode_borrow_decode_impl;
-pub(crate) use bincode_decode_impl;
-pub(crate) use bincode_encode_impl;
+pub(crate) use borrow_decode_impl;
+pub(crate) use decode_impl;
+pub(crate) use encode_impl;

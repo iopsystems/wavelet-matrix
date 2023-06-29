@@ -5,9 +5,7 @@
 // todo:
 //  - benchmark the effect on nonuniformly distributed 1 bits; i bet it helps more when the data are clustered
 //  - try split_last in select1
-use crate::bincode_helpers::{
-    bincode_borrow_decode_impl, bincode_decode_impl, bincode_encode_impl,
-};
+use crate::bincode_helpers::{borrow_decode_impl, decode_impl, encode_impl};
 use crate::bit_block::BitBlock;
 use crate::bit_buf::BitBuf;
 use crate::bit_vec::BitVec;
@@ -34,13 +32,13 @@ where
 }
 
 impl<Ones: BitBlock, Raw: BitBlock> bincode::Encode for DenseBitVec<Ones, Raw> {
-    bincode_encode_impl!(raw, sr_pow2, ss_pow2, r, s0, s1, num_ones);
+    encode_impl!(raw, sr_pow2, ss_pow2, r, s0, s1, num_ones);
 }
 impl<Ones: BitBlock, Raw: BitBlock> bincode::Decode for DenseBitVec<Ones, Raw> {
-    bincode_decode_impl!(raw, sr_pow2, ss_pow2, r, s0, s1, num_ones);
+    decode_impl!(raw, sr_pow2, ss_pow2, r, s0, s1, num_ones);
 }
 impl<'de, Ones: BitBlock, Raw: BitBlock> bincode::BorrowDecode<'de> for DenseBitVec<Ones, Raw> {
-    bincode_borrow_decode_impl!(raw, sr_pow2, ss_pow2, r, s0, s1, num_ones);
+    borrow_decode_impl!(raw, sr_pow2, ss_pow2, r, s0, s1, num_ones);
 }
 
 impl<Ones: BitBlock, Raw: BitBlock> DenseBitVec<Ones, Raw> {

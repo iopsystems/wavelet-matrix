@@ -7,6 +7,7 @@
 // Prototype histogram visualization:
 //   https://observablehq.com/d/35f0b601ed888da9
 
+use crate::bincode_helpers::{borrow_decode_impl, decode_impl, encode_impl};
 use crate::bit_block::BitBlock;
 use crate::bit_vec::MultiBitVec;
 use crate::slice_bit_vec::SliceBitVec;
@@ -23,6 +24,20 @@ pub struct Histogram<V: MultiBitVec> {
 
     // The total number of values added to this histogram
     count: V::Ones,
+}
+
+// Note: in this specific case, it seems like the following derives work, but they don't work for the sparse bitvec
+// #[derive(bincode::Encode, bincode::Decode)]
+// #[bincode(borrow_decode_bounds = "&'__de Histogram<V>: ::bincode::de::BorrowDecode<'__de> + '__de")]
+
+impl<V: MultiBitVec> bincode::Encode for Histogram<V> {
+    encode_impl!(params, cdf, count);
+}
+impl<V: MultiBitVec> bincode::Decode for Histogram<V> {
+    decode_impl!(params, cdf, count);
+}
+impl<'de, V: MultiBitVec> bincode::BorrowDecode<'de> for Histogram<V> {
+    borrow_decode_impl!(params, cdf, count);
 }
 
 impl<V: MultiBitVec> Histogram<V> {
@@ -77,6 +92,17 @@ impl<V: MultiBitVec> Histogram<V> {
     pub fn builder(a: u32, b: u32, n: u32) -> HistogramBuilder<V::Ones> {
         HistogramBuilder::new(a, b, n)
     }
+
+    pub fn encode(&self) -> Vec<u8> {
+        let config = bincode::config::standard().with_fixed_int_encoding();
+        bincode::encode_to_vec(self, config).unwrap()
+    }
+
+    pub fn decode(data: Vec<u8>) -> Self {
+        let config = bincode::config::standard().with_fixed_int_encoding();
+        let (ret, _) = bincode::decode_from_slice(&data, config).unwrap();
+        ret
+    }
 }
 
 pub struct HistogramBuilder<Ones: BitBlock> {
@@ -108,7 +134,7 @@ impl<Ones: BitBlock> HistogramBuilder<Ones> {
     }
 }
 
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, bincode::Encode, bincode::Decode)]
 pub struct HistogramParams {
     // 2^a is the absolute error below the cutoff,
     // and is also the bin width below the cutoff.
@@ -336,6 +362,7 @@ mod tests {
         }
     }
 
+    #[test]
     fn percentiles_3() {
         let mut h = Histogram::<SliceBitVec<u32>>::builder(0, 9, 30);
         h.increment(1, 1);
