@@ -12,32 +12,110 @@ use std::{collections::VecDeque, ops::Range};
 //     by accepting a RangeBounds and writing a  fn that replaces unbounded with 0 or len/whatever.
 type Dense = DenseBitVec<u32, u8>;
 
+struct Traversal<T> {
+    cur: VecDeque<KeyValue<T>>,
+    next: VecDeque<KeyValue<T>>,
+    num_left: usize,
+}
+
+impl<T> Traversal<T> {
+    fn from_values(values: impl IntoIterator<Item = T>) -> Self {
+        let iter = values.into_iter().enumerate().map(KeyValue::from_tuple);
+        Self {
+            cur: VecDeque::new(),
+            next: VecDeque::from_iter(iter),
+            num_left: 0,
+        }
+    }
+
+    fn reset(&mut self, values: impl IntoIterator<Item = T>) {
+        self.cur.clear();
+        self.next.clear();
+        let iter = values.into_iter().enumerate().map(KeyValue::from_tuple);
+        self.cur.extend(iter);
+        self.num_left = 0;
+    }
+
+    fn traverse(&mut self, f: impl Fn(&[KeyValue<T>], &mut Go<KeyValue<T>>)) {
+        // precondition: next contains things to traverse.
+        // postcondition: next has the next things to traverse, with (reversed)
+        // left children followed by (non-reversed) right children, and num_left
+        // indicating the number of left elements.
+
+        // swap next into cur, then clear next
+        std::mem::swap(&mut self.cur, &mut self.next);
+        self.next.clear();
+
+        // note: rather than reversing the left subtree in advance, here's an idea:
+        // we could potentially call a callback twice with the left iterator in order,
+        // then the right iterator reversed, but the typing gets tricky since the left
+        // and right iterators would be of different types.
+        // For future ereference, the left slice would be cur[..self.num_left] and the
+        // right slice would be cur[self.num_left..]
+        let cur = self.cur.make_contiguous();
+        cur[..self.num_left].reverse();
+        // for lifetime reasons (to avoid having to pass &mut self into f), create
+        // an auxiliary structure to let f recurse left and right.
+        let mut go = Go {
+            next: &mut self.next,
+            num_left: 0,
+        };
+        f(cur, &mut go);
+        self.num_left = go.num_left;
+    }
+
+    fn results(&mut self) -> &mut [KeyValue<T>] {
+        self.next.make_contiguous()
+    }
+}
+
+struct Go<'a, T> {
+    next: &'a mut VecDeque<T>,
+    num_left: usize,
+}
+
+impl<T> Go<'_, T> {
+    fn left(&mut self, kv: T) {
+        // left children are appended to the front of the queue
+        // which causes them to be in reverse order
+        self.next.push_front(kv);
+        self.num_left += 1;
+    }
+    fn right(&mut self, kv: T) {
+        // right children are appended to the back of the queue
+        self.next.push_back(kv);
+    }
+}
 // The traversal order means that outputs do not appear in the same order as inputs and
 // there may be multiple outputs per input (e.g. symbols found within a given index range)
 // so associating each batch with an index allows us to track the association between inputs
 // and outputs.
 #[derive(Debug, Copy, Clone, PartialEq, bincode::Encode, bincode::Decode)]
-pub struct BatchValue<T> {
-    pub index: usize,
+pub struct KeyValue<T> {
+    pub key: usize,
     pub value: T,
 }
 
-impl<T> BatchValue<T> {
-    fn new(index: usize, value: T) -> BatchValue<T> {
-        BatchValue { index, value }
+// Associate a usize key to an arbitrary value; used for propagating the metadata
+// of which original query element a partial query result is associated with as we
+// traverse the wavelet tree
+impl<T> KeyValue<T> {
+    fn new(key: usize, value: T) -> KeyValue<T> {
+        KeyValue { key, value }
     }
-    // construct a BatchValue from an (index, value) tuple
-    fn tuple((index, value): (usize, T)) -> BatchValue<T> {
-        BatchValue { index, value }
+    // construct a BatchValue from an (key, value) tuple
+    fn from_tuple((key, value): (usize, T)) -> KeyValue<T> {
+        KeyValue { key, value }
     }
-    fn map<U>(self, f: impl FnOnce(T) -> U) -> BatchValue<U> {
-        BatchValue {
-            index: self.index,
+    fn map<U>(self, f: impl FnOnce(T) -> U) -> KeyValue<U> {
+        KeyValue {
+            key: self.key,
             value: f(self.value),
         }
     }
-    fn with_value(self, value: T) -> BatchValue<T> {
-        BatchValue { value, ..self }
+    // return a new KeyValue with the previous key and new value
+    fn value(self, value: T) -> KeyValue<T> {
+        KeyValue { value, ..self }
     }
 }
 
@@ -76,22 +154,6 @@ impl<V: BitVec> WaveletMatrix<V> {
             max_symbol,
             len,
         }
-    }
-
-    pub fn get(&self, index: V::Ones) -> V::Ones {
-        let mut index = index;
-        let mut symbol = V::zero();
-        for level in self.levels(0) {
-            if !level.bv.get(index) {
-                // go left
-                index = level.bv.rank0(index);
-            } else {
-                // go right
-                symbol += level.bit;
-                index = level.num_zeros + level.bv.rank1(index);
-            }
-        }
-        symbol
     }
 
     // Locates a symbol on the virtual bottom level of the wavelet tree.
@@ -235,7 +297,7 @@ impl<V: BitVec> WaveletMatrix<V> {
                 .copied()
                 .map(|index| (index, zero))
                 .enumerate()
-                .map(BatchValue::tuple),
+                .map(KeyValue::from_tuple),
         );
 
         let mut next = VecDeque::new();
@@ -248,14 +310,14 @@ impl<V: BitVec> WaveletMatrix<V> {
                     // go left
                     let index = level.bv.rank0(index);
                     // left children are appended to the front of the queue
-                    next.push_front(x.with_value((index, symbol)));
+                    next.push_front(x.value((index, symbol)));
                     num_left += 1;
                 } else {
                     // go right
                     let index = level.num_zeros + level.bv.rank1(index);
                     let symbol = symbol + level.bit;
                     // right children are appended to the back of the queue
-                    next.push_back(x.with_value((index, symbol)));
+                    next.push_back(x.value((index, symbol)));
                 }
             }
             // reverse the left children so that the elements are in wm left-to-right orde
@@ -266,8 +328,52 @@ impl<V: BitVec> WaveletMatrix<V> {
         // for a nicer interface, sort the batches in input order
         // and return a vec of the symbols, analogous to `get`.
         let slice = cur.make_contiguous();
-        slice.sort_by_key(|x| x.index);
+        slice.sort_by_key(|x| x.key);
         slice.iter().map(|x| x.value.1).collect()
+    }
+
+    pub fn get_batch_2(&self, indices: &[V::Ones]) -> Vec<V::Ones> {
+        // stores (wm index, symbol) batches, with each batch corresponding to an input index.
+        let mut traversal =
+            Traversal::from_values(indices.iter().copied().map(|index| (index, V::zero())));
+
+        for level in self.levels(0) {
+            traversal.traverse(|xs, go| {
+                for x in xs {
+                    let (index, symbol) = x.value;
+                    if !level.bv.get(index) {
+                        let index = level.bv.rank0(index);
+                        go.left(x.value((index, symbol)));
+                    } else {
+                        let index = level.num_zeros + level.bv.rank1(index);
+                        let symbol = symbol + level.bit;
+                        go.right(x.value((index, symbol)));
+                    }
+                }
+            });
+        }
+
+        // for a nicer interface, sort the batches in input order
+        // and return a vec of the symbols, analogous to `get`.
+        let slice = traversal.results();
+        slice.sort_by_key(|x| x.key);
+        slice.iter().map(|x| x.value.1).collect()
+    }
+
+    pub fn get(&self, index: V::Ones) -> V::Ones {
+        let mut index = index;
+        let mut symbol = V::zero();
+        for level in self.levels(0) {
+            if !level.bv.get(index) {
+                // go left
+                index = level.bv.rank0(index);
+            } else {
+                // go right
+                symbol += level.bit;
+                index = level.num_zeros + level.bv.rank1(index);
+            }
+        }
+        symbol
     }
 
     // Returns an iterator over levels from the high bit downwards, ignoring the
@@ -490,30 +596,6 @@ pub fn num_levels_for_symbol(symbol: u32) -> usize {
         .unwrap()
 }
 
-// todo: we might want to batch-get all indices, and batch-query all ranks.
-// whatever abstraction we design has to be compatible with that. it should
-// probably get cur as an iterator, then push_left or push_right
-struct Scratch<T> {
-    cur: VecDeque<BatchValue<T>>,
-    next: VecDeque<BatchValue<T>>,
-    num_left: usize,
-}
-
-// impl<T> Scratch<T> {
-//     fn iter(&mut self) {
-//         self.cur.clear();
-//         self.next.make_contiguous()[self.num_left..].reverse();
-//         mem::swap(&mut self.next, &mut self.cur);
-//         self.num_left = 0;
-//     }
-//     fn push_left(&mut self, x: T) {
-//         next.push_front(x.with_value((index, symbol)));
-//     }
-//     fn push_right(&mut self, x: T) {
-//         next.push_back(x.with_value((index, symbol)));
-//     }
-// }
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -530,9 +612,11 @@ mod tests {
         }
 
         // dbg!(wm.select(10, 1, 0..wm.len()));
-        // let indices = &[0, 1, 2, 2, 1, 0, 13];
-        // let xs = wm.get_batch(indices);
-        // dbg!(xs);
+        let indices = &[0, 1, 2, 1, 2, 0, 13];
+        dbg!(wm.get_batch(indices));
+        println!("---------------------");
+        dbg!(wm.get_batch_2(indices));
+        // ;
         // panic!("get");
     }
 }
