@@ -302,6 +302,7 @@ impl HistogramParams {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::dense_multi_bit_vec::DenseMultiBitVec;
     use crate::slice_bit_vec::SliceBitVec;
 
     #[test]
@@ -333,7 +334,7 @@ mod tests {
 
     #[test]
     fn percentiles_1() {
-        let mut h = Histogram::<SliceBitVec<u32>>::builder(0, 1, 10);
+        let mut h = Histogram::<DenseMultiBitVec<u32>>::builder(0, 1, 10);
         for v in 1..1024 {
             h.increment_value(v, 1);
         }

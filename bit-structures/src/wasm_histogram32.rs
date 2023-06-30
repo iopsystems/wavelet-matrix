@@ -1,9 +1,12 @@
-use crate::{
-    histogram::Histogram, slice_bit_vec::SliceBitVec, sparse_bit_vec::SparseBitVec, wasm_bindgen,
-};
+#![allow(unused_imports)]
+use crate::dense_multi_bit_vec::DenseMultiBitVec;
+use crate::slice_bit_vec::SliceBitVec;
+use crate::{histogram::Histogram, sparse_bit_vec::SparseBitVec, wasm_bindgen};
 
 type Ones = u32;
-type V = SparseBitVec<Ones>;
+// type V = SliceBitVec<Ones>;
+// type V = SparseBitVec<Ones>;
+type V = DenseMultiBitVec<Ones>;
 
 #[wasm_bindgen]
 pub struct Histogram32(Histogram<V>);

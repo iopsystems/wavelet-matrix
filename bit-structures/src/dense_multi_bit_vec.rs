@@ -1,40 +1,53 @@
-// Dense bit vector with rank and select, based on the ideas described
-// in the paper "Fast, Small, Simple Rank/Select on Bitmaps".
-// We use an additional level of blocks provided by the RawBitVec, but the ideas are the same.
-
-// todo:
-//  - benchmark the effect on nonuniformly distributed 1 bits; i bet it helps more when the data are clustered
-//  - try split_last in select1
 use crate::bincode_helpers::{borrow_decode_impl, decode_impl, encode_impl};
 use crate::bit_block::BitBlock;
 use crate::bit_vec::BitVec;
 use crate::bit_vec::BitVecFromSorted;
+use crate::bit_vec::MultiBitVec;
 use crate::dense_bit_vec::DenseBitVec;
 use crate::sparse_bit_vec::SparseBitVec;
 
-// todo: describe what each rank/select sample holds.
+// todo: figure out how to pass the right len to the occupancy/multiplicity constructors
 
 #[derive(Debug)]
 pub struct DenseMultiBitVec<Ones: BitBlock> {
     occupancy: DenseBitVec<Ones>,
     multiplicity: SparseBitVec<Ones>,
+    num_ones: Ones,
+    len: Ones,
 }
 
 impl<Ones: BitBlock> bincode::Encode for DenseMultiBitVec<Ones> {
-    encode_impl!(occupancy, multiplicity);
+    encode_impl!(occupancy, multiplicity, num_ones, len);
 }
 impl<Ones: BitBlock> bincode::Decode for DenseMultiBitVec<Ones> {
-    decode_impl!(occupancy, multiplicity);
+    decode_impl!(occupancy, multiplicity, num_ones, len);
 }
 impl<'de, Ones: BitBlock> bincode::BorrowDecode<'de> for DenseMultiBitVec<Ones> {
-    borrow_decode_impl!(occupancy, multiplicity);
+    borrow_decode_impl!(occupancy, multiplicity, num_ones, len);
 }
 
 impl<Ones: BitBlock> BitVecFromSorted for DenseMultiBitVec<Ones> {
     fn from_sorted(ones: &[Ones], len: Ones) -> Self {
+        assert!(ones.windows(2).all(|w| w[0] <= w[1])); // assert sorted
+
+        // collapse runs of the same one index
+        let cumulative_sum_of_run_lengths: Vec<Ones> = ones
+            .group_by(|a, b| a == b)
+            .map(|g| g.len())
+            .scan(Ones::zero(), |acc, x| {
+                *acc += Ones::from_usize(x);
+                Some(*acc)
+            })
+            .collect();
+        let num_ones = Ones::from_usize(ones.len());
         Self {
             occupancy: DenseBitVec::from_sorted(ones, len),
-            multiplicity: SparseBitVec::from_sorted(ones, len),
+            multiplicity: SparseBitVec::from_sorted(
+                &cumulative_sum_of_run_lengths,
+                num_ones + Ones::one(),
+            ),
+            num_ones,
+            len,
         }
     }
 }
@@ -56,22 +69,34 @@ impl<Ones: BitBlock> BitVec for DenseMultiBitVec<Ones> {
         self.occupancy.select1(n)
     }
 
-    fn select0(&self, _n: Ones) -> Option<Ones> {
-        unimplemented!()
-    }
+    // fn select0(&self, _n: Ones) -> Option<Ones> {
+    //     unimplemented!()
+    // }
 
     fn num_ones(&self) -> Ones {
-        Ones::one()
+        self.num_ones
     }
 
     fn len(&self) -> Ones {
-        Ones::one()
+        self.len
     }
 
-    fn get(&self, index: Ones) -> bool {
-        index.is_zero()
-    }
+    // fn get(&self, index: Ones) -> bool {
+    //     index.is_zero()
+    // }
 }
 
+impl<Ones: BitBlock> MultiBitVec for DenseMultiBitVec<Ones> {}
+
 #[cfg(test)]
-mod tests {}
+mod tests {
+    use crate::bit_vec;
+
+    use super::*;
+
+    #[test]
+    fn test_bitvector() {
+        bit_vec::test_bitvector(DenseMultiBitVec::<u32>::from_sorted);
+        bit_vec::test_bitvector_vs_naive(DenseMultiBitVec::<u32>::from_sorted);
+    }
+}

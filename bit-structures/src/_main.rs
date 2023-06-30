@@ -7,6 +7,7 @@ use std::fs;
 mod bincode_helpers;
 mod bit_block;
 mod bit_vec;
+mod dense_multi_bit_vec;
 mod histogram;
 mod slice_bit_vec;
 

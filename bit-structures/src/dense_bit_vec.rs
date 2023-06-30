@@ -160,6 +160,9 @@ impl<Ones: BitBlock, Raw: BitBlock> DenseBitVec<Ones, Raw> {
 
 impl<Ones: BitBlock, Raw: BitBlock> BitVecFromSorted for DenseBitVec<Ones, Raw> {
     // very temporary prototype impl
+    // note: ones need not be unique for this function to work.
+    // ie. ones may contain duplicates, which should be ignored for regular bitvecs
+    // but are meaningful for multibitvecs.
     fn from_sorted(ones: &[Ones], len: Ones) -> Self {
         let mut buf = BitBuf::new(len.usize());
         for one in ones {
