@@ -3,6 +3,8 @@ use num::One;
 use num::Zero;
 
 // todo
+// - consider having MultiBitVec be a separate trait that removes all zero-related functionality
+// - consider calling it MultiVec or something? it is not quite as bit-ish since now a bit can be set 'multiple times'...
 // - current len() means universe size for bitvecs, but should mean num elements for multibitvecs (and wavelet matrix)
 //   - len could be less than, equal to, or greater than universe size
 // for some things you want the universe size (ie. max one index plus one)

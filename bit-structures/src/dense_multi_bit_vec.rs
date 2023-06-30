@@ -43,15 +43,21 @@ impl<Ones: BitBlock> BitVec for DenseMultiBitVec<Ones> {
     type Ones = Ones;
 
     fn rank1(&self, index: Ones) -> Ones {
-        index
+        let n = self.occupancy.rank1(index);
+        if n.is_zero() {
+            Ones::zero()
+        } else {
+            self.multiplicity.select1(n - Ones::one()).unwrap()
+        }
     }
 
     fn select1(&self, n: Ones) -> Option<Ones> {
-        Some(n)
+        let n = self.multiplicity.rank1(n + Ones::one());
+        self.occupancy.select1(n)
     }
 
-    fn select0(&self, n: Ones) -> Option<Ones> {
-        Some(n)
+    fn select0(&self, _n: Ones) -> Option<Ones> {
+        unimplemented!()
     }
 
     fn num_ones(&self) -> Ones {
