@@ -49,7 +49,7 @@ impl WaveletMatrix32 {
     pub fn select(&self, symbol: Ones, k: Ones, range_lo: Ones, range_hi: Ones) -> Option<Ones> {
         self.0.select(symbol, k, range_lo..range_hi)
     }
-    
+
     pub fn len(&self) -> Ones {
         self.0.len()
     }
@@ -57,16 +57,20 @@ impl WaveletMatrix32 {
     pub fn count_all(&self, range_lo: Ones, range_hi: Ones) -> Result<JsValue, String> {
         let results = self.0.count_all(range_lo..range_hi);
         let mut symbols = Vec::new();
-        let mut counts = Vec::new();
-        for (symbol, count) in results {
+        let mut starts = Vec::new();
+        let mut ends = Vec::new();
+        for (symbol, start, end) in results {
             symbols.push(symbol);
-            counts.push(count)
+            starts.push(start);
+            ends.push(end);
         }
         let symbols = js_sys::Uint32Array::from(&symbols[..]);
-        let counts = js_sys::Uint32Array::from(&counts[..]);
+        let starts = js_sys::Uint32Array::from(&starts[..]);
+        let ends = js_sys::Uint32Array::from(&ends[..]);
         let obj = js_sys::Object::new();
-        js_sys::Reflect::set(&obj, &"symbols".into(), &symbols).expect("could not set symbols");
-        js_sys::Reflect::set(&obj, &"counts".into(), &counts).expect("could not set counts");
+        js_sys::Reflect::set(&obj, &"symbols".into(), &symbols).expect("could not set `symbols`");
+        js_sys::Reflect::set(&obj, &"starts".into(), &starts).expect("could not set `starts`");
+        js_sys::Reflect::set(&obj, &"ends".into(), &ends).expect("could not set `ends`");
         Ok(obj.into())
     }
 

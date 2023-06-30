@@ -3,6 +3,9 @@ use crate::dense_multi_bit_vec::DenseMultiBitVec;
 use crate::slice_bit_vec::SliceBitVec;
 use crate::{histogram::Histogram, sparse_bit_vec::SparseBitVec, wasm_bindgen};
 
+// todo:
+// - consider leaving the 32-bit-nese implicit, leaving the suffix off of the struct name (and using 64 for the larger versions).
+
 type Ones = u32;
 // type V = SliceBitVec<Ones>;
 // type V = SparseBitVec<Ones>;

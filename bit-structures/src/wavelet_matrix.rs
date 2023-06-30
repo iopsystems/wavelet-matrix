@@ -315,46 +315,49 @@ impl<V: BitVec> WaveletMatrix<V> {
         symbol
     }
 
-    pub fn count_all(&self, range: Range<V::Ones>) -> Vec<(V::Ones, V::Ones)> {
+    // Count the number of occurrences of each symbol in the given index range.
+    // Returns a vec of (symbol, start, end) tuples.
+    // Returning (start, end) rather than a count `end - start` is helpful for
+    // use cases that associate per-symbol data with each entry, where you can
+    // index into it: data[start], data[end-1].
+    // for this use case, the data has to be sorted in wavelet matrix virtual
+    // bottom level order, which is not equivalent to sorted symbol order... hrm.
+    // maybe best to just return counts.
+    pub fn count_all(&self, range: Range<V::Ones>) -> Vec<(V::Ones, V::Ones, V::Ones)> {
         assert!(range.end <= self.len());
         // stores (start, end, symbol) entries, each corresponding to a tracked symbol.
         // we break the range apart and represent start + end separately because Range
         // does not implement Copy, which complicates the code if we use it.
-        let mut traversal = Traversal::new([(range.start, range.end, V::zero())].into_iter());
+        let mut traversal = Traversal::new([(V::zero(), range.start, range.end)].into_iter());
 
         for level in self.levels(0) {
             traversal.traverse(|xs, go| {
                 for x in xs {
-                    let (start, end, symbol) = x.value;
+                    let (symbol, start, end) = x.value;
                     let start = level.ranks(start);
                     let end = level.ranks(end);
 
                     // if there are any left children, go left
                     if start.0 != end.0 {
-                        go.left(x.value((start.0, end.0, symbol)));
+                        go.left(x.value((symbol, start.0, end.0)));
                     }
 
                     // if there are any right children, set the level bit and go right
                     if start.1 != end.1 {
                         go.right(x.value((
+                            symbol + level.bit,
                             level.num_zeros + start.1,
                             level.num_zeros + end.1,
-                            symbol + level.bit,
                         )));
                     }
                 }
             });
         }
 
-        // for a nicer interface, sort the batches in symbol order
+        // for a nicer interface, sort the batches in symbol order for now
         let slice = traversal.results();
-        slice.sort_by_key(|x| x.value.2);
-        // return a vec of (range, count) tuples
-        slice
-            .iter()
-            .map(|x| x.value)
-            .map(|(start, end, symbol)| (symbol, end - start))
-            .collect()
+        slice.sort_by_key(|x| x.value.0);
+        slice.iter().map(|x| x.value).collect()
     }
 
     pub fn get_batch(&self, indices: &[V::Ones]) -> Vec<V::Ones> {
