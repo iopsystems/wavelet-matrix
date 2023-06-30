@@ -60,7 +60,7 @@ impl<Ones: BitBlock> BitVec for DenseMultiBitVec<Ones> {
         if n.is_zero() {
             Ones::zero()
         } else {
-            self.multiplicity.try_select1(n - Ones::one()).unwrap()
+            self.multiplicity.select1(n - Ones::one())
         }
     }
 

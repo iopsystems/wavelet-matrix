@@ -48,11 +48,11 @@ pub trait BitVec:
     }
 
     fn select1(&self, n: Self::Ones) -> Self::Ones {
-        self.default_try_select1(n).unwrap()
+        self.try_select1(n).unwrap()
     }
 
     fn select0(&self, n: Self::Ones) -> Self::Ones {
-        self.default_try_select0(n).unwrap()
+        self.try_select0(n).unwrap()
     }
 
     fn try_select1(&self, n: Self::Ones) -> Option<Self::Ones> {
