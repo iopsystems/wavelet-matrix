@@ -1,6 +1,5 @@
 // For now.
 #![allow(dead_code)]
-#![feature(slice_group_by)]
 
 use log::info;
 use wasm_bindgen::prelude::*;

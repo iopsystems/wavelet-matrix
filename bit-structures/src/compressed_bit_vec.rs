@@ -5,6 +5,7 @@
 
 // Store containers in a dense array. Each represents 2^16 elements.
 
+/*
 use crate::dense_bit_vec::DenseBitVec;
 use std::ops::Range;
 
@@ -44,3 +45,5 @@ impl CompressedBitVec {
     // rank1:
     // select1: binary search high blocks using partition_point, then
 }
+
+*/

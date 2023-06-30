@@ -6,8 +6,6 @@ use crate::bit_vec::MultiBitVec;
 use crate::dense_bit_vec::DenseBitVec;
 use crate::sparse_bit_vec::SparseBitVec;
 
-// todo: figure out how to pass the right len to the occupancy/multiplicity constructors
-
 #[derive(Debug)]
 pub struct DenseMultiBitVec<Ones: BitBlock> {
     occupancy: DenseBitVec<Ones>,
@@ -27,27 +25,33 @@ impl<'de, Ones: BitBlock> bincode::BorrowDecode<'de> for DenseMultiBitVec<Ones> 
 }
 
 impl<Ones: BitBlock> BitVecFromSorted for DenseMultiBitVec<Ones> {
-    fn from_sorted(ones: &[Ones], len: Ones) -> Self {
+    fn from_sorted(ones: &[Ones], universe_size: Ones) -> Self {
         assert!(ones.windows(2).all(|w| w[0] <= w[1])); // assert sorted
 
-        // collapse runs of the same one index
-        let cumulative_sum_of_run_lengths: Vec<Ones> = ones
-            .group_by(|a, b| a == b)
-            .map(|g| g.len())
-            .scan(Ones::zero(), |acc, x| {
-                *acc += Ones::from_usize(x);
-                Some(*acc)
-            })
-            .collect();
+        // collapse runs of the same one index into a vec of cumulative run lengths
+        let mut cumulative_run_lengths = Vec::new();
+        if let Some((&first, rest)) = ones.split_first() {
+            let mut cur = first;
+            let mut count = Ones::one();
+            for next in rest.iter().copied() {
+                if next != cur {
+                    cumulative_run_lengths.push(count);
+                    cur = next;
+                }
+                count += Ones::one()
+            }
+            cumulative_run_lengths.push(count);
+        }
+
         let num_ones = Ones::from_usize(ones.len());
         Self {
-            occupancy: DenseBitVec::from_sorted(ones, len),
+            occupancy: DenseBitVec::from_sorted(ones, universe_size),
             multiplicity: SparseBitVec::from_sorted(
-                &cumulative_sum_of_run_lengths,
+                &cumulative_run_lengths,
                 num_ones + Ones::one(),
             ),
             num_ones,
-            universe_size: len,
+            universe_size,
         }
     }
 }

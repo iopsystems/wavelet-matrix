@@ -13,7 +13,7 @@ pub struct SparseBitVec<Ones: BitBlock> {
     high: DenseBitVec<Ones, u8>, // High bit buckets in unary encoding
     low: IntVec,                 // Low bits in fixed-width encoding
     num_ones: Ones,              // Number of elements (n)
-    len: Ones,                   // Maximum representable integer plus one
+    universe_size: Ones,         // Maximum representable integer plus one
     low_bit_width: Ones,         // Number of low bits per element
     low_mask: Ones,              // Mask with the low_bit_width lowest bits set to 1
     has_multiplicity: bool,      // Whether any element is repeated more than once
@@ -24,7 +24,7 @@ impl<Ones: BitBlock> bincode::Encode for SparseBitVec<Ones> {
         high,
         low,
         num_ones,
-        len,
+        universe_size,
         low_bit_width,
         low_mask,
         has_multiplicity
@@ -36,7 +36,7 @@ impl<Ones: BitBlock> bincode::Decode for SparseBitVec<Ones> {
         high,
         low,
         num_ones,
-        len,
+        universe_size,
         low_bit_width,
         low_mask,
         has_multiplicity
@@ -47,7 +47,7 @@ impl<'de, Ones: BitBlock> bincode::BorrowDecode<'de> for SparseBitVec<Ones> {
         high,
         low,
         num_ones,
-        len,
+        universe_size,
         low_bit_width,
         low_mask,
         has_multiplicity
@@ -59,7 +59,7 @@ impl<Ones: BitBlock> SparseBitVec<Ones> {
     // because we rely on default impls, there is no room fo
     // debug_assert!(!self.has_multiplicity);
     // todo: figure out how to store all u32 elements including u32::MAX
-    pub fn new(ones: &[Ones], len: Ones) -> Self {
+    pub fn new(ones: &[Ones], universe_size: Ones) -> Self {
         // todo: understand the comments in the paper "On Elias-Fano for Rank Queries in FM-Indexes"
         // but for now do the more obvious thing. todo: explain.
         // this is nice because we don't need the number of high bits explicitly so can avoid computing them
@@ -67,13 +67,13 @@ impl<Ones: BitBlock> SparseBitVec<Ones> {
         let bits_per_one = if num_ones.is_zero() {
             Ones::zero()
         } else {
-            len / num_ones
+            universe_size / num_ones
         };
         let low_bit_width = bits_per_one.max(Ones::one()).ilog2();
         let low_mask = Ones::one_mask(low_bit_width);
 
         // unary coding; 1 denotes values and 0 denotes separators
-        let high_len = num_ones + (len >> low_bit_width);
+        let high_len = num_ones + (universe_size >> low_bit_width);
         let mut high = BitBuf::new(high_len.usize());
         let mut low = IntVec::new(num_ones.usize(), low_bit_width as usize);
         let mut prev = Ones::zero();
@@ -81,7 +81,7 @@ impl<Ones: BitBlock> SparseBitVec<Ones> {
 
         for (n, one) in ones.iter().copied().enumerate() {
             debug_assert!(prev <= one);
-            debug_assert!(one < len);
+            debug_assert!(one < universe_size);
 
             // Track whether any element is repeated
             has_multiplicity |= n > 0 && one == prev;
@@ -101,7 +101,7 @@ impl<Ones: BitBlock> SparseBitVec<Ones> {
             high,
             low,
             num_ones,
-            len,
+            universe_size,
             low_bit_width: Ones::from_u32(low_bit_width),
             low_mask,
             has_multiplicity,
@@ -193,7 +193,7 @@ impl<Ones: BitBlock> BitVec for SparseBitVec<Ones> {
     }
 
     fn universe_size(&self) -> Ones {
-        self.len
+        self.universe_size
     }
 }
 
