@@ -46,7 +46,7 @@ impl<V: MultiBitVec> Histogram<V> {
         let count = if num_ones.is_zero() {
             V::Ones::zero()
         } else {
-            cdf.select1(num_ones - V::Ones::one()).unwrap()
+            cdf.try_select1(num_ones - V::Ones::one()).unwrap()
         };
         Histogram { params, cdf, count }
     }
@@ -56,7 +56,7 @@ impl<V: MultiBitVec> Histogram<V> {
         // What is the index of the bin containing `value`?
         let bin_index = self.params.bin_index(value.into());
         // How many observations are in or below that bin?
-        self.cdf.select1(V::Ones::from_u32(bin_index)).unwrap()
+        self.cdf.try_select1(V::Ones::from_u32(bin_index)).unwrap()
     }
 
     /// Return an upper bound on the value of the q-th quantile.

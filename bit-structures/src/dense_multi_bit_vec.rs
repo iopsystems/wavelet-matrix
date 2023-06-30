@@ -60,13 +60,13 @@ impl<Ones: BitBlock> BitVec for DenseMultiBitVec<Ones> {
         if n.is_zero() {
             Ones::zero()
         } else {
-            self.multiplicity.select1(n - Ones::one()).unwrap()
+            self.multiplicity.try_select1(n - Ones::one()).unwrap()
         }
     }
 
-    fn select1(&self, n: Ones) -> Option<Ones> {
+    fn try_select1(&self, n: Ones) -> Option<Ones> {
         let n = self.multiplicity.rank1(n + Ones::one());
-        self.occupancy.select1(n)
+        self.occupancy.try_select1(n)
     }
 
     // fn select0(&self, _n: Ones) -> Option<Ones> {

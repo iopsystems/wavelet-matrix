@@ -18,10 +18,10 @@ impl SparseBitVec32 {
         self.0.rank0(index)
     }
     pub fn select1(&self, n: Ones) -> Option<Ones> {
-        self.0.select1(n)
+        self.0.try_select1(n)
     }
     pub fn select0(&self, n: Ones) -> Option<Ones> {
-        self.0.select0(n)
+        self.0.try_select0(n)
     }
     pub fn get(&self, index: Ones) -> bool {
         self.0.get(index)

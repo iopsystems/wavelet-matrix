@@ -194,10 +194,10 @@ impl<V: BitVec> WaveletMatrix<V> {
             // In either case, we can use bitvector select to compute the index on this level.
             if index < nz {
                 // `index` represents a left child on this level, represented by the `index`-th 0-bit.
-                index = level.bv.select0(index).unwrap();
+                index = level.bv.try_select0(index).unwrap();
             } else {
                 // `index` represents a right child on this level, represented by the `index-nz`-th 1-bit.
-                index = level.bv.select1(index - nz).unwrap();
+                index = level.bv.try_select1(index - nz).unwrap();
             }
         }
         Some(index)

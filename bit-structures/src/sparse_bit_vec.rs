@@ -134,7 +134,7 @@ impl<Ones: BitBlock> BitVec for SparseBitVec<Ones> {
         let quotient = self.quotient(index);
         let (lower_bound, upper_bound) = if quotient.is_zero() {
             let lower_bound = Ones::zero();
-            let upper_bound = self.high.select0(Ones::zero()).unwrap_or(self.num_ones);
+            let upper_bound = self.high.try_select0(Ones::zero()).unwrap_or(self.num_ones);
             (lower_bound, upper_bound)
         } else {
             // compute the lower..upper range to search within the low bits
@@ -142,9 +142,9 @@ impl<Ones: BitBlock> BitVec for SparseBitVec<Ones> {
             // todo: try the equivalent of "as u32" if we can assert in the
             // constructor that we don't go beyond u32::MAX bits.
             let i = quotient - Ones::one();
-            let lower_bound = self.high.select0(i).map(|x| x - i).unwrap_or(Ones::zero());
+            let lower_bound = self.high.try_select0(i).map(|x| x - i).unwrap_or(Ones::zero());
             let i = quotient;
-            let upper_bound = self.high.select0(i).map(|x| x - i).unwrap_or(self.num_ones);
+            let upper_bound = self.high.try_select0(i).map(|x| x - i).unwrap_or(self.num_ones);
             (lower_bound, upper_bound)
         };
 
@@ -164,13 +164,13 @@ impl<Ones: BitBlock> BitVec for SparseBitVec<Ones> {
         self.default_rank0(index)
     }
 
-    fn select1(&self, n: Ones) -> Option<Ones> {
-        let quotient = self.high.rank0(self.high.select1(n)?);
+    fn try_select1(&self, n: Ones) -> Option<Ones> {
+        let quotient = self.high.rank0(self.high.try_select1(n)?);
         let remainder = Ones::from_u32(self.low.get(n.usize()));
         Some((quotient << self.low_bit_width) + remainder)
     }
 
-    fn select0(&self, n: Ones) -> Option<Ones> {
+    fn try_select0(&self, n: Ones) -> Option<Ones> {
         debug_assert!(!self.has_multiplicity);
         self.default_select0(n)
     }

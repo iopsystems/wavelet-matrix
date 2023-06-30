@@ -50,7 +50,7 @@ impl<Ones: BitBlock> RLEBitVec<Ones> {
         let j = self.zo.rank1(index);
 
         // Number of zeros preceding the (aligned) index i
-        self.z.select1(j + Ones::one()).unwrap()
+        self.z.try_select1(j + Ones::one()).unwrap()
     }
 
     pub fn aligned_rank1(&self, index: Ones) -> Ones {
@@ -83,14 +83,14 @@ impl<Ones: BitBlock> BitVec for RLEBitVec<Ones> {
         let j = self.zo.rank1(index);
 
         // Number of zeros including the j-th block
-        let num_cumulative_zeros = self.z.select1(j).unwrap();
+        let num_cumulative_zeros = self.z.try_select1(j).unwrap();
 
         // Number of zeros preceding the j-th block
         // note: relies on the fact that our bitvectors cannot represent
         // Ones::max_value() values since that is reserved for the len
         let num_preceding_zeros = self
             .z
-            .select1(j.wrapping_sub(&Ones::one()))
+            .try_select1(j.wrapping_sub(&Ones::one()))
             .unwrap_or(Ones::zero());
 
         // Number of zeros in the j-th block
@@ -99,7 +99,7 @@ impl<Ones: BitBlock> BitVec for RLEBitVec<Ones> {
         // Start index of the j-th block
         let block_start = self
             .zo
-            .select1(j.wrapping_sub(&Ones::one()))
+            .try_select1(j.wrapping_sub(&Ones::one()))
             .unwrap_or(Ones::zero());
 
         // Number of ones preceding the j-th block
@@ -114,7 +114,7 @@ impl<Ones: BitBlock> BitVec for RLEBitVec<Ones> {
         num_preceding_ones + adj
     }
 
-    fn select1(&self, n: Ones) -> Option<Ones> {
+    fn try_select1(&self, n: Ones) -> Option<Ones> {
         if n >= self.num_ones {
             return None;
         }
@@ -123,15 +123,15 @@ impl<Ones: BitBlock> BitVec for RLEBitVec<Ones> {
         let j = self
             .z
             .num_ones()
-            .partition_point(|i| self.zo.select1(i).unwrap() - self.z.select1(i).unwrap() <= n);
+            .partition_point(|i| self.zo.try_select1(i).unwrap() - self.z.try_select1(i).unwrap() <= n);
 
         // Number of zeros up to and including the j-th block
-        let num_cumulative_zeros = self.z.select1(j).unwrap();
+        let num_cumulative_zeros = self.z.try_select1(j).unwrap();
 
         Some(num_cumulative_zeros + n)
     }
 
-    fn select0(&self, n: Ones) -> Option<Ones> {
+    fn try_select0(&self, n: Ones) -> Option<Ones> {
         if n >= self.num_zeros {
             return None;
         };
@@ -145,10 +145,10 @@ impl<Ones: BitBlock> BitVec for RLEBitVec<Ones> {
         };
 
         // Start index of the j-th 01-block
-        let block_start = self.zo.select1(j - Ones::one()).unwrap();
+        let block_start = self.zo.try_select1(j - Ones::one()).unwrap();
 
         // Number of zeros preceding the j-th 01-block
-        let num_preceding_zeros = self.z.select1(j - Ones::one()).unwrap();
+        let num_preceding_zeros = self.z.try_select1(j - Ones::one()).unwrap();
 
         // Return the index of the (n - num_preceding_zeros)-th zero in the j-th 01-block.
         Some(block_start + (n - num_preceding_zeros))
@@ -292,9 +292,9 @@ mod tests {
         let ans = [1, 2, 6, 7, 8, 9, 12];
         for (i, x) in ans.into_iter().enumerate() {
             let i = i as u32;
-            assert_eq!(bv.select1(i).unwrap(), x);
+            assert_eq!(bv.try_select1(i).unwrap(), x);
         }
-        assert_eq!(bv.select1(7), None);
+        assert_eq!(bv.try_select1(7), None);
     }
 
     #[test]
@@ -307,9 +307,9 @@ mod tests {
         let ans = [0, 3, 4, 5, 10, 11];
         for (i, x) in ans.into_iter().enumerate() {
             let i = i as u32;
-            dbg!(i, bv.select0(i).unwrap());
-            assert_eq!(bv.select0(i).unwrap(), x);
+            dbg!(i, bv.try_select0(i).unwrap());
+            assert_eq!(bv.try_select0(i).unwrap(), x);
         }
-        assert_eq!(bv.select1(14), None);
+        assert_eq!(bv.try_select1(14), None);
     }
 }

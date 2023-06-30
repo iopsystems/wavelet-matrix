@@ -47,11 +47,11 @@ pub trait BitVec:
         self.default_rank0(index)
     }
 
-    fn select1(&self, n: Self::Ones) -> Option<Self::Ones> {
+    fn try_select1(&self, n: Self::Ones) -> Option<Self::Ones> {
         self.default_select1(n)
     }
 
-    fn select0(&self, n: Self::Ones) -> Option<Self::Ones> {
+    fn try_select0(&self, n: Self::Ones) -> Option<Self::Ones> {
         self.default_select0(n)
     }
 
@@ -196,15 +196,15 @@ pub fn test_bitvector<T: BitVec<Ones = u32>>(new: impl Fn(&[u32], u32) -> T) {
     assert_eq!(bv.rank1(4), 3);
     assert_eq!(bv.rank1(5), 3);
 
-    assert_eq!(bv.select0(0), Some(0));
-    assert_eq!(bv.select0(1), None);
-    assert_eq!(bv.select0(2), None);
+    assert_eq!(bv.try_select0(0), Some(0));
+    assert_eq!(bv.try_select0(1), None);
+    assert_eq!(bv.try_select0(2), None);
 
-    assert_eq!(bv.select1(0), Some(1));
-    assert_eq!(bv.select1(1), Some(2));
-    assert_eq!(bv.select1(2), Some(3));
-    assert_eq!(bv.select1(3), None);
-    assert_eq!(bv.select1(4), None);
+    assert_eq!(bv.try_select1(0), Some(1));
+    assert_eq!(bv.try_select1(1), Some(2));
+    assert_eq!(bv.try_select1(2), Some(3));
+    assert_eq!(bv.try_select1(3), None);
+    assert_eq!(bv.try_select1(4), None);
 }
 
 #[cfg(test)]
@@ -272,17 +272,17 @@ pub fn test_bitvector_vs_naive<T: BitVec<Ones = u32>>(new: impl Fn(&[u32], u32) 
 
         // test select0
         for n in 0..nv.num_zeros() {
-            assert_eq!(bv.select0(n), nv.select0(n));
+            assert_eq!(bv.try_select0(n), nv.try_select0(n));
         }
-        assert_eq!(bv.select0(nv.num_zeros()), None);
-        assert_eq!(bv.select0(nv.num_zeros() + 1), None);
+        assert_eq!(bv.try_select0(nv.num_zeros()), None);
+        assert_eq!(bv.try_select0(nv.num_zeros() + 1), None);
 
         // test select1
         for n in 0..nv.num_ones() {
-            assert_eq!(bv.select1(n), nv.select1(n));
+            assert_eq!(bv.try_select1(n), nv.try_select1(n));
         }
-        assert_eq!(bv.select1(nv.num_ones()), None);
-        assert_eq!(bv.select1(nv.num_ones() + 1), None);
+        assert_eq!(bv.try_select1(nv.num_ones()), None);
+        assert_eq!(bv.try_select1(nv.num_ones() + 1), None);
 
         // test get
         for i in 0..nv.len() {

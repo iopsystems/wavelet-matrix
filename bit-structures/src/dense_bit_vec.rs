@@ -239,7 +239,7 @@ impl<Ones: BitBlock, Raw: BitBlock> BitVec for DenseBitVec<Ones, Raw> {
         rank
     }
 
-    fn select1(&self, n: Ones) -> Option<Ones> {
+    fn try_select1(&self, n: Ones) -> Option<Ones> {
         if n >= self.num_ones {
             return None;
         }
@@ -279,7 +279,7 @@ impl<Ones: BitBlock, Raw: BitBlock> BitVec for DenseBitVec<Ones, Raw> {
 
     // todo: use a common abstraction for select0 and select1.
     // right now this doesn't implement the optimization that hops over rank blocks.
-    fn select0(&self, n: Ones) -> Option<Ones> {
+    fn try_select0(&self, n: Ones) -> Option<Ones> {
         if n >= self.num_zeros() {
             return None;
         }
@@ -402,12 +402,12 @@ mod tests {
         }
         type Raw = u8;
         let bv = DenseBitVec::new(raw, Raw::BIT_WIDTH, Raw::BIT_WIDTH);
-        assert_eq!(bv.select1(0), Some(1));
-        assert_eq!(bv.select1(1), Some(2));
-        assert_eq!(bv.select1(2), Some(5));
-        assert_eq!(bv.select1(3), Some(10));
-        assert_eq!(bv.select1(4), Some(32));
-        assert_eq!(bv.select1(5), None);
+        assert_eq!(bv.try_select1(0), Some(1));
+        assert_eq!(bv.try_select1(1), Some(2));
+        assert_eq!(bv.try_select1(2), Some(5));
+        assert_eq!(bv.try_select1(3), Some(10));
+        assert_eq!(bv.try_select1(4), Some(32));
+        assert_eq!(bv.try_select1(5), None);
     }
 
     #[test]
@@ -420,15 +420,15 @@ mod tests {
         }
         type Raw = u8;
         let bv = DenseBitVec::new(raw, Raw::BIT_WIDTH, Raw::BIT_WIDTH);
-        assert_eq!(bv.select0(0), Some(0));
-        assert_eq!(bv.select0(1), Some(3));
-        assert_eq!(bv.select0(2), Some(4));
-        assert_eq!(bv.select0(3), Some(6));
-        assert_eq!(bv.select0(4), Some(7));
-        assert_eq!(bv.select0(5), Some(8));
-        assert_eq!(bv.select0(6), Some(9));
-        assert_eq!(bv.select0(7), None);
-        assert_eq!(bv.select0(8), None);
+        assert_eq!(bv.try_select0(0), Some(0));
+        assert_eq!(bv.try_select0(1), Some(3));
+        assert_eq!(bv.try_select0(2), Some(4));
+        assert_eq!(bv.try_select0(3), Some(6));
+        assert_eq!(bv.try_select0(4), Some(7));
+        assert_eq!(bv.try_select0(5), Some(8));
+        assert_eq!(bv.try_select0(6), Some(9));
+        assert_eq!(bv.try_select0(7), None);
+        assert_eq!(bv.try_select0(8), None);
     }
 
     #[test]
@@ -456,10 +456,10 @@ mod tests {
             let bv = DenseBitVec::new(raw, Raw::BIT_WIDTH, Raw::BIT_WIDTH);
             for (i, o) in ones.iter().copied().enumerate() {
                 println!("testing index {:?} with one  {:?}", i, o);
-                assert_eq!(bv.select1(i as Ones), Some(o));
+                assert_eq!(bv.try_select1(i as Ones), Some(o));
             }
-            assert_eq!(bv.select1(ones.len().try_into().unwrap()), None);
-            assert_eq!(bv.select1((2 * ones.len()).try_into().unwrap()), None);
+            assert_eq!(bv.try_select1(ones.len().try_into().unwrap()), None);
+            assert_eq!(bv.try_select1((2 * ones.len()).try_into().unwrap()), None);
         }
     }
 

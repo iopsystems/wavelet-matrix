@@ -75,7 +75,7 @@ impl<Ones: BitBlock> BitVec for SliceBitVec<Ones> {
             .partition_point(|n| self.ones[n.as_usize()] < i)
     }
 
-    fn select1(&self, n: Ones) -> Option<Ones> {
+    fn try_select1(&self, n: Ones) -> Option<Ones> {
         if n >= self.num_ones() {
             return None;
         }
@@ -88,7 +88,7 @@ impl<Ones: BitBlock> BitVec for SliceBitVec<Ones> {
         self.default_rank0(index)
     }
 
-    fn select0(&self, n: Ones) -> Option<Ones> {
+    fn try_select0(&self, n: Ones) -> Option<Ones> {
         debug_assert!(!self.has_multiplicity);
         self.default_select0(n)
     }
