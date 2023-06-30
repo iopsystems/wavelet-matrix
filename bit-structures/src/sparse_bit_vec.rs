@@ -172,7 +172,7 @@ impl<Ones: BitBlock> BitVec for SparseBitVec<Ones> {
 
     fn try_select0(&self, n: Ones) -> Option<Ones> {
         debug_assert!(!self.has_multiplicity);
-        self.default_select0(n)
+        self.default_try_select0(n)
     }
 
     fn get(&self, index: Ones) -> bool {

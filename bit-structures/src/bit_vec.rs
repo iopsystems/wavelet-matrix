@@ -47,12 +47,20 @@ pub trait BitVec:
         self.default_rank0(index)
     }
 
+    fn select1(&self, n: Self::Ones) -> Self::Ones {
+        self.default_try_select1(n).unwrap()
+    }
+
+    fn select0(&self, n: Self::Ones) -> Self::Ones {
+        self.default_try_select0(n).unwrap()
+    }
+
     fn try_select1(&self, n: Self::Ones) -> Option<Self::Ones> {
-        self.default_select1(n)
+        self.default_try_select1(n)
     }
 
     fn try_select0(&self, n: Self::Ones) -> Option<Self::Ones> {
-        self.default_select0(n)
+        self.default_try_select0(n)
     }
 
     fn get(&self, index: Self::Ones) -> bool {
@@ -122,7 +130,7 @@ pub trait BitVec:
     }
 
     /// Default impl of select1 using binary search over ranks
-    fn default_select0(&self, n: Self::Ones) -> Option<Self::Ones> {
+    fn default_try_select0(&self, n: Self::Ones) -> Option<Self::Ones> {
         if n >= self.num_zeros() {
             return None;
         }
@@ -131,7 +139,7 @@ pub trait BitVec:
     }
 
     /// Default impl of select0 using binary search over ranks
-    fn default_select1(&self, n: Self::Ones) -> Option<Self::Ones> {
+    fn default_try_select1(&self, n: Self::Ones) -> Option<Self::Ones> {
         if n >= self.num_ones() {
             return None;
         }

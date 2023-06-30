@@ -90,7 +90,7 @@ impl<Ones: BitBlock> BitVec for SliceBitVec<Ones> {
 
     fn try_select0(&self, n: Ones) -> Option<Ones> {
         debug_assert!(!self.has_multiplicity);
-        self.default_select0(n)
+        self.default_try_select0(n)
     }
 
     fn num_ones(&self) -> Ones {
