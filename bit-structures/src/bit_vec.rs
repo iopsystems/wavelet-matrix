@@ -178,6 +178,7 @@ pub trait BitVec:
 // - len/num_ones need not be of type Ones, ie. you could have Ones=u8 but have 1 billion elements.
 // - there should be no rank0/select0/num_zeros unless they are specifically implemented to be multiplicity-aware.
 // for now, from sorted
+// - select_distinct1?
 pub trait MultiBitVec: BitVecFromSorted {}
 
 // We export these defaults so that implementors of this trait have the option of

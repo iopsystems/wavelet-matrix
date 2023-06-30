@@ -13,17 +13,17 @@ pub struct DenseMultiBitVec<Ones: BitBlock> {
     occupancy: DenseBitVec<Ones>,
     multiplicity: SparseBitVec<Ones>,
     num_ones: Ones,
-    len: Ones,
+    universe_size: Ones,
 }
 
 impl<Ones: BitBlock> bincode::Encode for DenseMultiBitVec<Ones> {
-    encode_impl!(occupancy, multiplicity, num_ones, len);
+    encode_impl!(occupancy, multiplicity, num_ones, universe_size);
 }
 impl<Ones: BitBlock> bincode::Decode for DenseMultiBitVec<Ones> {
-    decode_impl!(occupancy, multiplicity, num_ones, len);
+    decode_impl!(occupancy, multiplicity, num_ones, universe_size);
 }
 impl<'de, Ones: BitBlock> bincode::BorrowDecode<'de> for DenseMultiBitVec<Ones> {
-    borrow_decode_impl!(occupancy, multiplicity, num_ones, len);
+    borrow_decode_impl!(occupancy, multiplicity, num_ones, universe_size);
 }
 
 impl<Ones: BitBlock> BitVecFromSorted for DenseMultiBitVec<Ones> {
@@ -47,7 +47,7 @@ impl<Ones: BitBlock> BitVecFromSorted for DenseMultiBitVec<Ones> {
                 num_ones + Ones::one(),
             ),
             num_ones,
-            len,
+            universe_size: len,
         }
     }
 }
@@ -55,6 +55,7 @@ impl<Ones: BitBlock> BitVecFromSorted for DenseMultiBitVec<Ones> {
 impl<Ones: BitBlock> BitVec for DenseMultiBitVec<Ones> {
     type Ones = Ones;
 
+    // number of values in this multiset whose value is < index
     fn rank1(&self, index: Ones) -> Ones {
         let n = self.occupancy.rank1(index);
         if n.is_zero() {
@@ -64,26 +65,34 @@ impl<Ones: BitBlock> BitVec for DenseMultiBitVec<Ones> {
         }
     }
 
+    // return the value of the n-th element
     fn try_select1(&self, n: Ones) -> Option<Ones> {
         let n = self.multiplicity.rank1(n + Ones::one());
         self.occupancy.try_select1(n)
     }
 
-    // fn select0(&self, _n: Ones) -> Option<Ones> {
-    //     unimplemented!()
-    // }
+    // number of zeros whose value is < index
+    fn rank0(&self, index: Ones) -> Ones {
+        self.occupancy.rank0(index)
+    }
+
+    // value of the n-th zero
+    fn try_select0(&self, n: Ones) -> Option<Ones> {
+        self.occupancy.try_select0(n)
+    }
+
+    // return true if there is at least one value at the index
+    fn get(&self, index: Ones) -> bool {
+        self.occupancy.get(index)
+    }
 
     fn num_ones(&self) -> Ones {
         self.num_ones
     }
 
     fn universe_size(&self) -> Ones {
-        self.len
+        self.universe_size
     }
-
-    // fn get(&self, index: Ones) -> bool {
-    //     index.is_zero()
-    // }
 }
 
 impl<Ones: BitBlock> MultiBitVec for DenseMultiBitVec<Ones> {}
