@@ -10,13 +10,13 @@ use std::debug_assert;
 
 #[derive(Debug)]
 pub struct SparseBitVec<Ones: BitBlock> {
-    high: DenseBitVec<Ones, u32>, // High bit buckets in unary encoding
-    low: IntVec,                  // Low bits in fixed-width encoding
-    num_ones: Ones,               // Number of elements (n)
-    len: Ones,                    // Maximum representable integer plus one
-    low_bit_width: Ones,          // Number of low bits per element
-    low_mask: Ones,               // Mask with the low_bit_width lowest bits set to 1
-    has_multiplicity: bool,       // Whether any element is repeated more than once
+    high: DenseBitVec<Ones, u8>, // High bit buckets in unary encoding
+    low: IntVec,                 // Low bits in fixed-width encoding
+    num_ones: Ones,              // Number of elements (n)
+    len: Ones,                   // Maximum representable integer plus one
+    low_bit_width: Ones,         // Number of low bits per element
+    low_mask: Ones,              // Mask with the low_bit_width lowest bits set to 1
+    has_multiplicity: bool,      // Whether any element is repeated more than once
 }
 
 impl<Ones: BitBlock> bincode::Encode for SparseBitVec<Ones> {
@@ -95,7 +95,7 @@ impl<Ones: BitBlock> SparseBitVec<Ones> {
         }
 
         // todo: allow tuning of the block parameters
-        let high = DenseBitVec::new(high, Ones::from_u32(5), Ones::from_u32(5));
+        let high = DenseBitVec::new(high, Ones::from_u32(10), Ones::from_u32(10));
 
         Self {
             high,
@@ -142,9 +142,17 @@ impl<Ones: BitBlock> BitVec for SparseBitVec<Ones> {
             // todo: try the equivalent of "as u32" if we can assert in the
             // constructor that we don't go beyond u32::MAX bits.
             let i = quotient - Ones::one();
-            let lower_bound = self.high.try_select0(i).map(|x| x - i).unwrap_or(Ones::zero());
+            let lower_bound = self
+                .high
+                .try_select0(i)
+                .map(|x| x - i)
+                .unwrap_or(Ones::zero());
             let i = quotient;
-            let upper_bound = self.high.try_select0(i).map(|x| x - i).unwrap_or(self.num_ones);
+            let upper_bound = self
+                .high
+                .try_select0(i)
+                .map(|x| x - i)
+                .unwrap_or(self.num_ones);
             (lower_bound, upper_bound)
         };
 
