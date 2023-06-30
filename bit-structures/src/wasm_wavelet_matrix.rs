@@ -1,5 +1,6 @@
 use crate::dense_bit_vec::DenseBitVec;
 use crate::{wasm_bindgen, wavelet_matrix::WaveletMatrix};
+use wasm_bindgen::JsValue;
 
 // note: the Ones type refers to the length of the WM (since that is what determines bitvec size).
 // currently the symbol type is always u32.
@@ -7,8 +8,8 @@ type Ones = u32;
 
 #[wasm_bindgen]
 pub struct SymbolCount {
-    symbol: Ones,
-    count: Ones,
+    pub symbol: Ones,
+    pub count: Ones,
 }
 
 #[wasm_bindgen]
@@ -47,6 +48,26 @@ impl WaveletMatrix32 {
 
     pub fn select(&self, symbol: Ones, k: Ones, range_lo: Ones, range_hi: Ones) -> Option<Ones> {
         self.0.select(symbol, k, range_lo..range_hi)
+    }
+    
+    pub fn len(&self) -> Ones {
+        self.0.len()
+    }
+
+    pub fn count_all(&self, range_lo: Ones, range_hi: Ones) -> Result<JsValue, String> {
+        let results = self.0.count_all(range_lo..range_hi);
+        let mut symbols = Vec::new();
+        let mut counts = Vec::new();
+        for (symbol, count) in results {
+            symbols.push(symbol);
+            counts.push(count)
+        }
+        let symbols = js_sys::Uint32Array::from(&symbols[..]);
+        let counts = js_sys::Uint32Array::from(&counts[..]);
+        let obj = js_sys::Object::new();
+        js_sys::Reflect::set(&obj, &"symbols".into(), &symbols).expect("could not set symbols");
+        js_sys::Reflect::set(&obj, &"counts".into(), &counts).expect("could not set counts");
+        Ok(obj.into())
     }
 
     pub fn encode(&self) -> Vec<u8> {

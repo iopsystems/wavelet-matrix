@@ -131,11 +131,11 @@ impl<T> KeyValue<T> {
     }
 }
 
-#[derive(Debug)] // , bincode::Decode
+#[derive(Debug)]
 pub struct WaveletMatrix<V: BitVec> {
-    levels: Vec<Level<V>>,
-    max_symbol: u32,
-    len: V::Ones,
+    levels: Vec<Level<V>>, // wm levels (bit planes)
+    max_symbol: u32,       // maximum symbol value
+    len: V::Ones,          // number of symbols
 }
 
 impl<V: BitVec> bincode::Encode for WaveletMatrix<V> {
@@ -316,6 +316,7 @@ impl<V: BitVec> WaveletMatrix<V> {
     }
 
     pub fn count_all(&self, range: Range<V::Ones>) -> Vec<(V::Ones, V::Ones)> {
+        assert!(range.end <= self.len());
         // stores (start, end, symbol) entries, each corresponding to a tracked symbol.
         // we break the range apart and represent start + end separately because Range
         // does not implement Copy, which complicates the code if we use it.
@@ -351,10 +352,8 @@ impl<V: BitVec> WaveletMatrix<V> {
         // return a vec of (range, count) tuples
         slice
             .iter()
-            .map(|x| {
-                let (start, end, symbol) = x.value;
-                (symbol, end - start)
-            })
+            .map(|x| x.value)
+            .map(|(start, end, symbol)| (symbol, end - start))
             .collect()
     }
 
@@ -386,10 +385,8 @@ impl<V: BitVec> WaveletMatrix<V> {
         // return a vec of symbols
         slice
             .iter()
-            .map(|x| {
-                let (_index, symbol) = x.value;
-                symbol
-            })
+            .map(|x| x.value)
+            .map(|(_index, symbol)| symbol)
             .collect()
     }
 
