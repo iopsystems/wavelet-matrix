@@ -65,7 +65,7 @@ impl<Ones: BitBlock> BitVec for SliceBitVec<Ones> {
     type Ones = Ones;
 
     fn rank1(&self, i: Ones) -> Ones {
-        if i >= self.len() {
+        if i >= self.universe_size() {
             return self.num_ones();
         }
 
@@ -97,7 +97,7 @@ impl<Ones: BitBlock> BitVec for SliceBitVec<Ones> {
         Ones::from_usize(self.ones.len())
     }
 
-    fn len(&self) -> Ones {
+    fn universe_size(&self) -> Ones {
         self.len
     }
 }

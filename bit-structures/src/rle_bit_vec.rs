@@ -154,7 +154,7 @@ impl<Ones: BitBlock> BitVec for RLEBitVec<Ones> {
         Some(block_start + (n - num_preceding_zeros))
     }
 
-    fn len(&self) -> Ones {
+    fn universe_size(&self) -> Ones {
         self.len
     }
 

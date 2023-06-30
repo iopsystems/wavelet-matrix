@@ -68,12 +68,12 @@ pub trait BitVec:
     }
 
     fn num_ones(&self) -> Self::Ones {
-        self.len() - self.num_zeros()
+        self.universe_size() - self.num_zeros()
     }
 
     // todo: this is not valid in the face of multiplicity
     fn num_zeros(&self) -> Self::Ones {
-        self.len() - self.num_ones()
+        self.universe_size() - self.num_ones()
     }
 
     // num_ones() + num_zeros()
@@ -96,7 +96,7 @@ pub trait BitVec:
     // which would compute rank1(i+1) and work even when
     // i+1 and the resulting rank would exceed the bit width
     // of Ones.
-    fn len(&self) -> Self::Ones;
+    fn universe_size(&self) -> Self::Ones;
 
     // fn universe_size(&self) -> Self::Ones;
 
@@ -115,7 +115,7 @@ pub trait BitVec:
 
     /// Default impl of rank1 using rank0
     fn default_rank1(&self, index: Self::Ones) -> Self::Ones {
-        if index >= self.len() {
+        if index >= self.universe_size() {
             return self.num_ones();
         }
         index - self.rank0(index)
@@ -123,7 +123,7 @@ pub trait BitVec:
 
     /// Default impl of rank0 using rank1
     fn default_rank0(&self, index: Self::Ones) -> Self::Ones {
-        if index >= self.len() {
+        if index >= self.universe_size() {
             return self.num_zeros();
         }
         index - self.rank1(index)
@@ -134,7 +134,7 @@ pub trait BitVec:
         if n >= self.num_zeros() {
             return None;
         }
-        let index = self.len().partition_point(|i| self.rank0(i) <= n);
+        let index = self.universe_size().partition_point(|i| self.rank0(i) <= n);
         Some(index - Self::Ones::one())
     }
 
@@ -143,7 +143,7 @@ pub trait BitVec:
         if n >= self.num_ones() {
             return None;
         }
-        let index = self.len().partition_point(|i| self.rank1(i) <= n);
+        let index = self.universe_size().partition_point(|i| self.rank1(i) <= n);
         Some(index - Self::Ones::one())
     }
 
@@ -187,7 +187,7 @@ pub trait MultiBitVec: BitVecFromSorted {}
 #[cfg(test)]
 pub fn test_bitvector<T: BitVec<Ones = u32>>(new: impl Fn(&[u32], u32) -> T) {
     let bv = new(&[1, 2, 3], 4);
-    assert_eq!(bv.len(), 4);
+    assert_eq!(bv.universe_size(), 4);
     assert_eq!(bv.num_ones(), 3);
     assert_eq!(bv.num_zeros(), 1);
     assert_eq!(bv.rank0(0), 0);
@@ -267,13 +267,13 @@ pub fn test_bitvector_vs_naive<T: BitVec<Ones = u32>>(new: impl Fn(&[u32], u32) 
         let nv = SliceBitVec::new(&ones, len);
 
         // test basic properties
-        assert_eq!(bv.num_ones(), bv.rank1(bv.len()));
-        assert_eq!(bv.num_zeros(), bv.rank0(bv.len()));
-        assert_eq!(bv.num_zeros() + bv.num_ones(), bv.len());
-        assert_eq!(bv.len(), nv.len(), "unequal lengths");
+        assert_eq!(bv.num_ones(), bv.rank1(bv.universe_size()));
+        assert_eq!(bv.num_zeros(), bv.rank0(bv.universe_size()));
+        assert_eq!(bv.num_zeros() + bv.num_ones(), bv.universe_size());
+        assert_eq!(bv.universe_size(), nv.universe_size(), "unequal lengths");
 
         // test rank0 and rank1
-        for i in 0..bv.len() + 2 {
+        for i in 0..bv.universe_size() + 2 {
             assert_eq!(bv.rank0(i), nv.rank0(i));
             assert_eq!(bv.rank1(i), nv.rank1(i));
         }
@@ -293,7 +293,7 @@ pub fn test_bitvector_vs_naive<T: BitVec<Ones = u32>>(new: impl Fn(&[u32], u32) 
         assert_eq!(bv.try_select1(nv.num_ones() + 1), None);
 
         // test get
-        for i in 0..nv.len() {
+        for i in 0..nv.universe_size() {
             assert_eq!(bv.get(i), nv.get(i));
         }
     }

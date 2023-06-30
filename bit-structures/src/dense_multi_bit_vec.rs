@@ -77,7 +77,7 @@ impl<Ones: BitBlock> BitVec for DenseMultiBitVec<Ones> {
         self.num_ones
     }
 
-    fn len(&self) -> Ones {
+    fn universe_size(&self) -> Ones {
         self.len
     }
 

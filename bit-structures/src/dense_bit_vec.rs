@@ -176,7 +176,7 @@ impl<Ones: BitBlock, Raw: BitBlock> BitVec for DenseBitVec<Ones, Raw> {
     type Ones = Ones;
 
     fn rank1(&self, index: Ones) -> Ones {
-        if index >= self.len() {
+        if index >= self.universe_size() {
             return self.num_ones();
         }
 
@@ -316,7 +316,7 @@ impl<Ones: BitBlock, Raw: BitBlock> BitVec for DenseBitVec<Ones, Raw> {
         self.num_ones
     }
 
-    fn len(&self) -> Ones {
+    fn universe_size(&self) -> Ones {
         Ones::from_usize(self.raw.len())
     }
 

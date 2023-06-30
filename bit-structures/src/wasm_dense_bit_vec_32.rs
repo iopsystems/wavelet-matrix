@@ -37,6 +37,6 @@ impl DenseBitVec32 {
         self.0.num_zeros()
     }
     pub fn len(&self) -> Ones {
-        self.0.len()
+        self.0.universe_size()
     }
 }

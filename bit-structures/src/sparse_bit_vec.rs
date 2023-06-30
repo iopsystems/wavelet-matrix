@@ -127,7 +127,7 @@ impl<Ones: BitBlock> BitVec for SparseBitVec<Ones> {
     type Ones = Ones;
 
     fn rank1(&self, index: Ones) -> Ones {
-        if index >= self.len() {
+        if index >= self.universe_size() {
             return self.num_ones();
         }
 
@@ -184,7 +184,7 @@ impl<Ones: BitBlock> BitVec for SparseBitVec<Ones> {
         self.num_ones
     }
 
-    fn len(&self) -> Ones {
+    fn universe_size(&self) -> Ones {
         self.len
     }
 }

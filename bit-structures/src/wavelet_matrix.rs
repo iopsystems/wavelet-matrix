@@ -61,12 +61,12 @@ impl<'de, V: BitVec> bincode::BorrowDecode<'de> for WaveletMatrix<V> {
 impl<V: BitVec> WaveletMatrix<V> {
     pub fn from_bitvecs(levels: Vec<V>, max_symbol: u32) -> WaveletMatrix<V> {
         let max_level = levels.len() - 1;
-        let len = levels.first().map(|level| level.len()).unwrap();
+        let len = levels.first().map(|level| level.universe_size()).unwrap();
         let levels: Vec<Level<V>> = levels
             .into_iter()
             .enumerate()
             .map(|(index, bits)| Level {
-                num_zeros: bits.rank0(bits.len()),
+                num_zeros: bits.rank0(bits.universe_size()),
                 bit: V::one() << (max_level - index),
                 bv: bits,
             })
