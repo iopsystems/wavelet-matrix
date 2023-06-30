@@ -4,6 +4,8 @@ use num::{One, Zero};
 use std::{collections::VecDeque, ops::Range};
 
 // todo
+// - verify that the intermediate traversals are indeed in ascending wavelet matrix order
+// - consider a SymbolCount struct rather than returning tuples
 // - ignore_bits
 // - batch queries
 // - set operations on multiple ranges: union, intersection, ...
@@ -12,6 +14,11 @@ use std::{collections::VecDeque, ops::Range};
 //     by accepting a RangeBounds and writing a  fn that replaces unbounded with 0 or len/whatever.
 type Dense = DenseBitVec<u32, u8>;
 
+// Helper for traversing the wavelet matrix level by level,
+// reusing space when possible and keeping the elements in
+// sorted order with respect to the ordering of wavelet tree
+// nodes in the wavelet matrix (all left nodes precede all
+// right nodes).
 struct Traversal<T> {
     cur: VecDeque<KeyValue<T>>,
     next: VecDeque<KeyValue<T>>,
@@ -19,7 +26,7 @@ struct Traversal<T> {
 }
 
 impl<T> Traversal<T> {
-    fn from_values(values: impl IntoIterator<Item = T>) -> Self {
+    fn new(values: impl IntoIterator<Item = T>) -> Self {
         let iter = values.into_iter().enumerate().map(KeyValue::from_tuple);
         Self {
             cur: VecDeque::new(),
@@ -30,15 +37,15 @@ impl<T> Traversal<T> {
 
     fn reset(&mut self, values: impl IntoIterator<Item = T>) {
         self.cur.clear();
-        self.next.clear();
         let iter = values.into_iter().enumerate().map(KeyValue::from_tuple);
-        self.cur.extend(iter);
+        self.next.clear();
+        self.next.extend(iter);
         self.num_left = 0;
     }
 
     fn traverse(&mut self, f: impl Fn(&[KeyValue<T>], &mut Go<KeyValue<T>>)) {
-        // precondition: next contains things to traverse.
-        // postcondition: next has the next things to traverse, with (reversed)
+        // precondition: `next` contains things to traverse.
+        // postcondition: `next` has the next things to traverse, with (reversed)
         // left children followed by (non-reversed) right children, and num_left
         // indicating the number of left elements.
 
@@ -47,20 +54,25 @@ impl<T> Traversal<T> {
         self.next.clear();
 
         // note: rather than reversing the left subtree in advance, here's an idea:
-        // we could potentially call a callback twice with the left iterator in order,
-        // then the right iterator reversed, but the typing gets tricky since the left
-        // and right iterators would be of different types.
-        // For future ereference, the left slice would be cur[..self.num_left] and the
-        // right slice would be cur[self.num_left..]
+        // we could potentially call the callback twice per level, once with the
+        // left iterator reversed, then the right iterator. this gets tricky in terms
+        // of the types since the two iterators would be of different types.
+        // If we do this, the left slice is cur[..self.num_left] and the right slice
+        // is cur[self.num_left..].
         let cur = self.cur.make_contiguous();
         cur[..self.num_left].reverse();
+
         // for lifetime reasons (to avoid having to pass &mut self into f), create
         // an auxiliary structure to let f recurse left and right.
         let mut go = Go {
             next: &mut self.next,
             num_left: 0,
         };
+
+        // invoke the traversal function with the current elements and the recursion helper
         f(cur, &mut go);
+
+        // update the number of nodes that went left based on the calls `f` made to `go`
         self.num_left = go.num_left;
     }
 
@@ -287,55 +299,69 @@ impl<V: BitVec> WaveletMatrix<V> {
     //     frequency >25%", for power of two frequencies (or actually arbitrary ones, based on the quantiles...right?)
     // note: even more useful would be a k_majority_candidates function that returns all the samples, which can then be filtered down.
 
-    pub fn get_batch(&self, indices: &[V::Ones]) -> Vec<V::Ones> {
-        let zero = V::Ones::zero();
-
-        // stores (wm index, symbol) batches, with each batch corresponding to an input index.
-        let mut cur = VecDeque::from_iter(
-            indices
-                .iter()
-                .copied()
-                .map(|index| (index, zero))
-                .enumerate()
-                .map(KeyValue::from_tuple),
-        );
-
-        let mut next = VecDeque::new();
-
+    pub fn get(&self, index: V::Ones) -> V::Ones {
+        let mut index = index;
+        let mut symbol = V::zero();
         for level in self.levels(0) {
-            let mut num_left = 0;
-            for x in cur.iter() {
-                let (index, symbol) = x.value;
-                if !level.bv.get(index) {
-                    // go left
-                    let index = level.bv.rank0(index);
-                    // left children are appended to the front of the queue
-                    next.push_front(x.value((index, symbol)));
-                    num_left += 1;
-                } else {
-                    // go right
-                    let index = level.num_zeros + level.bv.rank1(index);
-                    let symbol = symbol + level.bit;
-                    // right children are appended to the back of the queue
-                    next.push_back(x.value((index, symbol)));
-                }
+            if !level.bv.get(index) {
+                // go left
+                index = level.bv.rank0(index);
+            } else {
+                // go right
+                symbol += level.bit;
+                index = level.num_zeros + level.bv.rank1(index);
             }
-            // reverse the left children so that the elements are in wm left-to-right orde
-            next.make_contiguous()[..num_left].reverse();
-            cur.clear();
-            (next, cur) = (cur, next);
         }
-        // for a nicer interface, sort the batches in input order
-        // and return a vec of the symbols, analogous to `get`.
-        let slice = cur.make_contiguous();
-        slice.sort_by_key(|x| x.key);
-        slice.iter().map(|x| x.value.1).collect()
+        symbol
     }
 
-    pub fn get_batch_2(&self, indices: &[V::Ones]) -> Vec<V::Ones> {
-        // stores (wm index, symbol) batches, with each batch corresponding to an input index.
-        let mut traversal =
-            Traversal::from_values(indices.iter().copied().map(|index| (index, V::zero())));
+    pub fn count_all(&self, range: Range<V::Ones>) -> Vec<(V::Ones, V::Ones)> {
+        // stores (start, end, symbol) entries, each corresponding to a tracked symbol.
+        // we break the range apart and represent start + end separately because Range
+        // does not implement Copy, which complicates the code if we use it.
+        let mut traversal = Traversal::new([(range.start, range.end, V::zero())].into_iter());
+
+        for level in self.levels(0) {
+            traversal.traverse(|xs, go| {
+                for x in xs {
+                    let (start, end, symbol) = x.value;
+                    let start = level.ranks(start);
+                    let end = level.ranks(end);
+
+                    // if there are any left children, go left
+                    if start.0 != end.0 {
+                        go.left(x.value((start.0, end.0, symbol)));
+                    }
+
+                    // if there are any right children, set the level bit and go right
+                    if start.1 != end.1 {
+                        go.right(x.value((
+                            level.num_zeros + start.1,
+                            level.num_zeros + end.1,
+                            symbol + level.bit,
+                        )));
+                    }
+                }
+            });
+        }
+
+        // for a nicer interface, sort the batches in symbol order
+        let slice = traversal.results();
+        slice.sort_by_key(|x| x.value.2);
+        // return a vec of (range, count) tuples
+        slice
+            .iter()
+            .map(|x| {
+                let (start, end, symbol) = x.value;
+                (symbol, end - start)
+            })
+            .collect()
+    }
+
+    pub fn get_batch(&self, indices: &[V::Ones]) -> Vec<V::Ones> {
+        // stores (wm index, symbol) entries, each corresponding to an input index.
+        let iter = indices.iter().copied().map(|index| (index, V::zero()));
+        let mut traversal = Traversal::new(iter);
 
         for level in self.levels(0) {
             traversal.traverse(|xs, go| {
@@ -357,23 +383,14 @@ impl<V: BitVec> WaveletMatrix<V> {
         // and return a vec of the symbols, analogous to `get`.
         let slice = traversal.results();
         slice.sort_by_key(|x| x.key);
-        slice.iter().map(|x| x.value.1).collect()
-    }
-
-    pub fn get(&self, index: V::Ones) -> V::Ones {
-        let mut index = index;
-        let mut symbol = V::zero();
-        for level in self.levels(0) {
-            if !level.bv.get(index) {
-                // go left
-                index = level.bv.rank0(index);
-            } else {
-                // go right
-                symbol += level.bit;
-                index = level.num_zeros + level.bv.rank1(index);
-            }
-        }
-        symbol
+        // return a vec of symbols
+        slice
+            .iter()
+            .map(|x| {
+                let (_index, symbol) = x.value;
+                symbol
+            })
+            .collect()
     }
 
     // Returns an iterator over levels from the high bit downwards, ignoring the
@@ -602,7 +619,7 @@ mod tests {
 
     #[test]
     fn test_get() {
-        let symbols = vec![1, 2, 3, 3, 2, 1, 4, 5, 6, 7, 8, 2, 9, 10];
+        let symbols = vec![1, 2, 3, 3, 2, 10, 1, 4, 5, 6, 7, 8, 2, 9, 10];
         let max_symbol = symbols.iter().max().copied().unwrap_or(0);
         let wm = WaveletMatrix::from_data(symbols.clone(), max_symbol);
         for (i, sym) in symbols.iter().copied().enumerate() {
@@ -612,11 +629,12 @@ mod tests {
         }
 
         // dbg!(wm.select(10, 1, 0..wm.len()));
-        let indices = &[0, 1, 2, 1, 2, 0, 13];
-        dbg!(wm.get_batch(indices));
-        println!("---------------------");
-        dbg!(wm.get_batch_2(indices));
+        // let indices = &[0, 1, 2, 1, 2, 0, 13];
+        // dbg!(wm.get_batch(indices));
         // ;
         // panic!("get");
+
+        println!("{:?}", wm.count_all(10..15));
+        panic!("count_all");
     }
 }
