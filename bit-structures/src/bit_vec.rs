@@ -3,7 +3,8 @@ use num::One;
 use num::Zero;
 
 // todo
-// - consider having MultiBitVec be a separate trait that removes all zero-related functionality
+// - consider having MultiBitVec be a separate trait that removes all zero-related functionality?
+//   - no, it makes sense to do rank0/select0 queries on some representations (though not all support it)
 // - consider calling it MultiVec or something? it is not quite as bit-ish since now a bit can be set 'multiple times'...
 // - current len() means universe size for bitvecs, but should mean num elements for multibitvecs (and wavelet matrix)
 //   - len could be less than, equal to, or greater than universe size
@@ -28,7 +29,9 @@ pub trait BitVecFromSorted: BitVec {
     fn from_sorted(ones: &[Self::Ones], len: Self::Ones) -> Self;
 }
 
-// todo: what does the 'static mean
+// note: the static bounds are to support deriving bincode implementations for all concrete subtypes.
+// i don't fully understand this stuff yet so it may be a bad idea, but so far all bitvecs hold no references
+// and therefore seem to be compatible with a 'static lifetime...
 pub trait BitVec:
     'static + bincode::Encode + bincode::Decode + for<'de> bincode::BorrowDecode<'de>
 {
@@ -153,6 +156,7 @@ pub trait BitVec:
         ones_count.is_one()
     }
 
+    // shorthand impls for more concise zero/one invocations
     fn zero() -> Self::Ones {
         Self::Ones::zero()
     }

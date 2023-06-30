@@ -42,7 +42,6 @@ impl<Ones: BitBlock> BitVecFromSorted for DenseMultiBitVec<Ones> {
             }
             cumulative_run_lengths.push(count);
         }
-
         let num_ones = Ones::from_usize(ones.len());
         Self {
             occupancy: DenseBitVec::from_sorted(ones, universe_size),
