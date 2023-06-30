@@ -10,7 +10,7 @@ use std::debug_assert;
 
 #[derive(Debug)]
 pub struct SparseBitVec<Ones: BitBlock> {
-    high: DenseBitVec<Ones>, // High bit buckets in unary encoding
+    high: DenseBitVec<Ones, u32>, // High bit buckets in unary encoding
     low: IntVec,             // Low bits in fixed-width encoding
     num_ones: Ones,          // Number of elements (n)
     len: Ones,               // Maximum representable integer plus one
@@ -95,7 +95,7 @@ impl<Ones: BitBlock> SparseBitVec<Ones> {
         }
 
         // todo: allow tuning of the block parameters
-        let high = DenseBitVec::new(high, Ones::from_u32(10), Ones::from_u32(10));
+        let high = DenseBitVec::new(high, Ones::from_u32(5), Ones::from_u32(5));
 
         Self {
             high,

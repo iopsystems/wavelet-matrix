@@ -61,6 +61,7 @@ pub trait BitVec:
         self.len() - self.num_zeros()
     }
 
+    // todo: this is not valid in the face of multiplicity
     fn num_zeros(&self) -> Self::Ones {
         self.len() - self.num_ones()
     }
