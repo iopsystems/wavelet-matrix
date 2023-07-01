@@ -13,6 +13,9 @@ use std::{collections::VecDeque, ops::Range};
 // - functions that accept symbol or index ranges should accept .. and x.. and ..x
 //   - i think this can be implemented with a trait that has an 'expand' method, or
 //     by accepting a RangeBounds and writing a  fn that replaces unbounded with 0 or len/whatever.
+// - document the 'wm as occupancy, plus external bit-reversed-bin-sorted cumulative sum array for
+// weights at the lowest wm level' technique, as mentioned in the email thread with gonzalo navarro.
+
 type Dense = DenseBitVec<u32, u8>;
 
 #[derive(Debug)]
@@ -34,6 +37,8 @@ struct Traversal<T> {
     num_left: usize,
 }
 
+// Traverse a wavelet matrix levelwise, at each level maintaining tree nodes
+// in order they appear in the wavelet matrix (left children preceding right).
 impl<T> Traversal<T> {
     fn new(values: impl IntoIterator<Item = T>) -> Self {
         let iter = values.into_iter().enumerate().map(KeyValue::from_tuple);
@@ -117,6 +122,8 @@ impl<T> Go<'_, T> {
 // there may be multiple outputs per input (e.g. symbols found within a given index range)
 // so associating each batch with an index allows us to track the association between inputs
 // and outputs.
+// The Key is (currently) the input index associated with this query, so we can track it through
+// the tree.
 #[derive(Debug, Copy, Clone, PartialEq, bincode::Encode, bincode::Decode)]
 pub struct KeyValue<T> {
     pub key: usize,
@@ -170,8 +177,8 @@ struct Ranks<T>(T, T);
 struct RankCache<V: BitVec> {
     end_index: Option<V::Ones>, // previous end index
     end_ranks: Ranks<V::Ones>,  // previous end ranks
-    // note: we track this just out of interest;
-    // we could remove it and enable only when profiling.
+    // note: we track these just out of interest;
+    // we could enable only when profiling.
     num_hits: usize,   // number of cache hits
     num_misses: usize, // number of cache misses
 }
