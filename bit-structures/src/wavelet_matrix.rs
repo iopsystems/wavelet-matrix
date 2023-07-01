@@ -1,4 +1,5 @@
 use crate::bincode_helpers::{borrow_decode_impl, decode_impl, encode_impl};
+use crate::bit_block::BitBlock;
 use crate::{bit_buf::BitBuf, bit_vec::BitVec, dense_bit_vec::DenseBitVec};
 use num::{One, Zero};
 use std::{collections::VecDeque, ops::Range};
@@ -13,6 +14,14 @@ use std::{collections::VecDeque, ops::Range};
 //   - i think this can be implemented with a trait that has an 'expand' method, or
 //     by accepting a RangeBounds and writing a  fn that replaces unbounded with 0 or len/whatever.
 type Dense = DenseBitVec<u32, u8>;
+
+#[derive(Debug)]
+pub struct CountAll<T: BitBlock> {
+    pub input_index: usize,
+    pub symbol: T,
+    pub start: T,
+    pub end: T,
+}
 
 // Helper for traversing the wavelet matrix level by level,
 // reusing space when possible and keeping the elements in
@@ -77,7 +86,13 @@ impl<T> Traversal<T> {
     }
 
     fn results(&mut self) -> &mut [KeyValue<T>] {
-        self.next.make_contiguous()
+        let slice = self.next.make_contiguous();
+        // note: reverse only required if we want to return results in wm order,
+        // which might be nice if we are eg. looking up associated data.
+        slice[..self.num_left].reverse();
+
+        self.num_left = 0; // update this so that calling results multiple times does not re-reverse the left
+        slice
     }
 }
 
@@ -315,20 +330,30 @@ impl<V: BitVec> WaveletMatrix<V> {
         symbol
     }
 
+    pub fn count_all(&self, range: Range<V::Ones>) -> Vec<CountAll<V::Ones>> {
+        self.count_all_batch(&[range])
+    }
+
     // Count the number of occurrences of each symbol in the given index range.
-    // Returns a vec of (symbol, start, end) tuples.
+    // Returns a vec of (input_index, symbol, start, end) tuples.
     // Returning (start, end) rather than a count `end - start` is helpful for
-    // use cases that associate per-symbol data with each entry, where you can
-    // index into it: data[start], data[end-1].
-    // for this use case, the data has to be sorted in wavelet matrix virtual
-    // bottom level order, which is not equivalent to sorted symbol order... hrm.
-    // maybe best to just return counts.
-    pub fn count_all(&self, range: Range<V::Ones>) -> Vec<(V::Ones, V::Ones, V::Ones)> {
-        assert!(range.end <= self.len());
-        // stores (start, end, symbol) entries, each corresponding to a tracked symbol.
+    // use cases that associate per-symbol data with each entry.
+    // Note that (when ignore_bits is 0) the range is on the virtual bottom layer
+    // of the wavelet matrix, where symbols are sorted in ascending bit-reversed order.
+    // TODO: Is there a way to do ~half the number of rank queries for contiguous
+    // ranges that share a midpoint, ie. [a..b, b..c, c..d]?
+    pub fn count_all_batch(&self, ranges: &[Range<V::Ones>]) -> Vec<CountAll<V::Ones>> {
+        for range in ranges {
+            assert!(range.end <= self.len());
+        }
+        // stores (symbol, start, end) entries, each corresponding to a tracked symbol.
         // we break the range apart and represent start + end separately because Range
         // does not implement Copy, which complicates the code if we use it.
-        let mut traversal = Traversal::new([(V::zero(), range.start, range.end)].into_iter());
+        let mut traversal = Traversal::new(
+            ranges
+                .iter()
+                .map(|range| (V::zero(), range.start, range.end)),
+        );
 
         for level in self.levels(0) {
             traversal.traverse(|xs, go| {
@@ -354,10 +379,23 @@ impl<V: BitVec> WaveletMatrix<V> {
             });
         }
 
-        // for a nicer interface, sort the batches in symbol order for now
+        // for a nicer interface, sort the batches by batch index
         let slice = traversal.results();
-        slice.sort_by_key(|x| x.value.0);
-        slice.iter().map(|x| x.value).collect()
+        // slice.sort_by_key(|x| x.value.0);
+        slice.sort_by_key(|x| x.key);
+        slice
+            .iter()
+            .map(|x| {
+                let input_index = x.key;
+                let (symbol, start, end) = x.value;
+                CountAll {
+                    input_index,
+                    symbol,
+                    start,
+                    end,
+                }
+            })
+            .collect()
     }
 
     pub fn get_batch(&self, indices: &[V::Ones]) -> Vec<V::Ones> {
@@ -405,6 +443,10 @@ impl<V: BitVec> WaveletMatrix<V> {
 
     pub fn max_symbol(&self) -> u32 {
         self.max_symbol
+    }
+
+    pub fn num_levels(&self) -> usize {
+        self.levels.len()
     }
 
     pub fn encode(&self) -> Vec<u8> {

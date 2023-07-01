@@ -16,14 +16,15 @@ pub struct Histogram32(Histogram<V>);
 
 #[wasm_bindgen]
 impl Histogram32 {
+    // #[wasm_bindgen(constructor)]
+    // pub fn new(a: u32, b: u32, n: u32, values: &[Ones], counts: &[Ones]) -> Histogram32 {
+    //     let mut b = Histogram::<V>::builder(a, b, n);
+    //     for (&value, &count) in values.iter().zip(counts.iter()) {
+    //         b.increment_value(value, count)
+    //     }
+    //     Histogram32(b.build())
+    // }
     #[wasm_bindgen(constructor)]
-    pub fn new(a: u32, b: u32, n: u32, values: &[Ones], counts: &[Ones]) -> Histogram32 {
-        let mut b = Histogram::<V>::builder(a, b, n);
-        for (&value, &count) in values.iter().zip(counts.iter()) {
-            b.increment_value(value, count)
-        }
-        Histogram32(b.build())
-    }
     pub fn from_bin_counts(
         a: u32,
         b: u32,

@@ -50,28 +50,44 @@ impl WaveletMatrix32 {
         self.0.select(symbol, k, range_lo..range_hi)
     }
 
+    pub fn count_all(&self, range_lo: Ones, range_hi: Ones) -> Result<JsValue, String> {
+        self.count_all_batch(&[range_lo, range_hi])
+    }
+
+    // alternate lo, hi, lo, hi, ...
+    pub fn count_all_batch(&self, ranges: &[Ones]) -> Result<JsValue, String> {
+        assert!(ranges.len() % 2 == 0,);
+        let ranges: Vec<_> = ranges.chunks_exact(2).map(|x| x[0]..x[1]).collect();
+        let results = self.0.count_all_batch(&ranges);
+        let mut input_index = Vec::new();
+        let mut symbol = Vec::new();
+        let mut start = Vec::new();
+        let mut end = Vec::new();
+        for x in results {
+            input_index.push(Ones::try_from(x.input_index).unwrap());
+            symbol.push(x.symbol);
+            start.push(x.start);
+            end.push(x.end);
+        }
+        let input_index = js_sys::Uint32Array::from(&input_index[..]);
+        let symbols = js_sys::Uint32Array::from(&symbol[..]);
+        let starts = js_sys::Uint32Array::from(&start[..]);
+        let ends = js_sys::Uint32Array::from(&end[..]);
+        let obj = js_sys::Object::new();
+        js_sys::Reflect::set(&obj, &"input_index".into(), &input_index)
+            .expect("could not set `input_index`");
+        js_sys::Reflect::set(&obj, &"symbol".into(), &symbols).expect("could not set `symbol`");
+        js_sys::Reflect::set(&obj, &"start".into(), &starts).expect("could not set `start`");
+        js_sys::Reflect::set(&obj, &"end".into(), &ends).expect("could not set `end`");
+        Ok(obj.into())
+    }
+
     pub fn len(&self) -> Ones {
         self.0.len()
     }
 
-    pub fn count_all(&self, range_lo: Ones, range_hi: Ones) -> Result<JsValue, String> {
-        let results = self.0.count_all(range_lo..range_hi);
-        let mut symbols = Vec::new();
-        let mut starts = Vec::new();
-        let mut ends = Vec::new();
-        for (symbol, start, end) in results {
-            symbols.push(symbol);
-            starts.push(start);
-            ends.push(end);
-        }
-        let symbols = js_sys::Uint32Array::from(&symbols[..]);
-        let starts = js_sys::Uint32Array::from(&starts[..]);
-        let ends = js_sys::Uint32Array::from(&ends[..]);
-        let obj = js_sys::Object::new();
-        js_sys::Reflect::set(&obj, &"symbols".into(), &symbols).expect("could not set `symbols`");
-        js_sys::Reflect::set(&obj, &"starts".into(), &starts).expect("could not set `starts`");
-        js_sys::Reflect::set(&obj, &"ends".into(), &ends).expect("could not set `ends`");
-        Ok(obj.into())
+    pub fn num_levels(&self) -> usize {
+        self.0.num_levels()
     }
 
     pub fn encode(&self) -> Vec<u8> {
