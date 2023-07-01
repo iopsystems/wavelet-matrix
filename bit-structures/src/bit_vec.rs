@@ -27,6 +27,9 @@ use num::Zero;
 
 // todo: consider removing default impl of rank1 since it is not used by any current subtypes
 
+// note: the sorted ones constructor makes it natural to do zero compression, since we know
+// the universe size and bounds of the 1 bits.
+
 pub trait BitVecFromSorted: BitVec {
     fn from_sorted(ones: &[Self::Ones], len: Self::Ones) -> Self;
 }
