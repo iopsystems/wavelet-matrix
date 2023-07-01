@@ -54,7 +54,8 @@ impl WaveletMatrix32 {
         self.count_all_batch(&[range_lo, range_hi])
     }
 
-    // alternate lo, hi, lo, hi, ...
+    // ranges alternates lo, hi, lo, hi, ...
+    // because i could not find an efficient way to pass a nested slice or similar
     pub fn count_all_batch(&self, ranges: &[Ones]) -> Result<JsValue, String> {
         assert!(ranges.len() % 2 == 0,);
         let ranges: Vec<_> = ranges.chunks_exact(2).map(|x| x[0]..x[1]).collect();
@@ -74,11 +75,12 @@ impl WaveletMatrix32 {
         let starts = js_sys::Uint32Array::from(&start[..]);
         let ends = js_sys::Uint32Array::from(&end[..]);
         let obj = js_sys::Object::new();
-        js_sys::Reflect::set(&obj, &"input_index".into(), &input_index)
-            .expect("could not set `input_index`");
-        js_sys::Reflect::set(&obj, &"symbol".into(), &symbols).expect("could not set `symbol`");
-        js_sys::Reflect::set(&obj, &"start".into(), &starts).expect("could not set `start`");
-        js_sys::Reflect::set(&obj, &"end".into(), &ends).expect("could not set `end`");
+        let err = "could not set js property";
+        js_sys::Reflect::set(&obj, &"input_index".into(), &input_index).expect(err);
+        js_sys::Reflect::set(&obj, &"symbol".into(), &symbols).expect(err);
+        js_sys::Reflect::set(&obj, &"start".into(), &starts).expect(err);
+        js_sys::Reflect::set(&obj, &"end".into(), &ends).expect(err);
+        js_sys::Reflect::set(&obj, &"length".into(), &symbol.len().into()).expect(err);
         Ok(obj.into())
     }
 
