@@ -205,6 +205,15 @@ impl<V: BitVec> RankCache<V> {
         self.end_ranks = level.ranks(end_index);
         (start_ranks, self.end_ranks)
     }
+
+    fn log_stats(&self) {
+        log::info!(
+            "cached {:.1}%: {:?} / {:?}",
+            100.0 * self.num_hits as f64 / (self.num_hits + self.num_misses) as f64,
+            self.num_hits,
+            self.num_hits + self.num_misses,
+        );
+    }
 }
 
 impl<V: BitVec> WaveletMatrix<V> {
@@ -405,7 +414,7 @@ impl<V: BitVec> WaveletMatrix<V> {
                 // Cache the most recent rank call in case the next one is the same.
                 // This means caching the `end` of the previous range, and checking
                 // if it is the same as the `start` of the current range.
-                let mut rank_cache: RankCache<V> = RankCache::new();
+                let mut rank_cache = RankCache::new();
                 for x in xs {
                     let (symbol, start, end) = x.value;
                     // let start = level.ranks(start);
@@ -427,13 +436,7 @@ impl<V: BitVec> WaveletMatrix<V> {
                     }
                 }
 
-                log::info!(
-                    "cached {:.1}%: {:?} / {:?}",
-                    100.0 * rank_cache.num_hits as f64
-                        / (rank_cache.num_hits + rank_cache.num_misses) as f64,
-                    rank_cache.num_hits,
-                    rank_cache.num_hits + rank_cache.num_misses,
-                );
+                rank_cache.log_stats();
             });
         }
 
