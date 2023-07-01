@@ -357,10 +357,21 @@ impl<V: BitVec> WaveletMatrix<V> {
 
         for level in self.levels(0) {
             traversal.traverse(|xs, go| {
+                let mut prev_end_index: Option<V::Ones> = None;
+                let mut prev_end_ranks = (V::zero(), V::zero());
                 for x in xs {
                     let (symbol, start, end) = x.value;
-                    let start = level.ranks(start);
+                    // let start = level.ranks(start);
+                    // let end = level.ranks(end);
+
+                    let start = if prev_end_index == Some(start) {
+                        prev_end_ranks
+                    } else {
+                        level.ranks(start)
+                    };
+                    prev_end_index = Some(end);
                     let end = level.ranks(end);
+                    prev_end_ranks = end;
 
                     // if there are any left children, go left
                     if start.0 != end.0 {
