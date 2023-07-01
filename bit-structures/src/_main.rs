@@ -22,6 +22,7 @@ fn main() {
     assert_eq!(h.quantile(1.0), 10010623);
 
     let data: Vec<u8> = h.encode();
+
     // Write the data to a file named "output.bin"
     if let Err(err) = fs::write("output.bin", data) {
         eprintln!("Error writing to file: {}", err);

@@ -18,12 +18,16 @@ use std::{collections::VecDeque, ops::Range};
 
 type Dense = DenseBitVec<u32, u8>;
 
-#[derive(Debug)]
+#[derive(Debug, Copy, Clone)]
 pub struct CountAll<T: BitBlock> {
-    pub input_index: usize,
     pub symbol: T,
     pub start: T,
     pub end: T,
+}
+impl<T: BitBlock> CountAll<T> {
+    fn new(symbol: T, start: T, end: T) -> Self {
+        Self { symbol, start, end }
+    }
 }
 
 // Helper for traversing the wavelet matrix level by level,
@@ -31,7 +35,8 @@ pub struct CountAll<T: BitBlock> {
 // sorted order with respect to the ordering of wavelet tree
 // nodes in the wavelet matrix (all left nodes precede all
 // right nodes).
-struct Traversal<T> {
+#[derive(Debug)]
+pub struct Traversal<T> {
     cur: VecDeque<KeyValue<T>>,
     next: VecDeque<KeyValue<T>>,
     num_left: usize,
@@ -40,18 +45,17 @@ struct Traversal<T> {
 // Traverse a wavelet matrix levelwise, at each level maintaining tree nodes
 // in order they appear in the wavelet matrix (left children preceding right).
 impl<T> Traversal<T> {
-    fn new(values: impl IntoIterator<Item = T>) -> Self {
-        let iter = values.into_iter().enumerate().map(KeyValue::from_tuple);
+    fn new() -> Self {
         Self {
             cur: VecDeque::new(),
-            next: VecDeque::from_iter(iter),
+            next: VecDeque::new(),
             num_left: 0,
         }
     }
 
     fn reset(&mut self, values: impl IntoIterator<Item = T>) {
-        self.cur.clear();
         let iter = values.into_iter().enumerate().map(KeyValue::from_tuple);
+        self.cur.clear();
         self.next.clear();
         self.next.extend(iter);
         self.num_left = 0;
@@ -84,13 +88,15 @@ impl<T> Traversal<T> {
         };
 
         // invoke the traversal function with the current elements and the recursion helper
+        // we pass an iterator rather than an element at a time so that f can do its own
+        // batching if it wants to
         f(cur, &mut go);
 
         // update the number of nodes that went left based on the calls `f` made to `go`
         self.num_left = go.num_left;
     }
 
-    fn results(&mut self) -> &mut [KeyValue<T>] {
+    pub fn results(&mut self) -> &mut [KeyValue<T>] {
         let slice = self.next.make_contiguous();
         // note: reverse only required if we want to return results in wm order,
         // which might be nice if we are eg. looking up associated data.
@@ -186,8 +192,6 @@ struct RankCache<V: BitVec> {
 impl<V: BitVec> RankCache<V> {
     fn new() -> Self {
         Self {
-            // i think this can never happen in practice so long as
-            // this is used to cache the next start value
             end_index: None,
             end_ranks: Ranks(V::Ones::zero(), V::Ones::zero()),
             num_hits: 0,
@@ -390,7 +394,7 @@ impl<V: BitVec> WaveletMatrix<V> {
         symbol
     }
 
-    pub fn count_all(&self, range: Range<V::Ones>) -> Vec<CountAll<V::Ones>> {
+    pub fn count_all(&self, range: Range<V::Ones>) -> Traversal<CountAll<V::Ones>> {
         self.count_all_batch(&[range])
     }
 
@@ -402,19 +406,17 @@ impl<V: BitVec> WaveletMatrix<V> {
     // of the wavelet matrix, where symbols are sorted in ascending bit-reversed order.
     // TODO: Is there a way to do ~half the number of rank queries for contiguous
     // ranges that share a midpoint, ie. [a..b, b..c, c..d]?
-    pub fn count_all_batch(&self, ranges: &[Range<V::Ones>]) -> Vec<CountAll<V::Ones>> {
+    pub fn count_all_batch(&self, ranges: &[Range<V::Ones>]) -> Traversal<CountAll<V::Ones>> {
         for range in ranges {
             assert!(range.end <= self.len());
         }
 
-        // stores (symbol, start, end) entries, each corresponding to a tracked symbol.
-        // we break the range apart and represent start + end separately because Range
-        // does not implement Copy, which complicates the code if we use it.
-        let mut traversal = Traversal::new(
-            ranges
-                .iter()
-                .map(|range| (V::zero(), range.start, range.end)),
-        );
+        let mut traversal = Traversal::new();
+        traversal.reset(ranges.iter().map(|range| CountAll {
+            symbol: V::zero(),
+            start: range.start,
+            end: range.end,
+        }));
 
         for level in self.levels(0) {
             traversal.traverse(|xs, go| {
@@ -423,53 +425,38 @@ impl<V: BitVec> WaveletMatrix<V> {
                 // if it is the same as the `start` of the current range.
                 let mut rank_cache = RankCache::new();
                 for x in xs {
-                    let (symbol, start, end) = x.value;
+                    let CountAll { symbol, start, end } = x.value;
                     // let start = level.ranks(start);
                     // let end = level.ranks(end);
                     let (start, end) = rank_cache.get(start, end, level);
 
                     // if there are any left children, go left
                     if start.0 != end.0 {
-                        go.left(x.value((symbol, start.0, end.0)));
+                        go.left(x.value(CountAll::new(symbol, start.0, end.0)));
                     }
 
                     // if there are any right children, set the level bit and go right
                     if start.1 != end.1 {
-                        go.right(x.value((
+                        go.right(x.value(CountAll::new(
                             symbol + level.bit,
                             level.num_zeros + start.1,
                             level.num_zeros + end.1,
                         )));
                     }
                 }
-
                 rank_cache.log_stats();
             });
         }
 
-        // for a nicer interface, sort the batches by batch index
-        let slice = traversal.results();
-        // slice.sort_by_key(|x| x.value.0);
-        slice.sort_by_key(|x| x.key);
-        slice
-            .iter()
-            .map(|x| {
-                let input_index = x.key;
-                let (symbol, start, end) = x.value;
-                CountAll {
-                    input_index,
-                    symbol,
-                    start,
-                    end,
-                }
-            })
-            .collect()
+        traversal
     }
 
-    pub fn get_batch(&self, indices: &[V::Ones]) -> Vec<V::Ones> {
+    pub fn get_batch(&self, indices: &[V::Ones]) -> Traversal<(V::Ones, V::Ones)> {
         // stores (wm index, symbol) entries, each corresponding to an input index.
+        let mut traversal = Traversal::new();
+        // todo: struct for IndexSymbol?
         let iter = indices.iter().copied().map(|index| (index, V::zero()));
-        let mut traversal = Traversal::new(iter);
+        traversal.reset(iter);
 
         for level in self.levels(0) {
             traversal.traverse(|xs, go| {
@@ -487,16 +474,7 @@ impl<V: BitVec> WaveletMatrix<V> {
             });
         }
 
-        // for a nicer interface, sort the batches in input order
-        // and return a vec of the symbols, analogous to `get`.
-        let slice = traversal.results();
-        slice.sort_by_key(|x| x.key);
-        // return a vec of symbols
-        slice
-            .iter()
-            .map(|x| x.value)
-            .map(|(_index, symbol)| symbol)
-            .collect()
+        traversal
     }
 
     // Returns an iterator over levels from the high bit downwards, ignoring the
@@ -530,7 +508,7 @@ impl<V: BitVec> WaveletMatrix<V> {
 }
 
 impl WaveletMatrix<Dense> {
-    pub fn from_data(data: Vec<u32>, max_symbol: u32) -> WaveletMatrix<Dense> {
+    pub fn new(data: Vec<u32>, max_symbol: u32) -> WaveletMatrix<Dense> {
         let num_levels = num_levels_for_symbol(max_symbol);
         // We implement two different wavelet matrix construction algorithms. One of them is more
         // efficient, but that algorithm does not scale well to large alphabets and also cannot
@@ -731,7 +709,7 @@ mod tests {
     fn test_get() {
         let symbols = vec![1, 2, 3, 3, 2, 10, 1, 4, 5, 6, 7, 8, 2, 9, 10];
         let max_symbol = symbols.iter().max().copied().unwrap_or(0);
-        let wm = WaveletMatrix::from_data(symbols.clone(), max_symbol);
+        let wm = WaveletMatrix::new(symbols.clone(), max_symbol);
         for (i, sym) in symbols.iter().copied().enumerate() {
             assert_eq!(sym, wm.get(i as u32));
             // dbg!(sym, wm.rank(sym, 0..wm.len()));

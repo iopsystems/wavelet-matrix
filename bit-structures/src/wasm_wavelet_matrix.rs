@@ -23,7 +23,7 @@ impl WaveletMatrix32 {
         // note: to_vec copies the data. ideally we would just take ownership of the passed-in data.
         // that might involve passing it in as other than a &[Ones].
         // we need a vector for large alphabet construction since it uses retain_mut.
-        WaveletMatrix32(WaveletMatrix::from_data(data.to_vec(), max_symbol))
+        WaveletMatrix32(WaveletMatrix::new(data.to_vec(), max_symbol))
     }
 
     pub fn simple_majority(&self, range_lo: Ones, range_hi: Ones) -> Option<Ones> {
@@ -60,16 +60,16 @@ impl WaveletMatrix32 {
     pub fn count_all_batch(&self, ranges: &[Ones]) -> Result<JsValue, String> {
         assert!(ranges.len() % 2 == 0,);
         let ranges: Vec<_> = ranges.chunks_exact(2).map(|x| x[0]..x[1]).collect();
-        let results = self.0.count_all_batch(&ranges);
+        let mut traversal = self.0.count_all_batch(&ranges);
         let mut input_index = Vec::new();
         let mut symbol = Vec::new();
         let mut start = Vec::new();
         let mut end = Vec::new();
-        for x in results {
-            input_index.push(Ones::try_from(x.input_index).unwrap());
-            symbol.push(x.symbol);
-            start.push(x.start);
-            end.push(x.end);
+        for x in traversal.results() {
+            input_index.push(Ones::try_from(x.key).unwrap());
+            symbol.push(x.value.symbol);
+            start.push(x.value.start);
+            end.push(x.value.end);
         }
         let obj = js_sys::Object::new();
         let err = "could not set js property";
