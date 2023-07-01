@@ -170,7 +170,10 @@ struct Ranks<T>(T, T);
 struct RankCache<V: BitVec> {
     end_index: Option<V::Ones>, // previous end index
     end_ranks: Ranks<V::Ones>,  // previous end ranks
-    num_hits: usize,            // number of cache hits
+    // note: we track this just out of interest;
+    // we could remove it and enable only when profiling.
+    num_hits: usize,   // number of cache hits
+    num_misses: usize, // number of cache misses
 }
 
 impl<V: BitVec> RankCache<V> {
@@ -181,6 +184,7 @@ impl<V: BitVec> RankCache<V> {
             end_index: None,
             end_ranks: Ranks(V::Ones::zero(), V::Ones::zero()),
             num_hits: 0,
+            num_misses: 0,
         }
     }
 
@@ -194,6 +198,7 @@ impl<V: BitVec> RankCache<V> {
             self.num_hits += 1;
             self.end_ranks
         } else {
+            self.num_misses += 1;
             level.ranks(start_index)
         };
         self.end_index = Some(end_index);
@@ -385,6 +390,7 @@ impl<V: BitVec> WaveletMatrix<V> {
         for range in ranges {
             assert!(range.end <= self.len());
         }
+
         // stores (symbol, start, end) entries, each corresponding to a tracked symbol.
         // we break the range apart and represent start + end separately because Range
         // does not implement Copy, which complicates the code if we use it.
@@ -421,7 +427,13 @@ impl<V: BitVec> WaveletMatrix<V> {
                     }
                 }
 
-                log::info!("num_hits: {:?}", rank_cache.num_hits);
+                log::info!(
+                    "cached {:.1}%: {:?} / {:?}",
+                    100.0 * rank_cache.num_hits as f64
+                        / (rank_cache.num_hits + rank_cache.num_misses) as f64,
+                    rank_cache.num_hits,
+                    rank_cache.num_hits + rank_cache.num_misses,
+                );
             });
         }
 
