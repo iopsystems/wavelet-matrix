@@ -481,7 +481,7 @@ impl WaveletMatrix<Dense> {
         // It also requires O(2^num_levels) space. So, we check whether the number of data points
         // is less than 2^num_levels, and if so use the scalable algorithm, and otherise use the
         // the efficient algorithm.
-        let levels = if num_levels < (data.len().ilog2() as usize) {
+        let levels = if num_levels <= (data.len().ilog2() as usize) {
             build_bitvecs(data, num_levels)
         } else {
             build_bitvecs_large_alphabet(data, num_levels)
