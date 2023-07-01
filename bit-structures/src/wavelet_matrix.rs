@@ -163,6 +163,31 @@ impl<'de, V: BitVec> bincode::BorrowDecode<'de> for WaveletMatrix<V> {
     borrow_decode_impl!(levels, max_symbol, len);
 }
 
+struct RankCache<V: BitVec> {
+    prev_index: Option<V::Ones>,
+    prev_ranks: (V::Ones, V::Ones),
+    num_hits: usize,
+}
+
+impl<V: BitVec> RankCache<V> {
+    fn new() -> Self {
+        Self {
+            prev_index: None,
+            prev_ranks: (V::Ones::zero(), V::Ones::zero()),
+            num_hits: 0,
+        }
+    }
+    fn get_start(&mut self, index: V::Ones, level: Level<V>) -> (V::Ones, V::Ones) {
+        if Some(index) == self.prev_index {
+            self.num_hits += 1;
+        } else {
+            self.prev_index = Some(index);
+            self.prev_ranks = level.ranks(index);
+        }
+        self.prev_ranks
+    }
+}
+
 impl<V: BitVec> WaveletMatrix<V> {
     pub fn from_bitvecs(levels: Vec<V>, max_symbol: u32) -> WaveletMatrix<V> {
         let max_level = levels.len() - 1;
@@ -359,12 +384,15 @@ impl<V: BitVec> WaveletMatrix<V> {
             traversal.traverse(|xs, go| {
                 let mut prev_end_index: Option<V::Ones> = None;
                 let mut prev_end_ranks = (V::zero(), V::zero());
+                let mut count = 0;
+
                 for x in xs {
                     let (symbol, start, end) = x.value;
                     // let start = level.ranks(start);
                     // let end = level.ranks(end);
 
                     let start = if prev_end_index == Some(start) {
+                        count += 1;
                         prev_end_ranks
                     } else {
                         level.ranks(start)
@@ -387,6 +415,8 @@ impl<V: BitVec> WaveletMatrix<V> {
                         )));
                     }
                 }
+
+                log::info!("count: {:?}", count);
             });
         }
 
