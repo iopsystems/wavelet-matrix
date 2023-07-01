@@ -163,28 +163,42 @@ impl<'de, V: BitVec> bincode::BorrowDecode<'de> for WaveletMatrix<V> {
     borrow_decode_impl!(levels, max_symbol, len);
 }
 
+// store (rank0, rank1)
+#[derive(Copy, Clone)]
+struct Ranks<T>(T, T);
+
 struct RankCache<V: BitVec> {
-    prev_index: Option<V::Ones>,
-    prev_ranks: (V::Ones, V::Ones),
-    num_hits: usize,
+    end_index: Option<V::Ones>, // previous end index
+    end_ranks: Ranks<V::Ones>,  // previous end ranks
+    num_hits: usize,            // number of cache hits
 }
 
 impl<V: BitVec> RankCache<V> {
     fn new() -> Self {
         Self {
-            prev_index: None,
-            prev_ranks: (V::Ones::zero(), V::Ones::zero()),
+            // i think this can never happen in practice so long as
+            // this is used to cache the next start value
+            end_index: None,
+            end_ranks: Ranks(V::Ones::zero(), V::Ones::zero()),
             num_hits: 0,
         }
     }
-    fn get_start(&mut self, index: V::Ones, level: Level<V>) -> (V::Ones, V::Ones) {
-        if Some(index) == self.prev_index {
+
+    fn get(
+        &mut self,
+        start_index: V::Ones,
+        end_index: V::Ones,
+        level: &Level<V>,
+    ) -> (Ranks<V::Ones>, Ranks<V::Ones>) {
+        let start_ranks = if Some(start_index) == self.end_index {
             self.num_hits += 1;
+            self.end_ranks
         } else {
-            self.prev_index = Some(index);
-            self.prev_ranks = level.ranks(index);
-        }
-        self.prev_ranks
+            level.ranks(start_index)
+        };
+        self.end_index = Some(end_index);
+        self.end_ranks = level.ranks(end_index);
+        (start_ranks, self.end_ranks)
     }
 }
 
@@ -382,24 +396,15 @@ impl<V: BitVec> WaveletMatrix<V> {
 
         for level in self.levels(0) {
             traversal.traverse(|xs, go| {
-                let mut prev_end_index: Option<V::Ones> = None;
-                let mut prev_end_ranks = (V::zero(), V::zero());
-                let mut count = 0;
-
+                // Cache the most recent rank call in case the next one is the same.
+                // This means caching the `end` of the previous range, and checking
+                // if it is the same as the `start` of the current range.
+                let mut rank_cache: RankCache<V> = RankCache::new();
                 for x in xs {
                     let (symbol, start, end) = x.value;
                     // let start = level.ranks(start);
                     // let end = level.ranks(end);
-
-                    let start = if prev_end_index == Some(start) {
-                        count += 1;
-                        prev_end_ranks
-                    } else {
-                        level.ranks(start)
-                    };
-                    prev_end_index = Some(end);
-                    let end = level.ranks(end);
-                    prev_end_ranks = end;
+                    let (start, end) = rank_cache.get(start, end, level);
 
                     // if there are any left children, go left
                     if start.0 != end.0 {
@@ -416,7 +421,7 @@ impl<V: BitVec> WaveletMatrix<V> {
                     }
                 }
 
-                log::info!("count: {:?}", count);
+                log::info!("num_hits: {:?}", rank_cache.num_hits);
             });
         }
 
@@ -665,13 +670,13 @@ impl<'de, V: BitVec> bincode::BorrowDecode<'de> for Level<V> {
 impl<V: BitVec> Level<V> {
     // Returns (rank0(index), rank1(index))
     // This means that if x = ranks(index), x.0 is rank0 and x.1 is rank1.
-    pub fn ranks(&self, index: V::Ones) -> (V::Ones, V::Ones) {
+    pub fn ranks(&self, index: V::Ones) -> Ranks<V::Ones> {
         if index.is_zero() {
-            return (V::zero(), V::zero());
+            return Ranks(V::zero(), V::zero());
         }
         let num_ones = self.bv.rank1(index);
         let num_zeros = index - num_ones;
-        (num_zeros, num_ones)
+        Ranks(num_zeros, num_ones)
     }
 }
 
