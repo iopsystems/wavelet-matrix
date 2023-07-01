@@ -41,6 +41,10 @@ pub trait BitBlock:
     // todo: this is not the bit width... BITS is the bit width. This is BITS_WIDTH... o_O
     const BIT_WIDTH: u32 = Self::BITS.ilog2(); // bit width
 
+    fn size_in_bytes() -> usize {
+        Self::BITS as usize
+    }
+
     /// Bit index of the `i`-th bit within its block (mask off the high bits)
     fn bit_offset(i: usize) -> usize {
         i & (Self::BITS - 1) as usize

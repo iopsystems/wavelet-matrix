@@ -3,6 +3,8 @@ use num::One;
 use num::Zero;
 
 // todo
+// - size_in_bytes() as part of the bitvec trait, and bitblock trait.
+//   - not size_in_bits so that it can always fit in a usize
 // - consider having MultiBitVec be a separate trait that removes all zero-related functionality?
 //   - no, it makes sense to do rank0/select0 queries on some representations (though not all support it)
 // - consider calling it MultiVec or something? it is not quite as bit-ish since now a bit can be set 'multiple times'...
