@@ -13,7 +13,8 @@ use crate::bit_vec::BitVecFromSorted;
 use crate::utils::select1;
 use std::debug_assert;
 
-// todo: describe what each rank/select sample holds.
+// todo:
+// - describe what each rank/select sample holds.
 
 #[derive(Debug)]
 pub struct DenseBitVec<Ones, Raw = u8>
