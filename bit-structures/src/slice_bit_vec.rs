@@ -5,9 +5,10 @@
 use crate::bincode_helpers::{borrow_decode_impl, decode_impl, encode_impl};
 use crate::bit_block::BitBlock;
 use crate::bit_vec::{BitVec, BitVecFromSorted, MultiBitVec};
+use get_size::GetSize;
 use std::debug_assert;
 
-#[derive(Debug)]
+#[derive(Debug, get_size_derive::GetSize)]
 pub struct SliceBitVec<Ones: BitBlock> {
     ones: Box<[Ones]>,      // Sorted slice of values
     len: Ones,              // Maximum representable integer plus one

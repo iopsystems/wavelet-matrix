@@ -6,9 +6,10 @@ use crate::bit_buf::BitBuf;
 use crate::bit_vec::{BitVec, BitVecFromSorted, MultiBitVec};
 use crate::dense_bit_vec::DenseBitVec;
 use crate::int_vec::IntVec;
+use get_size::GetSize;
 use std::debug_assert;
 
-#[derive(Debug)]
+#[derive(Debug, get_size_derive::GetSize)]
 pub struct SparseBitVec<Ones: BitBlock> {
     high: DenseBitVec<Ones, u8>, // High bit buckets in unary encoding
     low: IntVec,                 // Low bits in fixed-width encoding

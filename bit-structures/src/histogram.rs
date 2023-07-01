@@ -10,11 +10,13 @@
 use crate::bincode_helpers::{borrow_decode_impl, decode_impl, encode_impl};
 use crate::bit_block::BitBlock;
 use crate::bit_vec::{BitVecFromSorted, MultiBitVec};
+use get_size::GetSize;
 use num::One;
 use num::Zero;
 use std::debug_assert;
 
 // Zero bins in the PDF manifest as repetitions in the CDF, so require a MultiBitVec
+#[derive(get_size_derive::GetSize)]
 pub struct Histogram<V: MultiBitVec + BitVecFromSorted> {
     params: HistogramParams,
 
@@ -152,7 +154,7 @@ impl<V: MultiBitVec> HistogramBuilder<V> {
     }
 }
 
-#[derive(Copy, Clone, bincode::Encode, bincode::Decode)]
+#[derive(Copy, Clone, bincode::Encode, bincode::Decode, get_size_derive::GetSize)]
 pub struct HistogramParams {
     // 2^a is the absolute error below the cutoff,
     // and is also the bin width below the cutoff.

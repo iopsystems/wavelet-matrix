@@ -6,8 +6,9 @@ use crate::bincode_helpers::{borrow_decode_impl, decode_impl, encode_impl};
 use crate::bit_block::BitBlock;
 use crate::bit_vec::BitVec;
 use crate::sparse_bit_vec::SparseBitVec;
+use get_size::GetSize;
 
-#[derive(Debug)]
+#[derive(Debug, get_size_derive::GetSize)]
 pub struct RLEBitVec<Ones: BitBlock> {
     // z[i]: Cumulative number of zeros before the start of the i-th 1-run;
     // can be thought of as pointing to the index of the first 1 in a 01-run.

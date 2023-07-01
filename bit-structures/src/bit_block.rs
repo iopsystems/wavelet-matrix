@@ -1,3 +1,4 @@
+use get_size::GetSize;
 use num::traits::{CheckedShr, SaturatingSub, WrappingSub};
 use num::{PrimInt, Unsigned};
 use std::fmt::Debug;
@@ -35,6 +36,7 @@ pub trait BitBlock:
     + bincode::Encode
     + bincode::Decode
     + for<'de> bincode::BorrowDecode<'de>
+    + GetSize
 {
     const BITS: u32; // number of bits in the representation of this type
 

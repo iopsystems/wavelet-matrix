@@ -1,4 +1,5 @@
 use crate::bit_block::BitBlock;
+use get_size::GetSize;
 use num::One;
 use num::Zero;
 
@@ -29,11 +30,12 @@ pub trait BitVecFromSorted: BitVec {
     fn from_sorted(ones: &[Self::Ones], len: Self::Ones) -> Self;
 }
 
+// note: bv.get_size(), from the get_size::GetSize trait returns the size in bytes.
 // note: the static bounds are to support deriving bincode implementations for all concrete subtypes.
 // i don't fully understand this stuff yet so it may be a bad idea, but so far all bitvecs hold no references
 // and therefore seem to be compatible with a 'static lifetime...
 pub trait BitVec:
-    'static + bincode::Encode + bincode::Decode + for<'de> bincode::BorrowDecode<'de>
+    'static + bincode::Encode + bincode::Decode + for<'de> bincode::BorrowDecode<'de> + GetSize
 {
     type Ones: BitBlock;
 

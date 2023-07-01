@@ -1,4 +1,6 @@
 #![allow(unused_imports)]
+use get_size::GetSize;
+
 use crate::dense_multi_bit_vec::DenseMultiBitVec;
 use crate::slice_bit_vec::SliceBitVec;
 use crate::{histogram::Histogram, sparse_bit_vec::SparseBitVec, wasm_bindgen};
@@ -62,5 +64,8 @@ impl Histogram32 {
     }
     pub fn bin_index(&self, value: u64) -> u32 {
         self.0.params().bin_index(value)
+    }
+    pub fn get_size(&self) -> usize {
+        self.0.get_size()
     }
 }

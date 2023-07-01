@@ -1,6 +1,7 @@
 use crate::bincode_helpers::{borrow_decode_impl, decode_impl, encode_impl};
 use crate::bit_block::BitBlock;
 use crate::{bit_buf::BitBuf, bit_vec::BitVec, dense_bit_vec::DenseBitVec};
+use get_size::GetSize;
 use num::{One, Zero};
 use std::{collections::VecDeque, ops::Range};
 
@@ -146,7 +147,7 @@ impl<T> KeyValue<T> {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, get_size_derive::GetSize)]
 pub struct WaveletMatrix<V: BitVec> {
     levels: Vec<Level<V>>, // wm levels (bit planes)
     max_symbol: u32,       // maximum symbol value
@@ -601,7 +602,7 @@ fn build_bitvecs_large_alphabet(mut data: Vec<u32>, num_levels: usize) -> Vec<De
     levels
 }
 
-#[derive(Debug)]
+#[derive(Debug, get_size_derive::GetSize)]
 struct Level<V: BitVec> {
     bv: V,
     num_zeros: V::Ones,

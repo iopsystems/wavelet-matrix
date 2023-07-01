@@ -1,4 +1,5 @@
 use crate::{bit_vec::BitVec, sparse_bit_vec::SparseBitVec, wasm_bindgen};
+use get_size::GetSize;
 
 type Ones = u32;
 
@@ -34,5 +35,8 @@ impl SparseBitVec32 {
     }
     pub fn len(&self) -> Ones {
         self.0.universe_size()
+    }
+    pub fn get_size(&self) -> usize {
+        self.0.get_size()
     }
 }

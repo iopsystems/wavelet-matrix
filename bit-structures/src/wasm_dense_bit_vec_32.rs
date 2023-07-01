@@ -1,4 +1,5 @@
 use crate::{bit_buf::BitBuf, bit_vec::BitVec, dense_bit_vec::DenseBitVec, wasm_bindgen};
+use get_size::GetSize;
 
 type Ones = u32;
 
@@ -38,5 +39,8 @@ impl DenseBitVec32 {
     }
     pub fn len(&self) -> Ones {
         self.0.universe_size()
+    }
+    pub fn get_size(&self) -> usize {
+        self.0.get_size()
     }
 }

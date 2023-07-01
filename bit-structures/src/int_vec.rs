@@ -3,11 +3,12 @@
 use crate::bincode_helpers::{borrow_decode_impl, decode_impl, encode_impl};
 use crate::bit_block::BitBlock;
 use crate::utils::div_ceil;
+use get_size::GetSize;
 use std::debug_assert;
 
 type BT = u32; // Block type
 
-#[derive(Debug)]
+#[derive(Debug, get_size_derive::GetSize)]
 pub struct IntVec {
     data: Box<[BT]>,
     /// Number of elements

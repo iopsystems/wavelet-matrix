@@ -5,8 +5,9 @@ use crate::bit_vec::BitVecFromSorted;
 use crate::bit_vec::MultiBitVec;
 use crate::dense_bit_vec::DenseBitVec;
 use crate::sparse_bit_vec::SparseBitVec;
+use get_size::GetSize;
 
-#[derive(Debug)]
+#[derive(Debug, get_size_derive::GetSize)]
 pub struct DenseMultiBitVec<Ones: BitBlock> {
     occupancy: DenseBitVec<Ones>,
     multiplicity: SparseBitVec<Ones>,

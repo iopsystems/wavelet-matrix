@@ -1,5 +1,6 @@
 use crate::dense_bit_vec::DenseBitVec;
 use crate::{wasm_bindgen, wavelet_matrix::WaveletMatrix};
+use get_size::GetSize;
 use wasm_bindgen::JsValue;
 
 // note: the Ones type refers to the length of the WM (since that is what determines bitvec size).
@@ -95,5 +96,8 @@ impl WaveletMatrix32 {
     }
     pub fn decode(data: Vec<u8>) -> Self {
         Self(WaveletMatrix::decode(data))
+    }
+    pub fn get_size(&self) -> usize {
+        self.0.get_size()
     }
 }

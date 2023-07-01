@@ -11,12 +11,13 @@ use crate::bit_buf::BitBuf;
 use crate::bit_vec::BitVec;
 use crate::bit_vec::BitVecFromSorted;
 use crate::utils::select1;
+use get_size::GetSize;
 use std::debug_assert;
 
 // todo:
 // - describe what each rank/select sample holds.
 
-#[derive(Debug)]
+#[derive(Debug, get_size_derive::GetSize)]
 pub struct DenseBitVec<Ones, Raw = u8>
 where
     // Type of the 1-bits stored in this BitVec
@@ -318,7 +319,7 @@ impl<Ones: BitBlock, Raw: BitBlock> BitVec for DenseBitVec<Ones, Raw> {
     }
 
     fn universe_size(&self) -> Ones {
-        Ones::from_usize(self.raw.len())
+        Ones::from_usize(self.raw.universe_size())
     }
 
     fn get(&self, index: Ones) -> bool {
