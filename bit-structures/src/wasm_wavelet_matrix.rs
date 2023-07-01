@@ -1,5 +1,6 @@
 use crate::dense_bit_vec::DenseBitVec;
 use crate::{wasm_bindgen, wavelet_matrix::WaveletMatrix};
+use js_sys::Uint32Array;
 use wasm_bindgen::JsValue;
 
 // note: the Ones type refers to the length of the WM (since that is what determines bitvec size).
@@ -70,16 +71,17 @@ impl WaveletMatrix32 {
             start.push(x.start);
             end.push(x.end);
         }
-        let input_index = js_sys::Uint32Array::from(&input_index[..]);
-        let symbols = js_sys::Uint32Array::from(&symbol[..]);
-        let starts = js_sys::Uint32Array::from(&start[..]);
-        let ends = js_sys::Uint32Array::from(&end[..]);
         let obj = js_sys::Object::new();
         let err = "could not set js property";
-        js_sys::Reflect::set(&obj, &"input_index".into(), &input_index).expect(err);
-        js_sys::Reflect::set(&obj, &"symbol".into(), &symbols).expect(err);
-        js_sys::Reflect::set(&obj, &"start".into(), &starts).expect(err);
-        js_sys::Reflect::set(&obj, &"end".into(), &ends).expect(err);
+        js_sys::Reflect::set(
+            &obj,
+            &"input_index".into(),
+            &Uint32Array::from(&input_index[..]),
+        )
+        .expect(err);
+        js_sys::Reflect::set(&obj, &"symbol".into(), &Uint32Array::from(&symbol[..])).expect(err);
+        js_sys::Reflect::set(&obj, &"start".into(), &Uint32Array::from(&start[..])).expect(err);
+        js_sys::Reflect::set(&obj, &"end".into(), &Uint32Array::from(&end[..])).expect(err);
         js_sys::Reflect::set(&obj, &"length".into(), &symbol.len().into()).expect(err);
         Ok(obj.into())
     }
