@@ -716,18 +716,15 @@ impl<V: BitVec> WaveletMatrix<V> {
         let x_mask = V::Ones::from_u32(morton::encode2(u32::MAX, 0));
         let y_mask = V::Ones::from_u32(morton::encode2(0, u32::MAX));
         let masks = &[x_mask, y_mask]; // in 1d, mask of all ones.
-        let mask_range = |range: Range<V::Ones>, level_pow2: u32| {
-            let mask = masks[level_pow2 as usize % 2];
-            (range.start & mask)..((range.end - V::one()) & mask) + V::one()
+        let mask_range = |range: Range<V::Ones>, level_pow| {
+            let mask = masks[level_pow as usize % 2];
             // spiritually equivalent to morton::decode2[x/y/z](range.start.u32())..morton::decode2[x/y/z](range.end.u32() - 1) + 1
             // basic idea: just mask out the irrelevant bits – that means numbers won't be the right magnitude, but the
             // ranges will be comparable, and e.g checkable for overlap/containment.
+            (range.start & mask)..((range.end - V::one()) & mask) + V::one()
         };
-        let xxxx = |skip: usize,
-                    child_symbol_range: Range<V::Ones>,
-                    level_symbol_range: Range<V::Ones>,
-                    level_pow2| {
-            let child_symbol_range = mask_range(child_symbol_range, level_pow2);
+        let xxxx = |skip, child_symbol_range, level_symbol_range, level_pow| {
+            let child_symbol_range = mask_range(child_symbol_range, level_pow);
             let skip = if fully_contains(&level_symbol_range, &child_symbol_range) {
                 skip + 1
             } else {
@@ -742,61 +739,45 @@ impl<V: BitVec> WaveletMatrix<V> {
         };
 
         for level in self.levels(0) {
-            let level_pow2 = level.bit.trailing_zeros(); // power of 2 of the child level
-            println!("level_bit = {:?}, level_pow2 = {:?}", level.bit, level_pow2);
+            let level_pow = level.bit.trailing_zeros(); // power of 2 of the child level
+            println!("level_bit = {:?}, level_pow = {:?}", level.bit, level_pow);
 
             traversal.traverse(|xs, go| {
+                let level_symbol_range = mask_range(symbol_range.clone(), level_pow);
                 for x in xs {
                     nodes_visited += 1;
                     let (skip, left_symbol, start, end) = x.value;
                     let start = level.ranks(start);
                     let end = level.ranks(end);
 
+                    // midpoint symbol between the left and right children
                     let mid = left_symbol + level.bit;
-                    let level_symbol_range = mask_range(symbol_range.clone(), level_pow2);
-
-                    // {
-                    //     let child_symbol_range = mask_range(left_symbol..mid, level_pow2);
-                    //     let skip = if fully_contains(&level_symbol_range, &child_symbol_range) {
-                    //         skip + 1
-                    //     } else {
-                    //         0
-                    //     };
-
-                    //     if skip == dims {
-                    //         count += end.0 - start.0;
-                    //         nodes_skipped += 1;
-                    //     } else if overlaps(&level_symbol_range, &child_symbol_range) {
-                    //         go.left(x.value((skip, left_symbol, start.0, end.0)));
-                    //     }
-                    // }
-
                     {
-                        let (skip, go_left) = xxxx(
+                        // left child
+                        let (skip, recurse) = xxxx(
                             skip,
                             left_symbol..mid,
                             level_symbol_range.clone(),
-                            level_pow2,
+                            level_pow,
                         );
                         if skip == dims {
                             count += end.0 - start.0;
-                            nodes_skipped += 1;
-                        } else if go_left {
+                        } else if recurse {
                             go.left(x.value((skip, left_symbol, start.0, end.0)));
                         }
                     }
 
                     {
-                        let (skip, go_right) = xxxx(
+                        // right child
+                        let (skip, recurse) = xxxx(
                             skip,
                             mid..mid + level.bit,
                             level_symbol_range.clone(),
-                            level_pow2,
+                            level_pow,
                         );
                         if skip == dims {
-                            count += end.0 - start.0;
-                            nodes_skipped += 1;
-                        } else if go_right {
+                            count += end.1 - start.1;
+                        } else if recurse {
                             go.right(x.value((
                                 skip,
                                 left_symbol + level.bit,
@@ -805,26 +786,6 @@ impl<V: BitVec> WaveletMatrix<V> {
                             )));
                         }
                     }
-
-                    // {
-                    //     let child_symbol_range = mask_range(mid..mid + level.bit, level_pow2);
-                    //     let skip = if fully_contains(&level_symbol_range, &child_symbol_range) {
-                    //         skip + 1
-                    //     } else {
-                    //         0
-                    //     };
-                    //     if skip == dims {
-                    //         count += end.1 - start.1;
-                    //         nodes_skipped += 1;
-                    //     } else if overlaps(&level_symbol_range, &child_symbol_range) {
-                    //         go.right(x.value((
-                    //             skip,
-                    //             left_symbol + level.bit,
-                    //             level.num_zeros + start.1,
-                    //             level.num_zeros + end.1,
-                    //         )));
-                    //     }
-                    // }
                 }
             });
         }
