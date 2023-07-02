@@ -5,6 +5,7 @@ use num::{One, Zero};
 use std::{collections::VecDeque, ops::Range};
 
 // todo
+// - figure out if we ever recurse with empty ranges (can add an assert in traverse)
 // - verify that the intermediate traversals are indeed in ascending wavelet matrix order
 // - consider a SymbolCount struct rather than returning tuples
 // - ignore_bits
@@ -53,7 +54,7 @@ impl<T> Traversal<T> {
         }
     }
 
-    fn reset(&mut self, values: impl IntoIterator<Item = T>) {
+    fn init(&mut self, values: impl IntoIterator<Item = T>) {
         let iter = values.into_iter().enumerate().map(KeyValue::from_tuple);
         self.cur.clear();
         self.next.clear();
@@ -61,7 +62,7 @@ impl<T> Traversal<T> {
         self.num_left = 0;
     }
 
-    fn traverse(&mut self, f: impl Fn(&[KeyValue<T>], &mut Go<KeyValue<T>>)) {
+    fn traverse(&mut self, mut f: impl FnMut(&[KeyValue<T>], &mut Go<KeyValue<T>>)) {
         // precondition: `next` contains things to traverse.
         // postcondition: `next` has the next things to traverse, with (reversed)
         // left children followed by (non-reversed) right children, and num_left
@@ -412,7 +413,7 @@ impl<V: BitVec> WaveletMatrix<V> {
         }
 
         let mut traversal = Traversal::new();
-        traversal.reset(ranges.iter().map(|range| CountAll {
+        traversal.init(ranges.iter().map(|range| CountAll {
             symbol: V::zero(),
             start: range.start,
             end: range.end,
@@ -451,12 +452,69 @@ impl<V: BitVec> WaveletMatrix<V> {
         traversal
     }
 
+    fn foob(&self, symbol_range: Range<V::Ones>, range: Range<V::Ones>) -> V::Ones {
+        assert!(!symbol_range.is_empty());
+        let symbol_range_end_inclusive = symbol_range.end - V::one(); // ok since not empty
+
+        let mut traversal = Traversal::new();
+        // (leftmost symbol of node, start, end)
+        traversal.init([(V::zero(), range.start, range.end)]);
+        let mut count = V::zero();
+        let mut nodes_visited = 0;
+        let mut nodes_skipped = 0;
+        for level in self.levels(0) {
+            traversal.traverse(|xs, go| {
+                for x in xs {
+                    nodes_visited += 1;
+                    let (left_symbol, start, end) = x.value;
+                    // this node represents left_symbol..right_symbol
+                    let right_symbol = left_symbol + level.bit;
+                    let node_range = left_symbol..right_symbol;
+
+                    // if this node is fully contained inside the target symbol range,
+                    // we can stop the recursion early.
+                    // for orthogonal range search, we should instead increment the fully_contained_count.
+                    if node_range.start >= symbol_range.start && node_range.end <= symbol_range.end
+                    {
+                        count += end - start;
+                        nodes_skipped += 1;
+                        continue;
+                    }
+
+                    // otherwise, recurse into the left or right, or both.
+                    let start = level.ranks(start);
+                    let end = level.ranks(end);
+
+                    // it can happen that both children are partly covered, so
+                    // try recursing into both.
+
+                    // if the left end of symbol_range is in the left child, go left
+                    if (symbol_range.start & level.bit).is_zero() {
+                        go.left(x.value((left_symbol, start.0, end.0)));
+                    }
+
+                    // if the inclusive right end of symbol_range is
+                    // in the right child, go right.
+                    if !(symbol_range_end_inclusive & level.bit).is_zero() {
+                        go.right(x.value((
+                            right_symbol,
+                            level.num_zeros + start.1,
+                            level.num_zeros + end.1,
+                        )));
+                    }
+                }
+            });
+        }
+        dbg!(nodes_visited, nodes_skipped);
+        count
+    }
+
     pub fn get_batch(&self, indices: &[V::Ones]) -> Traversal<(V::Ones, V::Ones)> {
         // stores (wm index, symbol) entries, each corresponding to an input index.
         let mut traversal = Traversal::new();
         // todo: struct for IndexSymbol?
         let iter = indices.iter().copied().map(|index| (index, V::zero()));
-        traversal.reset(iter);
+        traversal.init(iter);
 
         for level in self.levels(0) {
             traversal.traverse(|xs, go| {
@@ -707,6 +765,7 @@ mod tests {
 
     #[test]
     fn test_get() {
+        //                 1, 2, 3, 4, 5, 6,  7, 8, 9, 10,11,12,13,14,15
         let symbols = vec![1, 2, 3, 3, 2, 10, 1, 4, 5, 6, 7, 8, 2, 9, 10];
         let max_symbol = symbols.iter().max().copied().unwrap_or(0);
         let wm = WaveletMatrix::new(symbols.clone(), max_symbol);
@@ -722,7 +781,8 @@ mod tests {
         // ;
         // panic!("get");
 
-        println!("{:?}", wm.count_all(10..15));
+        // println!("{:?}", wm.count_all(10..15));
+        println!("{:?}", wm.foob(1..10, 0..15));
         panic!("count_all");
     }
 }
