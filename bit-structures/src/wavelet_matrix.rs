@@ -710,60 +710,89 @@ impl<V: BitVec> WaveletMatrix<V> {
         traversal.init([(0, V::zero(), range.start, range.end)]);
         let mut count = V::zero();
         let mut nodes_visited = 0;
-        let nodes_skipped = 0;
+        let mut nodes_skipped = 0;
 
-        let x_mask = V::Ones::from_u32(morton::encode2(u32::MAX, 0));
-        let y_mask = V::Ones::from_u32(morton::encode2(0, u32::MAX));
-        let mask_range = |range: Range<V::Ones>, level_bit: V::Ones| {
-            let code = if level_bit.trailing_zeros() % 2 == 1 {
+        // let x_mask = V::Ones::from_u32(morton::encode2(u32::MAX, 0));
+        // let y_mask = V::Ones::from_u32(morton::encode2(0, u32::MAX));
+        let mask_range = |range: Range<V::Ones>, level_pow2: u32| {
+            let x_level = level_pow2 % 2 == 1;
+            let mut code = if x_level {
                 // is an x coord level
                 // want to mask the non-x coords to zero on the start, and one on the end
                 // (range.start & x_mask)..(range.end | !x_mask)
-                morton::decode2x(range.start.u32())..morton::decode2x(range.end.u32())
+                morton::decode2x(range.start.u32())..morton::decode2x(range.end.u32() - 1)
             } else {
                 // is a y coord
                 // (range.start & y_mask)..(range.end | !y_mask)
-                morton::decode2y(range.start.u32())..morton::decode2y(range.end.u32())
+                morton::decode2y(range.start.u32())..morton::decode2y(range.end.u32() - 1)
             };
-            dbg!(code.clone());
+            // endpoints are not necessarily sorted in a single dimension (?)
+            if code.start > code.end {
+                // code = code.end.saturating_sub(1)..code.start+1;
+                code = code.end..code.start;
+                // do we need to increment either one?
+            };
+            code = code.start..code.end + 1;
+            println!(
+                "masking range {:?} at an {:?} level => {:?}",
+                range,
+                if x_level { "x" } else { "y" },
+                code
+            );
             V::Ones::from_u32(code.start)..V::Ones::from_u32(code.end)
         };
 
         for level in self.levels(0) {
             dbg!(level.bit, level.bit.trailing_zeros());
+            let level_pow2 = level.bit.trailing_zeros();
+
             traversal.traverse(|xs, go| {
                 for x in xs {
-                    let symbol_range = mask_range(symbol_range.clone(), level.bit);
+                    let symbol_range_masked = mask_range(symbol_range.clone(), level_pow2);
 
                     nodes_visited += 1;
-                    let (skip, left_symbol, start, end) = x.value;
+                    let (mut skip, left_symbol, start, end) = x.value;
                     // this node represents left_symbol..right_symbol; the width of two children
-                    // let node_range = left_symbol..left_symbol + level.bit + level.bit;
-                    // println!("\nopen {:?}", node_range);
+                    let node_range = left_symbol..left_symbol + level.bit + level.bit;
+                    let node_range_masked = mask_range(node_range.clone(), level_pow2);
 
-                    // if fully_contains(&symbol_range, &node_range) {
-                    //     skip += 1;
-                    // } else {
-                    //     skip = 0;
-                    // }
+                    println!("\nopen {:?}", node_range);
 
-                    // if skip == dims {
-                    //     println!("skip{:?} {:?}", dims, node_range);
-                    //     count += end - start;
-                    //     nodes_skipped += 1;
-                    //     continue;
-                    // }
+                    if !overlaps(&symbol_range_masked, &node_range_masked) {
+                        println!(
+                            "no overlap between {:?} and {:?}",
+                            symbol_range_masked, node_range_masked
+                        );
+                        continue;
+                    }
+
+                    if fully_contains(&symbol_range_masked, &node_range_masked) {
+                        skip += 1;
+                    } else {
+                        skip = 0;
+                    }
+
+                    if skip == dims {
+                        println!("!! skip {:?}", node_range);
+                        count += end - start;
+                        nodes_skipped += 1;
+                        continue;
+                    }
 
                     // otherwise, recurse into the left and/or right, as both may be partly covered.
                     let start = level.ranks(start);
                     let end = level.ranks(end);
 
-                    let left_child = mask_range(left_symbol..left_symbol + level.bit, level.bit);
-                    let right_child =
-                        mask_range(left_child.end..left_child.end + level.bit, level.bit);
+                    // symbol ranges
+                    let left_child = left_symbol..left_symbol + level.bit;
+                    let right_child = left_child.end..left_child.end + level.bit;
 
                     if overlaps(&left_child, &symbol_range) {
                         // println!("left {:?} => {:?}", node_range, start.0..end.0);
+                        // let child_node_range = start.0..end.0;
+                        // let masked_child_node_range = mask_range(child_node_range, level_pow2);
+                        
+                        
                         go.left(x.value((skip, left_symbol, start.0, end.0)));
                     }
 
@@ -787,6 +816,17 @@ impl<V: BitVec> WaveletMatrix<V> {
         // add up all the nodes that we did not early-out from
         for x in traversal.results() {
             let (_skip, left_symbol, start, end) = x.value;
+            let symbol_range_masked = mask_range(symbol_range.clone(), 1); // ideally would be -1, so we cycle through the dims even when >2
+            let node_range = left_symbol..left_symbol + V::one();
+            let node_range_masked = mask_range(node_range.clone(), 1);
+            println!(
+                "checking {:?} vs {:?}",
+                symbol_range_masked, node_range_masked
+            );
+            if !overlaps(&node_range_masked, &symbol_range_masked) {
+                println!("ignoring {:?}", left_symbol);
+                continue;
+            };
             println!(
                 "for node representing {:?}..{:?}: +{:?}",
                 left_symbol,
@@ -830,6 +870,7 @@ mod tests {
         for (i, sym) in symbols.iter().copied().enumerate() {
             assert_eq!(sym, wm.get(i as u32));
         }
+        // caution: easy to go out of bounds here in either x or y alone
 
         let x_range = 3..5;
         let y_range = 3..5;
