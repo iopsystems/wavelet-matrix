@@ -713,24 +713,23 @@ impl<V: BitVec> WaveletMatrix<V> {
         let mut nodes_visited = 0;
         let mut nodes_skipped = 0;
 
-        // let x_mask = V::Ones::from_u32(morton::encode2(u32::MAX, 0));
-        // let y_mask = V::Ones::from_u32(morton::encode2(0, u32::MAX));
+        let x_mask = V::Ones::from_u32(morton::encode2(u32::MAX, 0));
+        let y_mask = V::Ones::from_u32(morton::encode2(0, u32::MAX));
         let mask_range = |range: Range<V::Ones>, level_pow2: u32| {
             let x_level = level_pow2 % 2 == 0;
             let mut code = if x_level {
                 // is an x coord level
-                // want to mask the non-x coords to zero on the start, and one on the end
-                // (range.start & x_mask)..(range.end | !x_mask)
+                // want to mask the non-x coords to zero on the start, and one on the end [no, want to zero out on both ends]
+                return dbg!((range.start & x_mask)..((range.end - V::one()) & x_mask) + V::one());
                 morton::decode2x(range.start.u32())..morton::decode2x(range.end.u32() - 1)
             } else {
                 // is a y coord
-                // (range.start & y_mask)..(range.end | !y_mask)
+                return dbg!((range.start & y_mask)..((range.end - V::one()) & y_mask) + V::one());
                 morton::decode2y(range.start.u32())..morton::decode2y(range.end.u32() - 1)
             };
             // endpoints are not necessarily sorted in a single dimension (?)
             if code.start > code.end {
                 println!("!!!!! aaaah"); // note: can this happen?
-                                         // code = code.end.saturating_sub(1)..code.start+1;
                 code = code.end..code.start;
                 // do we need to increment either one?
             };
