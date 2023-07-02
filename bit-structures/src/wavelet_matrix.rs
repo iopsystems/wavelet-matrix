@@ -452,33 +452,55 @@ impl<V: BitVec> WaveletMatrix<V> {
         traversal
     }
 
-    fn foob(&self, symbol_range: Range<V::Ones>, range: Range<V::Ones>) -> V::Ones {
+    fn foob(&self, symbol_range: Range<V::Ones>, range: Range<V::Ones>, dims: usize) -> V::Ones {
         assert!(!symbol_range.is_empty());
         let symbol_range_end_inclusive = symbol_range.end - V::one(); // ok since not empty
 
         let mut traversal = Traversal::new();
-        // (leftmost symbol of node, start, end)
-        traversal.init([(V::zero(), range.start, range.end)]);
+        // (nskip, leftmost symbol of node, start, end)
+        traversal.init([(0, V::zero(), range.start, range.end)]);
         let mut count = V::zero();
         let mut nodes_visited = 0;
         let mut nodes_skipped = 0;
         for level in self.levels(0) {
+            dbg!(level.bit);
             traversal.traverse(|xs, go| {
                 for x in xs {
                     nodes_visited += 1;
-                    let (left_symbol, start, end) = x.value;
-                    // this node represents left_symbol..right_symbol
-                    let right_symbol = left_symbol + level.bit;
-                    let node_range = left_symbol..right_symbol;
+                    let (mut nskip, left_symbol, start, end) = x.value;
+                    // this node represents left_symbol..right_symbol; the width of two children
+                    let node_range = left_symbol..left_symbol + level.bit + level.bit;
+                    println!("exploring {:?}", node_range);
 
                     // if this node is fully contained inside the target symbol range,
                     // we can stop the recursion early.
                     // for orthogonal range search, we should instead increment the fully_contained_count.
+                    // actually, at least for same-bit-width symbols, we can avoid the chunking and simply
+                    // check whether can_skip is ever equal to the number of dimensions.
+                    // in this case, as a special case, that number is 1.
+                    // but we can make it work with 3d/nd that way. The new idea is that we don't need
+                    // to check the dimensions in order -- just that, contiguously, n levels were fully contained.
                     if node_range.start >= symbol_range.start && node_range.end <= symbol_range.end
                     {
+                        nskip += 1;
+
                         count += end - start;
                         nodes_skipped += 1;
+                        println!(
+                            "skipping {:?} which is fully contained in {:?}, +{:?}",
+                            node_range,
+                            symbol_range,
+                            end - start
+                        );
                         continue;
+                    } else {
+                        nskip = 0;
+                    }
+
+                    if nskip == dims {
+                        // count += end - start;
+                        // nodes_skipped += 1;
+                        // continue;
                     }
 
                     // otherwise, recurse into the left or right, or both.
@@ -490,14 +512,21 @@ impl<V: BitVec> WaveletMatrix<V> {
 
                     // if the left end of symbol_range is in the left child, go left
                     if (symbol_range.start & level.bit).is_zero() {
-                        go.left(x.value((left_symbol, start.0, end.0)));
+                        println!("left {:?}", node_range.clone());
+                        go.left(x.value((nskip, left_symbol, start.0, end.0)));
                     }
 
                     // if the inclusive right end of symbol_range is
                     // in the right child, go right.
-                    if !(symbol_range_end_inclusive & level.bit).is_zero() {
+                    // symbol_range_end_inclusive
+                    // todo: this bit check is not the less-than check that i want,
+                    // which is symbol_range.end > level.bit or something.
+                    // figure out how this interacts with the range query idea.
+                    if !(symbol_range.end & level.bit).is_zero() {
+                        println!("right {:?}", node_range.clone());
                         go.right(x.value((
-                            right_symbol,
+                            nskip,
+                            left_symbol + level.bit,
                             level.num_zeros + start.1,
                             level.num_zeros + end.1,
                         )));
@@ -505,6 +534,16 @@ impl<V: BitVec> WaveletMatrix<V> {
                 }
             });
         }
+
+        // dbg!(&traversal);
+
+        // add up all the nodes that we did not early-out from
+        for x in traversal.results() {
+            dbg!(&x);
+            let (_nskip, _left_symbol, start, end) = x.value;
+            count += end - start;
+        }
+
         dbg!(nodes_visited, nodes_skipped);
         count
     }
@@ -782,7 +821,7 @@ mod tests {
         // panic!("get");
 
         // println!("{:?}", wm.count_all(10..15));
-        println!("{:?}", wm.foob(1..10, 0..15));
+        println!("{:?}", wm.foob(1..11, 0..15, 1));
         panic!("count_all");
     }
 }
