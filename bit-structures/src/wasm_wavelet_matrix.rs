@@ -65,11 +65,14 @@ impl WaveletMatrix32 {
         let mut symbol = Vec::new();
         let mut start = Vec::new();
         let mut end = Vec::new();
+        // add this for now, even though it could be computed from start and end.
+        let mut count = Vec::new();
         for x in traversal.results() {
             input_index.push(Ones::try_from(x.key).unwrap());
             symbol.push(x.value.symbol);
             start.push(x.value.start);
             end.push(x.value.end);
+            count.push(x.value.end - x.value.start);
         }
         let obj = js_sys::Object::new();
         let err = "could not set js property";
@@ -80,6 +83,8 @@ impl WaveletMatrix32 {
         )
         .expect(err);
         js_sys::Reflect::set(&obj, &"symbol".into(), &Uint32Array::from(&symbol[..])).expect(err);
+        // put count right after symbol for better output in the observable inspector
+        js_sys::Reflect::set(&obj, &"count".into(), &Uint32Array::from(&count[..])).expect(err);
         js_sys::Reflect::set(&obj, &"start".into(), &Uint32Array::from(&start[..])).expect(err);
         js_sys::Reflect::set(&obj, &"end".into(), &Uint32Array::from(&end[..])).expect(err);
         js_sys::Reflect::set(&obj, &"length".into(), &symbol.len().into()).expect(err);
