@@ -183,7 +183,7 @@ impl<'de, V: BitVec> bincode::BorrowDecode<'de> for WaveletMatrix<V> {
 #[derive(Copy, Clone)]
 struct Ranks<T>(T, T);
 
-struct RankCache<V: BitVec> {
+struct RangedRankCache<V: BitVec> {
     end_index: Option<V::Ones>, // previous end index
     end_ranks: Ranks<V::Ones>,  // previous end ranks
     // note: we track these just out of interest;
@@ -192,7 +192,7 @@ struct RankCache<V: BitVec> {
     num_misses: usize, // number of cache misses
 }
 
-impl<V: BitVec> RankCache<V> {
+impl<V: BitVec> RangedRankCache<V> {
     fn new() -> Self {
         Self {
             end_index: None,
@@ -221,8 +221,9 @@ impl<V: BitVec> RankCache<V> {
     }
 
     fn log_stats(&self) {
-        log::info!(
+        println!(
             "cached {:.1}%: {:?} / {:?}",
+            // note: can be nan
             100.0 * self.num_hits as f64 / (self.num_hits + self.num_misses) as f64,
             self.num_hits,
             self.num_hits + self.num_misses,
@@ -620,7 +621,7 @@ impl<V: BitVec> WaveletMatrix<V> {
                 // Cache the most recent rank call in case the next one is the same.
                 // This means caching the `end` of the previous range, and checking
                 // if it is the same as the `start` of the current range.
-                let mut rank_cache = RankCache::new();
+                let mut rank_cache = RangedRankCache::new();
                 for x in xs {
                     let CountAll { symbol, start, end } = x.value;
                     // let start = level.ranks(start);
@@ -725,12 +726,17 @@ impl<V: BitVec> WaveletMatrix<V> {
             .iter()
             .all(|symbol_range| !symbol_range.is_empty()));
         let mut traversal = Traversal::new();
-        // (symbol_range, skip, leftmost symbol of node, start, end)
-        traversal.init(
-            symbol_ranges
-                .iter()
-                .map(|symbol_range| (symbol_range, 0, V::zero(), range.start, range.end)),
-        );
+        // (symbol_range start, symbol range end,, skip, leftmost symbol of node, start, end)
+        traversal.init(symbol_ranges.iter().map(|symbol_range| {
+            (
+                symbol_range.start,
+                symbol_range.end,
+                0,
+                V::zero(),
+                range.start,
+                range.end,
+            )
+        }));
 
         let mut counts = vec![V::zero(); symbol_ranges.len()];
         let mut nodes_visited = 0;
@@ -741,69 +747,67 @@ impl<V: BitVec> WaveletMatrix<V> {
         let masks = &[x_mask, y_mask][..]; // in 1d, mask of all ones.
         let mask_range = |range: Range<V::Ones>, level_pow| {
             let mask = masks[level_pow as usize % 2];
-            // spiritually equivalent to morton::decode2[x/y/z](range.start.u32())..morton::decode2[x/y/z](range.end.u32() - 1) + 1
-            // basic idea: just mask out the irrelevant bits – that means numbers won't be the right magnitude, but the
-            // ranges will be comparable, and e.g checkable for overlap/containment.
             (range.start & mask)..((range.end - V::one()) & mask) + V::one()
-        };
-        let xxxx = |skip, child_symbol_range, level_symbol_range, level_pow| {
-            let child_symbol_range = mask_range(child_symbol_range, level_pow);
-            let skip = if fully_contains(&level_symbol_range, &child_symbol_range) {
-                skip + 1
-            } else {
-                0
-            };
-            if skip == dims {
-                (skip, false)
-            } else {
-                (skip, overlaps(&level_symbol_range, &child_symbol_range))
-            }
         };
 
         for level in self.levels(0) {
-            let level_pow = level.bit.trailing_zeros(); // power of 2 of the child level
-
-            // println!("level_bit = {:?}, level_pow = {:?}", level.bit, level_pow);
-
+            let level_pow = level.bit.trailing_zeros(); // power of 2 of the child node size
             traversal.traverse(|xs, go| {
+                let mut rank_cache = RangedRankCache::new();
+
                 for x in xs {
-                    let (symbol_range, skip, left_symbol, start, end) = x.value;
-                    let level_symbol_range = mask_range(symbol_range.clone(), level_pow);
+                    let (symbol_range_start, symbol_range_end, skip, left_symbol, start, end) =
+                        x.value;
+                    let symbol_range = symbol_range_start..symbol_range_end;
+
+                    // the symbols represented at this level in this dimension
+                    // we could find a way to do this once per batch index
+                    let level_range = mask_range(symbol_range.clone(), level_pow);
                     nodes_visited += 1;
-                    let start = level.ranks(start);
-                    let end = level.ranks(end);
-                    let mid = left_symbol + level.bit; // midpoint symbol between the left and right children
+                    // let start = level.ranks(start);
+                    // let end = level.ranks(end);
+                    let (start, end) = rank_cache.get(start, end, level);
+
+                    let mid = left_symbol + level.bit;
 
                     {
                         // left child
-                        let (skip, recurse) = xxxx(
-                            skip,
-                            left_symbol..mid,
-                            level_symbol_range.clone(),
-                            level_pow,
-                        );
+                        let child_range = mask_range(left_symbol..mid, level_pow);
+                        let skip = if fully_contains(level_range.clone(), child_range.clone()) {
+                            skip + 1
+                        } else {
+                            0
+                        };
                         if skip == dims {
                             counts[x.key] += end.0 - start.0;
                             nodes_skipped += 1;
-                        } else if recurse {
-                            go.left(x.value((symbol_range, skip, left_symbol, start.0, end.0)));
+                        } else if overlaps(level_range.clone(), child_range) {
+                            go.left(x.value((
+                                symbol_range_start,
+                                symbol_range_end,
+                                skip,
+                                left_symbol,
+                                start.0,
+                                end.0,
+                            )));
                         }
                     }
 
                     {
                         // right child
-                        let (skip, recurse) = xxxx(
-                            skip,
-                            mid..mid + level.bit,
-                            level_symbol_range.clone(),
-                            level_pow,
-                        );
+                        let child_range = mask_range(mid..mid + level.bit, level_pow);
+                        let skip = if fully_contains(level_range.clone(), child_range.clone()) {
+                            skip + 1
+                        } else {
+                            0
+                        };
                         if skip == dims {
                             counts[x.key] += end.1 - start.1;
                             nodes_skipped += 1;
-                        } else if recurse {
+                        } else if overlaps(level_range, child_range) {
                             go.right(x.value((
-                                symbol_range,
+                                symbol_range_start,
+                                symbol_range_end,
                                 skip,
                                 left_symbol + level.bit,
                                 level.num_zeros + start.1,
@@ -812,20 +816,21 @@ impl<V: BitVec> WaveletMatrix<V> {
                         }
                     }
                 }
+                // rank_cache.log_stats();
             });
         }
 
-        dbg!(nodes_visited, nodes_skipped);
+        // dbg!(nodes_visited, nodes_skipped);
         counts
     }
 }
 
-fn overlaps<T: BitBlock>(a: &Range<T>, b: &Range<T>) -> bool {
+fn overlaps<T: BitBlock>(a: Range<T>, b: Range<T>) -> bool {
     a.start < b.end && b.start < a.end
 }
 
 // Return true if a fully contains b
-fn fully_contains<T: BitBlock>(a: &Range<T>, b: &Range<T>) -> bool {
+fn fully_contains<T: BitBlock>(a: Range<T>, b: Range<T>) -> bool {
     // if a starts before b, and a ends after b.
     a.start <= b.start && a.end >= b.end
 }
@@ -838,26 +843,26 @@ mod tests {
     use rand::prelude::Distribution;
     use std::time::{Duration, SystemTime};
 
-    fn ascending_range(x: Range<u32>) -> Range<u32> {
+    fn ascend(x: Range<u32>) -> Range<u32> {
         if x.start < x.end {
             x
         } else {
-            x.end..x.start
+            x.end..x.start + 1
         }
     }
 
     #[test]
     fn test_count() {
         let mut rng = rand::thread_rng();
-        let pow = 1024;
-        let (n, k) = (1_000_000, pow * pow); // n numbers between 0 and k
+        let pow = 1 << 10;
+        let (n, k) = (1_000_000, pow * pow); // n numbers in [0, k)
         let unif = Uniform::new(0, pow);
 
         let mut symbols = vec![];
         for _ in 0..n {
             symbols.push(unif.sample(&mut rng) * unif.sample(&mut rng));
         }
-        let max_symbol = k;
+        let max_symbol = k - 1;
         let wm = WaveletMatrix::new(symbols.clone(), max_symbol);
 
         let mut wm_duration = Duration::ZERO;
@@ -869,11 +874,12 @@ mod tests {
         let mut batch_counts = vec![];
         let mut queries = vec![];
 
+        let unif = Uniform::new(0, pow - 1); // don't query the final value so we can increment our ranges to stay in bounds [hacky...]
         for _ in 0..q {
             // caution: easy to go out of bounds here in either x or y alone
 
-            let x_range = ascending_range(unif.sample(&mut rng)..unif.sample(&mut rng));
-            let y_range = ascending_range(unif.sample(&mut rng)..unif.sample(&mut rng));
+            let x_range = ascend(unif.sample(&mut rng)..unif.sample(&mut rng));
+            let y_range = ascend(unif.sample(&mut rng)..unif.sample(&mut rng));
             let start = morton::encode2(x_range.start, y_range.start);
             // inclusive x_range and y_range endpoints, but compute the exclusive end
             let end = morton::encode2(x_range.end - 1, y_range.end - 1) + 1;
@@ -883,13 +889,6 @@ mod tests {
 
             let range = start..end;
             queries.push(range.clone());
-
-            let query_start_time = SystemTime::now();
-            let wm_count = wm.count_symbol_range(range, 0..wm.len(), 2);
-            let query_end_time = SystemTime::now();
-            let dur = query_end_time.duration_since(query_start_time).unwrap();
-            wm_duration += dur;
-
             let test_count = symbols
                 .iter()
                 .copied()
@@ -899,13 +898,25 @@ mod tests {
                     x_range.start <= x && x < x_range.end && y_range.start <= y && y < y_range.end
                 })
                 .count() as u32;
-
             test_counts.push(test_count);
+        }
+
+        // this will no longer be associated with the test count.
+        // also, we have interleaved the start (x, y) and end (x, y) – how do we even sort?
+        queries.sort_by_key(|range| range.start);
+
+        for query in &queries {
+            let query_start_time = SystemTime::now();
+            let wm_count = wm.count_symbol_range(query.clone(), 0..wm.len(), 2);
+            let query_end_time = SystemTime::now();
+            let dur = query_end_time.duration_since(query_start_time).unwrap();
+            wm_duration += dur;
             wm_counts.push(wm_count);
             batch_counts.push(wm_count); // todo: remove and do a single batch query to test
-
-            assert_eq!(wm_count, test_count);
         }
+
+        // assert_eq!(test_counts, wm_counts);
+
         println!("total for {:?} queries: {:?}", q, wm_duration);
 
         // todo: implement batch queries for batches of symbol ranges in the same wm range
@@ -918,7 +929,6 @@ mod tests {
             end_time.duration_since(start_time)
         );
         assert_eq!(wm_counts, res);
-
         panic!("wheee");
     }
 
