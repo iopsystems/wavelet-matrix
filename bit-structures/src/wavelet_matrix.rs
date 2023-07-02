@@ -703,13 +703,34 @@ impl<V: BitVec> WaveletMatrix<V> {
         ret
     }
 
-    fn foob(&self, symbol_range: Range<V::Ones>, range: Range<V::Ones>, dims: usize) -> V::Ones {
+    fn count_symbol_range(
+        &self,
+        symbol_range: Range<V::Ones>,
+        range: Range<V::Ones>,
+        dims: usize,
+    ) -> V::Ones {
+        self.count_symbol_ranges(symbol_range, &[range], dims)
+            .first()
+            .copied()
+            .unwrap()
+    }
+
+    fn count_symbol_ranges(
+        &self,
+        symbol_range: Range<V::Ones>,
+        ranges: &[Range<V::Ones>],
+        dims: usize,
+    ) -> Vec<V::Ones> {
         assert!(!symbol_range.is_empty());
         let mut traversal = Traversal::new();
-
         // (skip, leftmost symbol of node, start, end)
-        traversal.init([(0, V::zero(), range.start, range.end)]);
-        let mut count = V::zero();
+        traversal.init(
+            ranges
+                .iter()
+                .map(|range| (0, V::zero(), range.start, range.end)),
+        );
+
+        let mut counts = vec![V::zero(); ranges.len()];
         let mut nodes_visited = 0;
         let mut nodes_skipped = 0;
 
@@ -760,7 +781,7 @@ impl<V: BitVec> WaveletMatrix<V> {
                             level_pow,
                         );
                         if skip == dims {
-                            count += end.0 - start.0;
+                            counts[x.key] += end.0 - start.0;
                             nodes_skipped += 1;
                         } else if recurse {
                             go.left(x.value((skip, left_symbol, start.0, end.0)));
@@ -776,7 +797,7 @@ impl<V: BitVec> WaveletMatrix<V> {
                             level_pow,
                         );
                         if skip == dims {
-                            count += end.1 - start.1;
+                            counts[x.key] += end.1 - start.1;
                             nodes_skipped += 1;
                         } else if recurse {
                             go.right(x.value((
@@ -792,7 +813,7 @@ impl<V: BitVec> WaveletMatrix<V> {
         }
 
         // dbg!(nodes_visited, nodes_skipped);
-        count
+        counts
     }
 }
 
@@ -812,7 +833,7 @@ mod tests {
     use crate::morton;
     use rand::distributions::Uniform;
     use rand::prelude::Distribution;
-    use std::time::SystemTime;
+    use std::time::{Duration, SystemTime};
 
     fn ascending_range(x: Range<u32>) -> Range<u32> {
         if x.start < x.end {
@@ -836,9 +857,15 @@ mod tests {
         let max_symbol = k;
         let wm = WaveletMatrix::new(symbols.clone(), max_symbol);
 
-        let start_time = SystemTime::now();
+        let mut wm_duration = Duration::ZERO;
 
         let q = 1000;
+
+        let mut wm_counts = vec![];
+        let mut test_counts = vec![];
+        let mut batch_counts = vec![];
+        let mut queries = vec![];
+
         for _ in 0..q {
             // caution: easy to go out of bounds here in either x or y alone
 
@@ -850,10 +877,16 @@ mod tests {
             // dbg!(end, max_symbol, &x_range, &y_range);
             assert!(end <= max_symbol + 1);
             // dbg!(start, end);
-            let query_start_time = SystemTime::now();
 
             let range = start..end;
-            let wm_count = wm.foob(range, 0..wm.len(), 2);
+            queries.push(range.clone());
+
+            let query_start_time = SystemTime::now();
+            let wm_count = wm.count_symbol_range(range, 0..wm.len(), 2);
+            let query_end_time = SystemTime::now();
+            let dur = query_end_time.duration_since(query_start_time).unwrap();
+            wm_duration += dur;
+
             let test_count = symbols
                 .iter()
                 .copied()
@@ -863,19 +896,27 @@ mod tests {
                     x_range.start <= x && x < x_range.end && y_range.start <= y && y < y_range.end
                 })
                 .count() as u32;
-            let query_end_time = SystemTime::now();
-            println!("{:?}", query_end_time.duration_since(query_start_time));
+
+            test_counts.push(test_count);
+            wm_counts.push(wm_count);
+            batch_counts.push(wm_count); // todo: remove and do a single batch query to test
 
             assert_eq!(wm_count, test_count);
         }
-        let end_time = SystemTime::now();
-        println!(
-            "total for {:?} queries: {:?}",
-            q,
-            end_time.duration_since(start_time)
-        );
+        println!("total for {:?} queries: {:?}", q, wm_duration);
 
-        panic!("wheee");
+        // todo: implement batch queries for batches of symbol ranges in the same wm range
+        // let start_time = SystemTime::now();
+        // let res = wm.count_symbol_ranges(&queries, 0..wm.len(), 2);
+        // let end_time = SystemTime::now();
+        // println!(
+        //     "time for batch query: {:?}",
+        //     q,
+        //     end_time.duration_since(start_time)
+        // );
+        // assert_eq!(wm_counts, res);
+
+        // panic!("wheee");
     }
 
     // #[test]
@@ -900,7 +941,7 @@ mod tests {
     //     assert!(end <= max_symbol + 1);
     //     dbg!(start, end);
     //     let range = start..end;
-    //     println!("{:?}", wm.foob(range, 0..wm.len(), 2));
+    //     println!("{:?}", wm.count_symbol_range(range, 0..wm.len(), 2));
     //     panic!("count_all");
     //     // dbg!(sym, wm.rank(sym, 0..wm.len()));
     //     // dbg!(i, wm.quantile(i as u32, 0..wm.len()));
