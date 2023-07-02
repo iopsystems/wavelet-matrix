@@ -716,6 +716,7 @@ impl<V: BitVec> WaveletMatrix<V> {
             .unwrap()
     }
 
+    // instrument w go-left, go-right stuff.. want to see the process for a single batch.
     fn count_symbol_ranges(
         &self,
         symbol_ranges: &[Range<V::Ones>],
@@ -854,7 +855,7 @@ mod tests {
     #[test]
     fn test_count() {
         let mut rng = rand::thread_rng();
-        let pow = 1 << 10;
+        let pow = 1 << 15; // bits per dimension
         let (n, k) = (1_000_000, pow * pow); // n numbers in [0, k)
         let unif = Uniform::new(0, pow);
 
@@ -864,10 +865,10 @@ mod tests {
         }
         let max_symbol = k - 1;
         let wm = WaveletMatrix::new(symbols.clone(), max_symbol);
-
+        dbg!(wm.num_levels());
         let mut wm_duration = Duration::ZERO;
 
-        let q = 100;
+        let q = 3;
 
         let mut wm_counts = vec![];
         let mut test_counts = vec![];
@@ -878,8 +879,16 @@ mod tests {
         for _ in 0..q {
             // caution: easy to go out of bounds here in either x or y alone
 
-            let x_range = ascend(unif.sample(&mut rng)..unif.sample(&mut rng));
-            let y_range = ascend(unif.sample(&mut rng)..unif.sample(&mut rng));
+            // fixed-size boxes
+            let x = unif.sample(&mut rng);
+            let y = unif.sample(&mut rng);
+            let sz = pow - 1;
+            let x_range = x.saturating_sub(sz)..x.max(sz);
+            let y_range = y.saturating_sub(sz)..y.max(sz);
+
+            // randomly sized boxes
+            // let x_range = ascend(unif.sample(&mut rng)..unif.sample(&mut rng));
+            // let y_range = ascend(unif.sample(&mut rng)..unif.sample(&mut rng));
             let start = morton::encode2(x_range.start, y_range.start);
             // inclusive x_range and y_range endpoints, but compute the exclusive end
             let end = morton::encode2(x_range.end - 1, y_range.end - 1) + 1;
@@ -906,6 +915,7 @@ mod tests {
         queries.sort_by_key(|range| range.start);
 
         for query in &queries {
+            // println!("\nnew query\n");
             let query_start_time = SystemTime::now();
             let wm_count = wm.count_symbol_range(query.clone(), 0..wm.len(), 2);
             let query_end_time = SystemTime::now();
