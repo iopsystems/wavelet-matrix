@@ -738,7 +738,7 @@ impl<V: BitVec> WaveletMatrix<V> {
 
         let x_mask = V::Ones::from_u32(morton::encode2(u32::MAX, 0));
         let y_mask = V::Ones::from_u32(morton::encode2(0, u32::MAX));
-        let masks = &[x_mask, y_mask]; // in 1d, mask of all ones.
+        let masks = &[x_mask, y_mask][..]; // in 1d, mask of all ones.
         let mask_range = |range: Range<V::Ones>, level_pow| {
             let mask = masks[level_pow as usize % 2];
             // spiritually equivalent to morton::decode2[x/y/z](range.start.u32())..morton::decode2[x/y/z](range.end.u32() - 1) + 1
@@ -815,7 +815,7 @@ impl<V: BitVec> WaveletMatrix<V> {
             });
         }
 
-        // dbg!(nodes_visited, nodes_skipped);
+        dbg!(nodes_visited, nodes_skipped);
         counts
     }
 }
@@ -862,7 +862,7 @@ mod tests {
 
         let mut wm_duration = Duration::ZERO;
 
-        let q = 1000;
+        let q = 100;
 
         let mut wm_counts = vec![];
         let mut test_counts = vec![];
@@ -909,17 +909,17 @@ mod tests {
         println!("total for {:?} queries: {:?}", q, wm_duration);
 
         // todo: implement batch queries for batches of symbol ranges in the same wm range
-        // let start_time = SystemTime::now();
-        // let res = wm.count_symbol_ranges(&queries, 0..wm.len(), 2);
-        // let end_time = SystemTime::now();
-        // println!(
-        //     "time for batch query: {:?}",
-        //     q,
-        //     end_time.duration_since(start_time)
-        // );
-        // assert_eq!(wm_counts, res);
+        let start_time = SystemTime::now();
+        let res = wm.count_symbol_ranges(&queries, 0..wm.len(), 2);
+        let end_time = SystemTime::now();
+        println!(
+            "time for batch query on {:?} inputs: {:?}",
+            q,
+            end_time.duration_since(start_time)
+        );
+        assert_eq!(wm_counts, res);
 
-        // panic!("wheee");
+        panic!("wheee");
     }
 
     // #[test]
