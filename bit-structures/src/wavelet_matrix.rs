@@ -736,7 +736,7 @@ impl<V: BitVec> WaveletMatrix<V> {
             };
             code = code.start..code.end + 1;
             println!(
-                "masking range {:?} at an {:?} level => {:?}",
+                "masking range {:?} @ {:?} level => {:?}",
                 range,
                 if x_level { "x" } else { "y" },
                 code
@@ -751,7 +751,7 @@ impl<V: BitVec> WaveletMatrix<V> {
             traversal.traverse(|xs, go| {
                 for x in xs {
                     nodes_visited += 1;
-                    let (mut skip, left_symbol, start, end) = x.value;
+                    let (skip, left_symbol, start, end) = x.value;
 
                     // this node represents left_symbol..right_symbol; the width of two children
                     let node_range = left_symbol..left_symbol + level.bit + level.bit;
@@ -774,14 +774,15 @@ impl<V: BitVec> WaveletMatrix<V> {
                         let child_range_masked = mask_range(left_child.clone(), level_pow2 - 1);
                         let symbol_range_masked = mask_range(symbol_range.clone(), level_pow2 - 1); // on the child level
 
-                        skip = if fully_contains(&symbol_range_masked, &child_range_masked) {
+                        let skip = if fully_contains(&symbol_range_masked, &child_range_masked) {
                             skip + 1
                         } else {
                             0
                         };
 
                         if skip == dims {
-                            count += left_child.end - left_child.start;
+                            println!("skipping {:?}", left_child);
+                            count += end.0 - start.0;
                             nodes_skipped += 1;
                         } else if overlaps(&symbol_range_masked, &child_range_masked) {
                             go.left(x.value((skip, left_symbol, start.0, end.0)));
@@ -792,14 +793,15 @@ impl<V: BitVec> WaveletMatrix<V> {
                         let child_range_masked = mask_range(right_child.clone(), level_pow2 - 1);
                         let symbol_range_masked = mask_range(symbol_range.clone(), level_pow2 - 1); // on the child level
 
-                        skip = if fully_contains(&symbol_range_masked, &child_range_masked) {
+                        let skip = if fully_contains(&symbol_range_masked, &child_range_masked) {
                             skip + 1
                         } else {
                             0
                         };
 
                         if skip == dims {
-                            count += right_child.end - right_child.start;
+                            println!("skipping {:?}", right_child);
+                            count += end.1 - start.1;
                             nodes_skipped += 1;
                         } else if overlaps(&symbol_range_masked, &child_range_masked) {
                             go.right(x.value((
