@@ -18,7 +18,7 @@
       // New Jun 4, 2023: Try matching any paths with Users/[...] or src/[...] at the end of a line
       // Doesn't always work, though... TODO: Investigate https://stackoverflow.com/questions/53286429/file-regex-for-cargo-builds-in-sublime-text-3
       // "file_regex": "((\/Users|src)\/..[^:\n]*):([0-9]+):?([0-9]+)?:?(.*)$",
-      "shell_cmd": "make wasm",
+      "shell_cmd": "make test",
       // // Set the working directory to the project path so that builds happen from the
       // // project root (instead of building just the package we're currently editing)
       "working_dir": "$project_path",

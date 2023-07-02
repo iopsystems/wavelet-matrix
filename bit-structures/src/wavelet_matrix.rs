@@ -702,11 +702,11 @@ impl<V: BitVec> WaveletMatrix<V> {
         ret
     }
 
-    fn foob(&self, symbol_range: Range<V::Ones>, range: Range<V::Ones>, _dims: usize) -> V::Ones {
+    fn foob(&self, symbol_range: Range<V::Ones>, range: Range<V::Ones>, dims: usize) -> V::Ones {
         assert!(!symbol_range.is_empty());
         let mut traversal = Traversal::new();
-        // (leftmost symbol of node, start, end)
-        traversal.init([(V::zero(), range.start, range.end)]);
+        // (skip, leftmost symbol of node, start, end)
+        traversal.init([(0, V::zero(), range.start, range.end)]);
         let mut count = V::zero();
         let mut nodes_visited = 0;
         let mut nodes_skipped = 0;
@@ -715,24 +715,25 @@ impl<V: BitVec> WaveletMatrix<V> {
             traversal.traverse(|xs, go| {
                 for x in xs {
                     nodes_visited += 1;
-                    let (left_symbol, start, end) = x.value;
+                    let (mut skip, left_symbol, start, end) = x.value;
                     // this node represents left_symbol..right_symbol; the width of two children
                     let node_range = left_symbol..left_symbol + level.bit + level.bit;
-                    println!("open {:?}", node_range);
+                    println!("\nopen {:?}", node_range);
 
-                    if fully_contains(&symbol_range, &node_range) {
-                        count += end - start;
-                        nodes_skipped += 1;
-                        println!(
-                            "skipping {:?}: is fully contained in {:?}, +{:?}",
-                            node_range,
-                            symbol_range,
-                            end - start
-                        );
-                        continue;
-                    }
+                    // if fully_contains(&symbol_range, &node_range) {
+                    //     skip += 1;
+                    // } else {
+                    //     skip = 0;
+                    // }
 
-                    // otherwise, recurse into the left or right, or both, which may be partly covered.
+                    // if skip == dims {
+                    //     println!("skip{:?} {:?}", dims, node_range);
+                    //     count += end - start;
+                    //     nodes_skipped += 1;
+                    //     continue;
+                    // }
+
+                    // otherwise, recurse into the left and/or right, as both may be partly covered.
                     let start = level.ranks(start);
                     let end = level.ranks(end);
 
@@ -740,11 +741,18 @@ impl<V: BitVec> WaveletMatrix<V> {
                     let right_child = left_child.end..left_child.end + level.bit;
 
                     if overlaps(&left_child, &symbol_range) {
-                        go.left(x.value((left_symbol, start.0, end.0)));
+                        println!("left {:?} => {:?}", node_range, start.0..end.0);
+                        go.left(x.value((skip, left_symbol, start.0, end.0)));
                     }
 
                     if overlaps(&right_child, &symbol_range) {
+                        println!(
+                            "right {:?} => {:?}",
+                            node_range,
+                            level.num_zeros + start.1..level.num_zeros + end.1
+                        );
                         go.right(x.value((
+                            skip,
                             left_symbol + level.bit,
                             level.num_zeros + start.1,
                             level.num_zeros + end.1,
@@ -756,7 +764,7 @@ impl<V: BitVec> WaveletMatrix<V> {
 
         // add up all the nodes that we did not early-out from
         for x in traversal.results() {
-            let (left_symbol, start, end) = x.value;
+            let (_skip, left_symbol, start, end) = x.value;
             println!(
                 "for node representing {:?}..{:?}: +{:?}",
                 left_symbol,
@@ -783,19 +791,33 @@ fn fully_contains<T: BitBlock>(a: &Range<T>, b: &Range<T>) -> bool {
 
 #[cfg(test)]
 mod tests {
+    use crate::morton;
+
     use super::*;
 
     #[test]
     fn test_get() {
-        //                 1, 2, 3, 4, 5, 6,  7, 8, 9, 10,11,12,13,14,15
-        let symbols = vec![1, 2, 3, 3, 2, 10, 1, 4, 5, 6, 7, 8, 2, 9, 10];
+        let mut symbols = vec![];
+        for i in 0..64 {
+            symbols.push(i) // morton::encode2(x, y)
+        }
+
         let max_symbol = symbols.iter().max().copied().unwrap_or(0);
+        dbg!(max_symbol);
         let wm = WaveletMatrix::new(symbols.clone(), max_symbol);
         for (i, sym) in symbols.iter().copied().enumerate() {
             assert_eq!(sym, wm.get(i as u32));
         }
 
-        println!("{:?}", wm.foob(1..10, 0..15, 1));
+        let x_range = 3..5;
+        let y_range = 3..5;
+
+        let start = morton::encode2(x_range.start, y_range.start);
+        // inclusive x_range and y_range endpoints, but compute the exclusive end
+        let end = morton::encode2(x_range.end - 1, y_range.end - 1) + 1;
+        dbg!(start, end);
+        let range = start..end;
+        println!("{:?}", wm.foob(range, 0..wm.len(), 2));
         panic!("count_all");
 
         // dbg!(sym, wm.rank(sym, 0..wm.len()));
