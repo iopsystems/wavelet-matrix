@@ -715,32 +715,22 @@ impl<V: BitVec> WaveletMatrix<V> {
 
         let x_mask = V::Ones::from_u32(morton::encode2(u32::MAX, 0));
         let y_mask = V::Ones::from_u32(morton::encode2(0, u32::MAX));
+        let masks = &[x_mask, y_mask];
         let mask_range = |range: Range<V::Ones>, level_pow2: u32| {
-            let x_level = level_pow2 % 2 == 0;
-            let mut code = if x_level {
-                // is an x coord level
-                // want to mask the non-x coords to zero on the start, and one on the end [no, want to zero out on both ends]
-                return dbg!((range.start & x_mask)..((range.end - V::one()) & x_mask) + V::one());
-                morton::decode2x(range.start.u32())..morton::decode2x(range.end.u32() - 1)
-            } else {
-                // is a y coord
-                return dbg!((range.start & y_mask)..((range.end - V::one()) & y_mask) + V::one());
-                morton::decode2y(range.start.u32())..morton::decode2y(range.end.u32() - 1)
-            };
-            // endpoints are not necessarily sorted in a single dimension (?)
-            if code.start > code.end {
-                println!("!!!!! aaaah"); // note: can this happen?
-                code = code.end..code.start;
-                // do we need to increment either one?
-            };
-            code = code.start..code.end + 1;
-            println!(
-                "masking range {:?} @ {:?} level => {:?}",
-                range,
-                if x_level { "x" } else { "y" },
-                code
-            );
-            V::Ones::from_u32(code.start)..V::Ones::from_u32(code.end)
+            let mask = masks[level_pow2 as usize % 2];
+            (range.start & mask)..((range.end - V::one()) & mask) + V::one()
+
+            // if x_level {
+            //     // is an x coord level
+            //     (range.start & x_mask)..((range.end - V::one()) & x_mask) + V::one()
+            //     // spiritually equivalent to morton::decode2x(range.start.u32())..morton::decode2x(range.end.u32() - 1) + 1
+            //     // basic idea: just mask out the irrelevant bits – that means numbers won't be the right magnitude, but the
+            //     // ranges will be comparable, and e.g checkable for overlap/containment.
+            // } else {
+            //     // is a y coord level
+            //     (range.start & y_mask)..((range.end - V::one()) & y_mask) + V::one()
+            //     // spiritually equivalent to morton::decode2y(range.start.u32())..morton::decode2y(range.end.u32() - 1) + 1
+            // }
         };
 
         for level in self.levels(0) {
@@ -876,11 +866,10 @@ mod tests {
 
         let x_range = 3..8;
         let y_range = 3..5;
-
         let start = morton::encode2(x_range.start, y_range.start);
         // inclusive x_range and y_range endpoints, but compute the exclusive end
         let end = morton::encode2(x_range.end - 1, y_range.end - 1) + 1;
-        assert!(end <= max_symbol);
+        assert!(end <= max_symbol + 1);
         dbg!(start, end);
         let range = start..end;
         println!("{:?}", wm.foob(range, 0..wm.len(), 2));
