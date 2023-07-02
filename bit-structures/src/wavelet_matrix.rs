@@ -709,7 +709,7 @@ impl<V: BitVec> WaveletMatrix<V> {
         range: Range<V::Ones>,
         dims: usize,
     ) -> V::Ones {
-        self.count_symbol_ranges(symbol_range, &[range], dims)
+        self.count_symbol_ranges(&[symbol_range], range, dims)
             .first()
             .copied()
             .unwrap()
@@ -717,20 +717,22 @@ impl<V: BitVec> WaveletMatrix<V> {
 
     fn count_symbol_ranges(
         &self,
-        symbol_range: Range<V::Ones>,
-        ranges: &[Range<V::Ones>],
+        symbol_ranges: &[Range<V::Ones>],
+        range: Range<V::Ones>,
         dims: usize,
     ) -> Vec<V::Ones> {
-        assert!(!symbol_range.is_empty());
+        assert!(symbol_ranges
+            .iter()
+            .all(|symbol_range| !symbol_range.is_empty()));
         let mut traversal = Traversal::new();
-        // (skip, leftmost symbol of node, start, end)
+        // (symbol_range, skip, leftmost symbol of node, start, end)
         traversal.init(
-            ranges
+            symbol_ranges
                 .iter()
-                .map(|range| (0, V::zero(), range.start, range.end)),
+                .map(|symbol_range| (symbol_range, 0, V::zero(), range.start, range.end)),
         );
 
-        let mut counts = vec![V::zero(); ranges.len()];
+        let mut counts = vec![V::zero(); symbol_ranges.len()];
         let mut nodes_visited = 0;
         let mut nodes_skipped = 0;
 
@@ -764,10 +766,10 @@ impl<V: BitVec> WaveletMatrix<V> {
             // println!("level_bit = {:?}, level_pow = {:?}", level.bit, level_pow);
 
             traversal.traverse(|xs, go| {
-                let level_symbol_range = mask_range(symbol_range.clone(), level_pow);
                 for x in xs {
+                    let (symbol_range, skip, left_symbol, start, end) = x.value;
+                    let level_symbol_range = mask_range(symbol_range.clone(), level_pow);
                     nodes_visited += 1;
-                    let (skip, left_symbol, start, end) = x.value;
                     let start = level.ranks(start);
                     let end = level.ranks(end);
                     let mid = left_symbol + level.bit; // midpoint symbol between the left and right children
@@ -784,7 +786,7 @@ impl<V: BitVec> WaveletMatrix<V> {
                             counts[x.key] += end.0 - start.0;
                             nodes_skipped += 1;
                         } else if recurse {
-                            go.left(x.value((skip, left_symbol, start.0, end.0)));
+                            go.left(x.value((symbol_range, skip, left_symbol, start.0, end.0)));
                         }
                     }
 
@@ -801,6 +803,7 @@ impl<V: BitVec> WaveletMatrix<V> {
                             nodes_skipped += 1;
                         } else if recurse {
                             go.right(x.value((
+                                symbol_range,
                                 skip,
                                 left_symbol + level.bit,
                                 level.num_zeros + start.1,
