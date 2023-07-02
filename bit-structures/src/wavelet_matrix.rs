@@ -6,6 +6,7 @@ use std::{collections::VecDeque, ops::Range};
 
 // todo
 // - figure out if we ever recurse with empty ranges (can add an assert in traverse)
+//   - i think we can check start.0 != end.0 and start.1 != end.1
 // - verify that the intermediate traversals are indeed in ascending wavelet matrix order
 // - consider a SymbolCount struct rather than returning tuples
 // - ignore_bits
@@ -226,6 +227,200 @@ impl<V: BitVec> RankCache<V> {
             self.num_hits + self.num_misses,
         );
     }
+}
+
+impl WaveletMatrix<Dense> {
+    pub fn new(data: Vec<u32>, max_symbol: u32) -> WaveletMatrix<Dense> {
+        let num_levels = num_levels_for_symbol(max_symbol);
+        // We implement two different wavelet matrix construction algorithms. One of them is more
+        // efficient, but that algorithm does not scale well to large alphabets and also cannot
+        // cannot handle element multiplicity because it constructs the bitvectors out-of-order.
+        // It also requires O(2^num_levels) space. So, we check whether the number of data points
+        // is less than 2^num_levels, and if so use the scalable algorithm, and otherise use the
+        // the efficient algorithm.
+        let levels = if num_levels <= (data.len().ilog2() as usize) {
+            build_bitvecs(data, num_levels)
+        } else {
+            build_bitvecs_large_alphabet(data, num_levels)
+        };
+
+        WaveletMatrix::from_bitvecs(levels, max_symbol)
+    }
+}
+
+// Wavelet matrix construction algorithm optimized for the case where we can afford to build a
+// dense histogram that counts the number of occurrences of each symbol. Heuristically,
+// this is roughly the case where the alphabet size does not exceed the number of data points.
+// Implements Algorithm 1 (seq.pc) from the paper "Practical Wavelet Tree Construction".
+fn build_bitvecs(data: Vec<u32>, num_levels: usize) -> Vec<Dense> {
+    let mut levels = vec![BitBuf::new(data.len()); num_levels];
+    let mut hist = vec![0; 1 << num_levels];
+    let mut borders = vec![0; 1 << num_levels];
+    let max_level = num_levels - 1;
+
+    {
+        // Count symbol occurrences and fill the first bitvector, whose bits
+        // can be read from MSBs of the data in its original order.
+        let level = &mut levels[0];
+        let level_bit = 1 << max_level;
+        for (i, &d) in data.iter().enumerate() {
+            hist[d as usize] += 1;
+            if d & level_bit > 0 {
+                level.set(i);
+            }
+        }
+    }
+
+    // Construct the other levels bottom-up
+    for l in (1..num_levels).rev() {
+        // The number of wavelet tree nodes at this level
+        let num_nodes = 1 << l;
+
+        // Compute the histogram based on the previous level's histogram
+        for i in 0..num_nodes {
+            // Update the histogram in-place
+            hist[i] = hist[2 * i] + hist[2 * i + 1];
+        }
+
+        // Get starting positions of intervals from the new histogram
+        borders[0] = 0;
+        for i in 1..num_nodes {
+            // Update the positions in-place. The bit reversals map from wavelet tree
+            // node order to wavelet matrix node order, with all left children preceding
+            // the right children.
+            let prev_index = reverse_low_bits(i - 1, l);
+            borders[reverse_low_bits(i, l)] = borders[prev_index] + hist[prev_index];
+        }
+
+        // Fill the bit vector of the current level
+        let level = &mut levels[l];
+        let level_bit_index = max_level - l;
+        let level_bit = 1 << level_bit_index;
+
+        // This mask contains all ones except for the lowest level_bit_index bits.
+        let bit_prefix_mask = usize::MAX
+            .checked_shl((level_bit_index + 1) as u32)
+            .unwrap_or(0);
+        for &d in data.iter() {
+            // Get and update position for bit by computing its bit prefix from the
+            // MSB downwards which encodes the path from the root to the node at
+            // this level that contains this bit
+            let node_index = (d as usize & bit_prefix_mask) >> (level_bit_index + 1);
+            let p = &mut borders[node_index];
+            // Set the bit in the bitvector
+            if d & level_bit > 0 {
+                level.set(*p);
+            }
+            *p += 1;
+        }
+    }
+
+    levels
+        .into_iter()
+        .map(|level| DenseBitVec::new(level, 10, 10))
+        .collect()
+}
+
+// Returns an array of level bitvectors built from `data`.
+// Handles the sparse case where the alphabet size exceeds the number of data points and
+// building a histogram with an entry for each symbol is expensive
+fn build_bitvecs_large_alphabet(mut data: Vec<u32>, num_levels: usize) -> Vec<Dense> {
+    let mut levels = Vec::with_capacity(num_levels);
+    let max_level = num_levels - 1;
+
+    // For each level, stably sort the datapoints by their bit value at that level.
+    // Elements with a zero bit get sorted left, and elements with a one bits
+    // get sorted right, which is effectvely a bucket sort with two buckets.
+    let mut right = Vec::new();
+
+    for l in 0..max_level {
+        let level_bit = 1 << (max_level - l);
+        let mut bits = BitBuf::new(data.len());
+        let mut index = 0;
+        // Stably sort all elements with a zero bit at this level to the left, storing
+        // the positions of all one bits at this level in `bits`.
+        // We retain the elements that went left, then append those that went right.
+        data.retain_mut(|d| {
+            let value = *d;
+            let go_left = value & level_bit == 0;
+            if !go_left {
+                bits.set(index);
+                right.push(value);
+            }
+            index += 1;
+            go_left
+        });
+        data.append(&mut right);
+        levels.push(DenseBitVec::new(bits, 10, 10));
+    }
+
+    // For the last level we don'T need to do anything but build the bitvector
+    {
+        let mut bits = BitBuf::new(data.len());
+        let level_bit = 1 << 0;
+        for (index, d) in data.iter().enumerate() {
+            if d & level_bit > 0 {
+                bits.set(index);
+            }
+        }
+        levels.push(DenseBitVec::new(bits, 10, 10));
+    }
+
+    levels
+}
+
+#[derive(Debug)]
+struct Level<V: BitVec> {
+    bv: V,
+    num_zeros: V::Ones,
+    // unsigned int with a single bit set signifying
+    // the magnitude represented at that level.
+    // e.g.  levels[0].bit == 1 << levels.len() - 1
+    bit: V::Ones,
+}
+
+impl<V: BitVec> bincode::Encode for Level<V> {
+    encode_impl!(bv, num_zeros, bit);
+}
+impl<V: BitVec> bincode::Decode for Level<V> {
+    decode_impl!(bv, num_zeros, bit);
+}
+impl<'de, V: BitVec> bincode::BorrowDecode<'de> for Level<V> {
+    borrow_decode_impl!(bv, num_zeros, bit);
+}
+
+impl<V: BitVec> Level<V> {
+    // Returns (rank0(index), rank1(index))
+    // This means that if x = ranks(index), x.0 is rank0 and x.1 is rank1.
+    pub fn ranks(&self, index: V::Ones) -> Ranks<V::Ones> {
+        if index.is_zero() {
+            return Ranks(V::zero(), V::zero());
+        }
+        let num_ones = self.bv.rank1(index);
+        let num_zeros = index - num_ones;
+        Ranks(num_zeros, num_ones)
+    }
+}
+
+/// Reverse the lowest `numBits` bits of `v`. For example:
+///
+/// assert!(reverse_low_bits(0b0000100100, 6) == 0b0000001001)
+/// //                     ^^^^^^              ^^^^^^
+///
+// (todo: figure out how to import this function so the doctest
+// can be run...)
+fn reverse_low_bits(x: usize, num_bits: usize) -> usize {
+    x.reverse_bits() >> (usize::BITS as usize - num_bits)
+}
+
+// todo: is this bit_ceil? seems to be bit_ceil(symbol-1)
+pub fn num_levels_for_symbol(symbol: u32) -> usize {
+    // Equivalent to max(1, ceil(log2(alphabet_size))), which ensures
+    // that we always have at least one level even if all symbols are 0.
+    (u32::BITS - symbol.leading_zeros())
+        .max(1)
+        .try_into()
+        .unwrap()
 }
 
 impl<V: BitVec> WaveletMatrix<V> {
@@ -452,102 +647,6 @@ impl<V: BitVec> WaveletMatrix<V> {
         traversal
     }
 
-    fn foob(&self, symbol_range: Range<V::Ones>, range: Range<V::Ones>, dims: usize) -> V::Ones {
-        assert!(!symbol_range.is_empty());
-        let symbol_range_end_inclusive = symbol_range.end - V::one(); // ok since not empty
-
-        let mut traversal = Traversal::new();
-        // (nskip, leftmost symbol of node, start, end)
-        traversal.init([(0, V::zero(), range.start, range.end)]);
-        let mut count = V::zero();
-        let mut nodes_visited = 0;
-        let mut nodes_skipped = 0;
-        for level in self.levels(0) {
-            dbg!(level.bit);
-            traversal.traverse(|xs, go| {
-                for x in xs {
-                    nodes_visited += 1;
-                    let (mut nskip, left_symbol, start, end) = x.value;
-                    // this node represents left_symbol..right_symbol; the width of two children
-                    let node_range = left_symbol..left_symbol + level.bit + level.bit;
-                    println!("exploring {:?}", node_range);
-
-                    // if this node is fully contained inside the target symbol range,
-                    // we can stop the recursion early.
-                    // for orthogonal range search, we should instead increment the fully_contained_count.
-                    // actually, at least for same-bit-width symbols, we can avoid the chunking and simply
-                    // check whether can_skip is ever equal to the number of dimensions.
-                    // in this case, as a special case, that number is 1.
-                    // but we can make it work with 3d/nd that way. The new idea is that we don't need
-                    // to check the dimensions in order -- just that, contiguously, n levels were fully contained.
-                    if node_range.start >= symbol_range.start && node_range.end <= symbol_range.end
-                    {
-                        nskip += 1;
-
-                        count += end - start;
-                        nodes_skipped += 1;
-                        println!(
-                            "skipping {:?} which is fully contained in {:?}, +{:?}",
-                            node_range,
-                            symbol_range,
-                            end - start
-                        );
-                        continue;
-                    } else {
-                        nskip = 0;
-                    }
-
-                    if nskip == dims {
-                        // count += end - start;
-                        // nodes_skipped += 1;
-                        // continue;
-                    }
-
-                    // otherwise, recurse into the left or right, or both.
-                    let start = level.ranks(start);
-                    let end = level.ranks(end);
-
-                    // it can happen that both children are partly covered, so
-                    // try recursing into both.
-
-                    // if the left end of symbol_range is in the left child, go left
-                    if (symbol_range.start & level.bit).is_zero() {
-                        println!("left {:?}", node_range.clone());
-                        go.left(x.value((nskip, left_symbol, start.0, end.0)));
-                    }
-
-                    // if the inclusive right end of symbol_range is
-                    // in the right child, go right.
-                    // symbol_range_end_inclusive
-                    // todo: this bit check is not the less-than check that i want,
-                    // which is symbol_range.end > level.bit or something.
-                    // figure out how this interacts with the range query idea.
-                    if !(symbol_range.end & level.bit).is_zero() {
-                        println!("right {:?}", node_range.clone());
-                        go.right(x.value((
-                            nskip,
-                            left_symbol + level.bit,
-                            level.num_zeros + start.1,
-                            level.num_zeros + end.1,
-                        )));
-                    }
-                }
-            });
-        }
-
-        // dbg!(&traversal);
-
-        // add up all the nodes that we did not early-out from
-        for x in traversal.results() {
-            dbg!(&x);
-            let (_nskip, _left_symbol, start, end) = x.value;
-            count += end - start;
-        }
-
-        dbg!(nodes_visited, nodes_skipped);
-        count
-    }
-
     pub fn get_batch(&self, indices: &[V::Ones]) -> Traversal<(V::Ones, V::Ones)> {
         // stores (wm index, symbol) entries, each corresponding to an input index.
         let mut traversal = Traversal::new();
@@ -602,200 +701,84 @@ impl<V: BitVec> WaveletMatrix<V> {
         let (ret, _) = bincode::decode_from_slice(&data, config).unwrap();
         ret
     }
-}
 
-impl WaveletMatrix<Dense> {
-    pub fn new(data: Vec<u32>, max_symbol: u32) -> WaveletMatrix<Dense> {
-        let num_levels = num_levels_for_symbol(max_symbol);
-        // We implement two different wavelet matrix construction algorithms. One of them is more
-        // efficient, but that algorithm does not scale well to large alphabets and also cannot
-        // cannot handle element multiplicity because it constructs the bitvectors out-of-order.
-        // It also requires O(2^num_levels) space. So, we check whether the number of data points
-        // is less than 2^num_levels, and if so use the scalable algorithm, and otherise use the
-        // the efficient algorithm.
-        let levels = if num_levels <= (data.len().ilog2() as usize) {
-            build_bitvecs(data, num_levels)
-        } else {
-            build_bitvecs_large_alphabet(data, num_levels)
-        };
+    fn foob(&self, symbol_range: Range<V::Ones>, range: Range<V::Ones>, _dims: usize) -> V::Ones {
+        assert!(!symbol_range.is_empty());
+        let mut traversal = Traversal::new();
+        // (leftmost symbol of node, start, end)
+        traversal.init([(V::zero(), range.start, range.end)]);
+        let mut count = V::zero();
+        let mut nodes_visited = 0;
+        let mut nodes_skipped = 0;
+        for level in self.levels(0) {
+            dbg!(level.bit);
+            traversal.traverse(|xs, go| {
+                for x in xs {
+                    nodes_visited += 1;
+                    let (left_symbol, start, end) = x.value;
+                    // this node represents left_symbol..right_symbol; the width of two children
+                    let node_range = left_symbol..left_symbol + level.bit + level.bit;
+                    println!("open {:?}", node_range);
 
-        WaveletMatrix::from_bitvecs(levels, max_symbol)
+                    if fully_contains(&symbol_range, &node_range) {
+                        count += end - start;
+                        nodes_skipped += 1;
+                        println!(
+                            "skipping {:?}: is fully contained in {:?}, +{:?}",
+                            node_range,
+                            symbol_range,
+                            end - start
+                        );
+                        continue;
+                    }
+
+                    // otherwise, recurse into the left or right, or both, which may be partly covered.
+                    let start = level.ranks(start);
+                    let end = level.ranks(end);
+
+                    let left_child = left_symbol..left_symbol + level.bit;
+                    let right_child = left_child.end..left_child.end + level.bit;
+
+                    if overlaps(&left_child, &symbol_range) {
+                        go.left(x.value((left_symbol, start.0, end.0)));
+                    }
+
+                    if overlaps(&right_child, &symbol_range) {
+                        go.right(x.value((
+                            left_symbol + level.bit,
+                            level.num_zeros + start.1,
+                            level.num_zeros + end.1,
+                        )));
+                    }
+                }
+            });
+        }
+
+        // add up all the nodes that we did not early-out from
+        for x in traversal.results() {
+            let (left_symbol, start, end) = x.value;
+            println!(
+                "for node representing {:?}..{:?}: +{:?}",
+                left_symbol,
+                left_symbol + V::one(),
+                end - start
+            );
+            count += end - start;
+        }
+
+        dbg!(nodes_visited, nodes_skipped);
+        count
     }
 }
 
-// Wavelet matrix construction algorithm optimized for the case where we can afford to build a
-// dense histogram that counts the number of occurrences of each symbol. Heuristically,
-// this is roughly the case where the alphabet size does not exceed the number of data points.
-// Implements Algorithm 1 (seq.pc) from the paper "Practical Wavelet Tree Construction".
-fn build_bitvecs(data: Vec<u32>, num_levels: usize) -> Vec<Dense> {
-    let mut levels = vec![BitBuf::new(data.len()); num_levels];
-    let mut hist = vec![0; 1 << num_levels];
-    let mut borders = vec![0; 1 << num_levels];
-    let max_level = num_levels - 1;
-
-    {
-        // Count symbol occurrences and fill the first bitvector, whose bits
-        // can be read from MSBs of the data in its original order.
-        let level = &mut levels[0];
-        let level_bit = 1 << max_level;
-        for (i, &d) in data.iter().enumerate() {
-            hist[d as usize] += 1;
-            if d & level_bit > 0 {
-                level.set(i);
-            }
-        }
-    }
-
-    // Construct the other levels bottom-up
-    for l in (1..num_levels).rev() {
-        // The number of wavelet tree nodes at this level
-        let num_nodes = 1 << l;
-
-        // Compute the histogram based on the previous level's histogram
-        for i in 0..num_nodes {
-            // Update the histogram in-place
-            hist[i] = hist[2 * i] + hist[2 * i + 1];
-        }
-
-        // Get starting positions of intervals from the new histogram
-        borders[0] = 0;
-        for i in 1..num_nodes {
-            // Update the positions in-place. The bit reversals map from wavelet tree
-            // node order to wavelet matrix node order, with all left children preceding
-            // the right children.
-            let prev_index = reverse_low_bits(i - 1, l);
-            borders[reverse_low_bits(i, l)] = borders[prev_index] + hist[prev_index];
-        }
-
-        // Fill the bit vector of the current level
-        let level = &mut levels[l];
-        let level_bit_index = max_level - l;
-        let level_bit = 1 << level_bit_index;
-
-        // This mask contains all ones except for the lowest level_bit_index bits.
-        let bit_prefix_mask = usize::MAX
-            .checked_shl((level_bit_index + 1) as u32)
-            .unwrap_or(0);
-        for &d in data.iter() {
-            // Get and update position for bit by computing its bit prefix from the
-            // MSB downwards which encodes the path from the root to the node at
-            // this level that contains this bit
-            let node_index = (d as usize & bit_prefix_mask) >> (level_bit_index + 1);
-            let p = &mut borders[node_index];
-            // Set the bit in the bitvector
-            if d & level_bit > 0 {
-                level.set(*p);
-            }
-            *p += 1;
-        }
-    }
-
-    levels
-        .into_iter()
-        .map(|level| DenseBitVec::new(level, 10, 10))
-        .collect()
+fn overlaps<T: BitBlock>(a: &Range<T>, b: &Range<T>) -> bool {
+    a.start < b.end && b.start < a.end
 }
 
-// Returns an array of level bitvectors built from `data`.
-// Handles the sparse case where the alphabet size exceeds the number of data points and
-// building a histogram with an entry for each symbol is expensive
-fn build_bitvecs_large_alphabet(mut data: Vec<u32>, num_levels: usize) -> Vec<Dense> {
-    let mut levels = Vec::with_capacity(num_levels);
-    let max_level = num_levels - 1;
-
-    // For each level, stably sort the datapoints by their bit value at that level.
-    // Elements with a zero bit get sorted left, and elements with a one bits
-    // get sorted right, which is effectvely a bucket sort with two buckets.
-    let mut right = Vec::new();
-
-    for l in 0..max_level {
-        let level_bit = 1 << (max_level - l);
-        let mut bits = BitBuf::new(data.len());
-        let mut index = 0;
-        // Stably sort all elements with a zero bit at this level to the left, storing
-        // the positions of all one bits at this level in `bits`.
-        // We retain the elements that went left, then append those that went right.
-        data.retain_mut(|d| {
-            let value = *d;
-            let go_left = value & level_bit == 0;
-            if !go_left {
-                bits.set(index);
-                right.push(value);
-            }
-            index += 1;
-            go_left
-        });
-        data.append(&mut right);
-        levels.push(DenseBitVec::new(bits, 10, 10));
-    }
-
-    // For the last level we don'T need to do anything but build the bitvector
-    {
-        let mut bits = BitBuf::new(data.len());
-        let level_bit = 1 << 0;
-        for (index, d) in data.iter().enumerate() {
-            if d & level_bit > 0 {
-                bits.set(index);
-            }
-        }
-        levels.push(DenseBitVec::new(bits, 10, 10));
-    }
-
-    levels
-}
-
-#[derive(Debug)]
-struct Level<V: BitVec> {
-    bv: V,
-    num_zeros: V::Ones,
-    // unsigned int with a single bit set signifying
-    // the magnitude represented at that level.
-    // e.g.  levels[0].bit == 1 << levels.len() - 1
-    bit: V::Ones,
-}
-
-impl<V: BitVec> bincode::Encode for Level<V> {
-    encode_impl!(bv, num_zeros, bit);
-}
-impl<V: BitVec> bincode::Decode for Level<V> {
-    decode_impl!(bv, num_zeros, bit);
-}
-impl<'de, V: BitVec> bincode::BorrowDecode<'de> for Level<V> {
-    borrow_decode_impl!(bv, num_zeros, bit);
-}
-
-impl<V: BitVec> Level<V> {
-    // Returns (rank0(index), rank1(index))
-    // This means that if x = ranks(index), x.0 is rank0 and x.1 is rank1.
-    pub fn ranks(&self, index: V::Ones) -> Ranks<V::Ones> {
-        if index.is_zero() {
-            return Ranks(V::zero(), V::zero());
-        }
-        let num_ones = self.bv.rank1(index);
-        let num_zeros = index - num_ones;
-        Ranks(num_zeros, num_ones)
-    }
-}
-
-/// Reverse the lowest `numBits` bits of `v`. For example:
-///
-/// assert!(reverse_low_bits(0b0000100100, 6) == 0b0000001001)
-/// //                     ^^^^^^              ^^^^^^
-///
-// (todo: figure out how to import this function so the doctest
-// can be run...)
-fn reverse_low_bits(x: usize, num_bits: usize) -> usize {
-    x.reverse_bits() >> (usize::BITS as usize - num_bits)
-}
-
-// todo: is this bit_ceil? seems to be bit_ceil(symbol-1)
-pub fn num_levels_for_symbol(symbol: u32) -> usize {
-    // Equivalent to max(1, ceil(log2(alphabet_size))), which ensures
-    // that we always have at least one level even if all symbols are 0.
-    (u32::BITS - symbol.leading_zeros())
-        .max(1)
-        .try_into()
-        .unwrap()
+// Return true if a fully contains b
+fn fully_contains<T: BitBlock>(a: &Range<T>, b: &Range<T>) -> bool {
+    // if a starts before b, and a ends after b.
+    a.start <= b.start && a.end >= b.end
 }
 
 #[cfg(test)]
@@ -810,18 +793,19 @@ mod tests {
         let wm = WaveletMatrix::new(symbols.clone(), max_symbol);
         for (i, sym) in symbols.iter().copied().enumerate() {
             assert_eq!(sym, wm.get(i as u32));
-            // dbg!(sym, wm.rank(sym, 0..wm.len()));
-            // dbg!(i, wm.quantile(i as u32, 0..wm.len()));
         }
 
+        println!("{:?}", wm.foob(1..10, 0..15, 1));
+        panic!("count_all");
+
+        // dbg!(sym, wm.rank(sym, 0..wm.len()));
+        // dbg!(i, wm.quantile(i as u32, 0..wm.len()));
+
+        // println!("{:?}", wm.count_all(10..15));
         // dbg!(wm.select(10, 1, 0..wm.len()));
         // let indices = &[0, 1, 2, 1, 2, 0, 13];
         // dbg!(wm.get_batch(indices));
         // ;
         // panic!("get");
-
-        // println!("{:?}", wm.count_all(10..15));
-        println!("{:?}", wm.foob(1..11, 0..15, 1));
-        panic!("count_all");
     }
 }
