@@ -1,7 +1,8 @@
 use crate::bincode_helpers::{borrow_decode_impl, decode_impl, encode_impl};
 use crate::bit_block::BitBlock;
+use crate::morton;
 use crate::{bit_buf::BitBuf, bit_vec::BitVec, dense_bit_vec::DenseBitVec};
-use num::{One, Zero};
+use num::{One, PrimInt, Zero};
 use std::{collections::VecDeque, ops::Range};
 
 // todo
@@ -709,16 +710,36 @@ impl<V: BitVec> WaveletMatrix<V> {
         traversal.init([(0, V::zero(), range.start, range.end)]);
         let mut count = V::zero();
         let mut nodes_visited = 0;
-        let mut nodes_skipped = 0;
+        let nodes_skipped = 0;
+
+        let x_mask = V::Ones::from_u32(morton::encode2(u32::MAX, 0));
+        let y_mask = V::Ones::from_u32(morton::encode2(0, u32::MAX));
+        let mask_range = |range: Range<V::Ones>, level_bit: V::Ones| {
+            let code = if level_bit.trailing_zeros() % 2 == 1 {
+                // is an x coord level
+                // want to mask the non-x coords to zero on the start, and one on the end
+                // (range.start & x_mask)..(range.end | !x_mask)
+                morton::decode2x(range.start.u32())..morton::decode2x(range.end.u32())
+            } else {
+                // is a y coord
+                // (range.start & y_mask)..(range.end | !y_mask)
+                morton::decode2y(range.start.u32())..morton::decode2y(range.end.u32())
+            };
+            dbg!(code.clone());
+            V::Ones::from_u32(code.start)..V::Ones::from_u32(code.end)
+        };
+
         for level in self.levels(0) {
-            dbg!(level.bit);
+            dbg!(level.bit, level.bit.trailing_zeros());
             traversal.traverse(|xs, go| {
                 for x in xs {
+                    let symbol_range = mask_range(symbol_range.clone(), level.bit);
+
                     nodes_visited += 1;
-                    let (mut skip, left_symbol, start, end) = x.value;
+                    let (skip, left_symbol, start, end) = x.value;
                     // this node represents left_symbol..right_symbol; the width of two children
-                    let node_range = left_symbol..left_symbol + level.bit + level.bit;
-                    println!("\nopen {:?}", node_range);
+                    // let node_range = left_symbol..left_symbol + level.bit + level.bit;
+                    // println!("\nopen {:?}", node_range);
 
                     // if fully_contains(&symbol_range, &node_range) {
                     //     skip += 1;
@@ -737,20 +758,21 @@ impl<V: BitVec> WaveletMatrix<V> {
                     let start = level.ranks(start);
                     let end = level.ranks(end);
 
-                    let left_child = left_symbol..left_symbol + level.bit;
-                    let right_child = left_child.end..left_child.end + level.bit;
+                    let left_child = mask_range(left_symbol..left_symbol + level.bit, level.bit);
+                    let right_child =
+                        mask_range(left_child.end..left_child.end + level.bit, level.bit);
 
                     if overlaps(&left_child, &symbol_range) {
-                        println!("left {:?} => {:?}", node_range, start.0..end.0);
+                        // println!("left {:?} => {:?}", node_range, start.0..end.0);
                         go.left(x.value((skip, left_symbol, start.0, end.0)));
                     }
 
                     if overlaps(&right_child, &symbol_range) {
-                        println!(
-                            "right {:?} => {:?}",
-                            node_range,
-                            level.num_zeros + start.1..level.num_zeros + end.1
-                        );
+                        // println!(
+                        //     "right {:?} => {:?}",
+                        //     node_range,
+                        //     level.num_zeros + start.1..level.num_zeros + end.1
+                        // );
                         go.right(x.value((
                             skip,
                             left_symbol + level.bit,
