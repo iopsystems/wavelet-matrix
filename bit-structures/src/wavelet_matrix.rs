@@ -730,7 +730,6 @@ impl<V: BitVec> WaveletMatrix<V> {
             } else {
                 0
             };
-
             if skip == dims {
                 (skip, false)
             } else {
@@ -740,7 +739,8 @@ impl<V: BitVec> WaveletMatrix<V> {
 
         for level in self.levels(0) {
             let level_pow = level.bit.trailing_zeros(); // power of 2 of the child level
-            println!("level_bit = {:?}, level_pow = {:?}", level.bit, level_pow);
+
+            // println!("level_bit = {:?}, level_pow = {:?}", level.bit, level_pow);
 
             traversal.traverse(|xs, go| {
                 let level_symbol_range = mask_range(symbol_range.clone(), level_pow);
@@ -749,9 +749,8 @@ impl<V: BitVec> WaveletMatrix<V> {
                     let (skip, left_symbol, start, end) = x.value;
                     let start = level.ranks(start);
                     let end = level.ranks(end);
+                    let mid = left_symbol + level.bit; // midpoint symbol between the left and right children
 
-                    // midpoint symbol between the left and right children
-                    let mid = left_symbol + level.bit;
                     {
                         // left child
                         let (skip, recurse) = xxxx(
@@ -762,6 +761,7 @@ impl<V: BitVec> WaveletMatrix<V> {
                         );
                         if skip == dims {
                             count += end.0 - start.0;
+                            nodes_skipped += 1;
                         } else if recurse {
                             go.left(x.value((skip, left_symbol, start.0, end.0)));
                         }
@@ -777,6 +777,7 @@ impl<V: BitVec> WaveletMatrix<V> {
                         );
                         if skip == dims {
                             count += end.1 - start.1;
+                            nodes_skipped += 1;
                         } else if recurse {
                             go.right(x.value((
                                 skip,
@@ -790,19 +791,7 @@ impl<V: BitVec> WaveletMatrix<V> {
             });
         }
 
-        // add up all the nodes that we did not early-out from
-        for x in traversal.results() {
-            let (_skip, left_symbol, start, end) = x.value;
-            println!(
-                "for node representing {:?}..{:?}: +{:?}",
-                left_symbol,
-                left_symbol + V::one(),
-                end - start
-            );
-            count += end - start;
-        }
-
-        dbg!(nodes_visited, nodes_skipped);
+        // dbg!(nodes_visited, nodes_skipped);
         count
     }
 }
@@ -819,46 +808,107 @@ fn fully_contains<T: BitBlock>(a: &Range<T>, b: &Range<T>) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use crate::morton;
-
     use super::*;
+    use crate::morton;
+    use rand::distributions::Uniform;
+    use rand::prelude::Distribution;
+    use std::time::SystemTime;
+
+    fn ascending_range(x: Range<u32>) -> Range<u32> {
+        if x.start < x.end {
+            x
+        } else {
+            x.end..x.start
+        }
+    }
 
     #[test]
-    fn test_get() {
+    fn test_count() {
+        let mut rng = rand::thread_rng();
+        let pow = 1024;
+        let (n, k) = (1_000_000, pow * pow); // n numbers between 0 and k
+        let unif = Uniform::new(0, pow);
+
         let mut symbols = vec![];
-        for i in 0..64 {
-            // if i % 2 == 1 {
-            symbols.push(i)
-            // }
+        for _ in 0..n {
+            symbols.push(unif.sample(&mut rng) * unif.sample(&mut rng));
         }
-
-        let max_symbol = symbols.iter().max().copied().unwrap_or(0);
+        let max_symbol = k;
         let wm = WaveletMatrix::new(symbols.clone(), max_symbol);
-        for (i, sym) in symbols.iter().copied().enumerate() {
-            assert_eq!(sym, wm.get(i as u32));
+
+        let start_time = SystemTime::now();
+
+        let q = 1000;
+        for _ in 0..q {
+            // caution: easy to go out of bounds here in either x or y alone
+
+            let x_range = ascending_range(unif.sample(&mut rng)..unif.sample(&mut rng));
+            let y_range = ascending_range(unif.sample(&mut rng)..unif.sample(&mut rng));
+            let start = morton::encode2(x_range.start, y_range.start);
+            // inclusive x_range and y_range endpoints, but compute the exclusive end
+            let end = morton::encode2(x_range.end - 1, y_range.end - 1) + 1;
+            // dbg!(end, max_symbol, &x_range, &y_range);
+            assert!(end <= max_symbol + 1);
+            // dbg!(start, end);
+            let query_start_time = SystemTime::now();
+
+            let range = start..end;
+            let wm_count = wm.foob(range, 0..wm.len(), 2);
+            let test_count = symbols
+                .iter()
+                .copied()
+                .filter(|&code| {
+                    let x = morton::decode2x(code);
+                    let y = morton::decode2y(code);
+                    x_range.start <= x && x < x_range.end && y_range.start <= y && y < y_range.end
+                })
+                .count() as u32;
+            let query_end_time = SystemTime::now();
+            println!("{:?}", query_end_time.duration_since(query_start_time));
+
+            assert_eq!(wm_count, test_count);
         }
+        let end_time = SystemTime::now();
+        println!(
+            "total for {:?} queries: {:?}",
+            q,
+            end_time.duration_since(start_time)
+        );
 
-        // caution: easy to go out of bounds here in either x or y alone
-
-        let x_range = 3..8;
-        let y_range = 3..5;
-        let start = morton::encode2(x_range.start, y_range.start);
-        // inclusive x_range and y_range endpoints, but compute the exclusive end
-        let end = morton::encode2(x_range.end - 1, y_range.end - 1) + 1;
-        assert!(end <= max_symbol + 1);
-        dbg!(start, end);
-        let range = start..end;
-        println!("{:?}", wm.foob(range, 0..wm.len(), 2));
-        panic!("count_all");
-
-        // dbg!(sym, wm.rank(sym, 0..wm.len()));
-        // dbg!(i, wm.quantile(i as u32, 0..wm.len()));
-
-        // println!("{:?}", wm.count_all(10..15));
-        // dbg!(wm.select(10, 1, 0..wm.len()));
-        // let indices = &[0, 1, 2, 1, 2, 0, 13];
-        // dbg!(wm.get_batch(indices));
-        // ;
-        // panic!("get");
+        panic!("wheee");
     }
+
+    // #[test]
+    // fn test_get() {
+    //     let mut symbols = vec![];
+    //     for i in 0..64 {
+    //         // if i % 2 == 1 {
+    //         symbols.push(i)
+    //         // }
+    //     }
+    //     let max_symbol = symbols.iter().max().copied().unwrap_or(0);
+    //     let wm = WaveletMatrix::new(symbols.clone(), max_symbol);
+    //     for (i, sym) in symbols.iter().copied().enumerate() {
+    //         assert_eq!(sym, wm.get(i as u32));
+    //     }
+    //     // caution: easy to go out of bounds here in either x or y alone
+    //     let x_range = 3..8;
+    //     let y_range = 3..5;
+    //     let start = morton::encode2(x_range.start, y_range.start);
+    //     // inclusive x_range and y_range endpoints, but compute the exclusive end
+    //     let end = morton::encode2(x_range.end - 1, y_range.end - 1) + 1;
+    //     assert!(end <= max_symbol + 1);
+    //     dbg!(start, end);
+    //     let range = start..end;
+    //     println!("{:?}", wm.foob(range, 0..wm.len(), 2));
+    //     panic!("count_all");
+    //     // dbg!(sym, wm.rank(sym, 0..wm.len()));
+    //     // dbg!(i, wm.quantile(i as u32, 0..wm.len()));
+    //     // println!("{:?}", wm.count_all(10..15));
+    //     // dbg!(wm.select(10, 1, 0..wm.len()));
+    //     // let indices = &[0, 1, 2, 1, 2, 0, 13];
+    //     // dbg!(wm.get_batch(indices));
+    //     // ;
+    //     // panic!("get");
+    // }
 }
