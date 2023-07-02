@@ -745,35 +745,22 @@ impl<V: BitVec> WaveletMatrix<V> {
         };
 
         for level in self.levels(0) {
-            dbg!(level.bit, level.bit.trailing_zeros());
             let level_pow2 = level.bit.trailing_zeros() + 1;
-            println!("{:?} {:?}", level.bit, level_pow2);
+            println!("level_bit = {:?}, level_pow2 = {:?}", level.bit, level_pow2);
 
             traversal.traverse(|xs, go| {
                 for x in xs {
-                    let symbol_range_masked = mask_range(symbol_range.clone(), level_pow2);
-
                     nodes_visited += 1;
                     let (mut skip, left_symbol, start, end) = x.value;
+
                     // this node represents left_symbol..right_symbol; the width of two children
                     let node_range = left_symbol..left_symbol + level.bit + level.bit;
-                    let node_range_masked = mask_range(node_range.clone(), level_pow2);
+                    // let node_range_masked = mask_range(node_range.clone(), level_pow2);
+                    // let symbol_range_masked = mask_range(symbol_range.clone(), level_pow2);
 
                     println!("\nopen {:?}", node_range);
 
-                    assert!(overlaps(&symbol_range_masked, &node_range_masked));
-
-                    skip = if fully_contains(&symbol_range_masked, &node_range_masked) {
-                        skip + 1
-                    } else {
-                        0
-                    };
-
-                    if skip == dims {
-                        count += end - start;
-                        nodes_skipped += 1;
-                        continue;
-                    }
+                    // assert!(overlaps(&symbol_range_masked, &node_range_masked));
 
                     // otherwise, recurse into the left and/or right, as both may be partly covered.
                     let start = level.ranks(start);
@@ -784,17 +771,37 @@ impl<V: BitVec> WaveletMatrix<V> {
                     let right_child = left_child.end..left_child.end + level.bit;
 
                     if overlaps(&left_child, &symbol_range) {
-                        let masked = mask_range(left_child, level_pow2 - 1);
+                        let child_range_masked = mask_range(left_child.clone(), level_pow2 - 1);
                         let symbol_range_masked = mask_range(symbol_range.clone(), level_pow2 - 1); // on the child level
-                        if overlaps(&symbol_range_masked, &masked) {
+
+                        skip = if fully_contains(&symbol_range_masked, &child_range_masked) {
+                            skip + 1
+                        } else {
+                            0
+                        };
+
+                        if skip == dims {
+                            count += left_child.end - left_child.start;
+                            nodes_skipped += 1;
+                        } else if overlaps(&symbol_range_masked, &child_range_masked) {
                             go.left(x.value((skip, left_symbol, start.0, end.0)));
                         }
                     }
 
                     if overlaps(&right_child, &symbol_range) {
-                        let masked = mask_range(right_child, level_pow2 - 1);
+                        let child_range_masked = mask_range(right_child.clone(), level_pow2 - 1);
                         let symbol_range_masked = mask_range(symbol_range.clone(), level_pow2 - 1); // on the child level
-                        if overlaps(&symbol_range_masked, &masked) {
+
+                        skip = if fully_contains(&symbol_range_masked, &child_range_masked) {
+                            skip + 1
+                        } else {
+                            0
+                        };
+
+                        if skip == dims {
+                            count += right_child.end - right_child.start;
+                            nodes_skipped += 1;
+                        } else if overlaps(&symbol_range_masked, &child_range_masked) {
                             go.right(x.value((
                                 skip,
                                 left_symbol + level.bit,
@@ -866,12 +873,13 @@ mod tests {
 
         // caution: easy to go out of bounds here in either x or y alone
 
-        let x_range = 3..5;
+        let x_range = 3..8;
         let y_range = 3..5;
 
         let start = morton::encode2(x_range.start, y_range.start);
         // inclusive x_range and y_range endpoints, but compute the exclusive end
         let end = morton::encode2(x_range.end - 1, y_range.end - 1) + 1;
+        assert!(end <= max_symbol);
         dbg!(start, end);
         let range = start..end;
         println!("{:?}", wm.foob(range, 0..wm.len(), 2));
