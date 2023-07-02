@@ -728,16 +728,11 @@ impl<V: BitVec> WaveletMatrix<V> {
             .all(|symbol_range| !symbol_range.is_empty()));
         let mut traversal = Traversal::new();
         // (symbol_range start, symbol range end,, skip, leftmost symbol of node, start, end)
-        traversal.init(symbol_ranges.iter().map(|symbol_range| {
-            (
-                symbol_range.start,
-                symbol_range.end,
-                0,
-                V::zero(),
-                range.start,
-                range.end,
-            )
-        }));
+        traversal.init(
+            symbol_ranges
+                .iter()
+                .map(|_symbol_range| (0, V::zero(), range.start, range.end)),
+        );
 
         let mut counts = vec![V::zero(); symbol_ranges.len()];
         let mut nodes_visited = 0;
@@ -757,9 +752,10 @@ impl<V: BitVec> WaveletMatrix<V> {
                 let mut rank_cache = RangedRankCache::new();
 
                 for x in xs {
-                    let (symbol_range_start, symbol_range_end, skip, left_symbol, start, end) =
-                        x.value;
-                    let symbol_range = symbol_range_start..symbol_range_end;
+                    let (skip, left_symbol, start, end) = x.value;
+                    let symbol_range = symbol_ranges[x.key].clone();
+
+                    // assert!(!(start..end).is_empty());
 
                     // the symbols represented at this level in this dimension
                     // we could find a way to do this once per batch index
@@ -783,18 +779,16 @@ impl<V: BitVec> WaveletMatrix<V> {
                             counts[x.key] += end.0 - start.0;
                             nodes_skipped += 1;
                         } else if overlaps(level_range.clone(), child_range) {
-                            go.left(x.value((
-                                symbol_range_start,
-                                symbol_range_end,
-                                skip,
-                                left_symbol,
-                                start.0,
-                                end.0,
-                            )));
+                            go.left(x.value((skip, left_symbol, start.0, end.0)));
                         }
                     }
 
+                    // total for 100 queries: 902.838ms
+                    // time for batch query on 100 inputs: Ok(1.195601s)
+
                     {
+                        // note: if child range is empty, then we can totally stop, right?
+                        // todo: distinguish masked empty from totally empty...
                         // right child
                         let child_range = mask_range(mid..mid + level.bit, level_pow);
                         let skip = if fully_contains(level_range.clone(), child_range.clone()) {
@@ -807,8 +801,6 @@ impl<V: BitVec> WaveletMatrix<V> {
                             nodes_skipped += 1;
                         } else if overlaps(level_range, child_range) {
                             go.right(x.value((
-                                symbol_range_start,
-                                symbol_range_end,
                                 skip,
                                 left_symbol + level.bit,
                                 level.num_zeros + start.1,
@@ -868,7 +860,7 @@ mod tests {
         dbg!(wm.num_levels());
         let mut wm_duration = Duration::ZERO;
 
-        let q = 3;
+        let q = 100;
 
         let mut wm_counts = vec![];
         let mut test_counts = vec![];
@@ -879,16 +871,17 @@ mod tests {
         for _ in 0..q {
             // caution: easy to go out of bounds here in either x or y alone
 
-            // fixed-size boxes
-            let x = unif.sample(&mut rng);
-            let y = unif.sample(&mut rng);
-            let sz = pow - 1;
-            let x_range = x.saturating_sub(sz)..x.max(sz);
-            let y_range = y.saturating_sub(sz)..y.max(sz);
+            // fixed-size boxes of sz elements on each side
+            // let x = unif.sample(&mut rng);
+            // let y = unif.sample(&mut rng);
+            // let sz = 500;
+            // let x_range = x.saturating_sub(sz)..x.max(sz);
+            // let y_range = y.saturating_sub(sz)..y.max(sz);
 
             // randomly sized boxes
-            // let x_range = ascend(unif.sample(&mut rng)..unif.sample(&mut rng));
-            // let y_range = ascend(unif.sample(&mut rng)..unif.sample(&mut rng));
+            let x_range = ascend(unif.sample(&mut rng)..unif.sample(&mut rng));
+            let y_range = ascend(unif.sample(&mut rng)..unif.sample(&mut rng));
+
             let start = morton::encode2(x_range.start, y_range.start);
             // inclusive x_range and y_range endpoints, but compute the exclusive end
             let end = morton::encode2(x_range.end - 1, y_range.end - 1) + 1;
