@@ -706,6 +706,7 @@ impl<V: BitVec> WaveletMatrix<V> {
     fn foob(&self, symbol_range: Range<V::Ones>, range: Range<V::Ones>, dims: usize) -> V::Ones {
         assert!(!symbol_range.is_empty());
         let mut traversal = Traversal::new();
+
         // (skip, leftmost symbol of node, start, end)
         traversal.init([(0, V::zero(), range.start, range.end)]);
         let mut count = V::zero();
@@ -728,7 +729,8 @@ impl<V: BitVec> WaveletMatrix<V> {
             };
             // endpoints are not necessarily sorted in a single dimension (?)
             if code.start > code.end {
-                // code = code.end.saturating_sub(1)..code.start+1;
+                println!("!!!!! aaaah"); // note: can this happen?
+                                         // code = code.end.saturating_sub(1)..code.start+1;
                 code = code.end..code.start;
                 // do we need to increment either one?
             };
@@ -759,22 +761,15 @@ impl<V: BitVec> WaveletMatrix<V> {
 
                     println!("\nopen {:?}", node_range);
 
-                    if !overlaps(&symbol_range_masked, &node_range_masked) {
-                        println!(
-                            "warning: no overlap between {:?} and {:?}",
-                            symbol_range_masked, node_range_masked
-                        );
-                        continue;
-                    }
+                    assert!(overlaps(&symbol_range_masked, &node_range_masked));
 
-                    if fully_contains(&symbol_range_masked, &node_range_masked) {
-                        skip += 1;
+                    skip = if fully_contains(&symbol_range_masked, &node_range_masked) {
+                        skip + 1
                     } else {
-                        skip = 0;
-                    }
+                        0
+                    };
 
                     if skip == dims {
-                        println!("!! skip {:?}", node_range);
                         count += end - start;
                         nodes_skipped += 1;
                         continue;
@@ -868,13 +863,11 @@ mod tests {
         for (i, sym) in symbols.iter().copied().enumerate() {
             assert_eq!(sym, wm.get(i as u32));
         }
+
         // caution: easy to go out of bounds here in either x or y alone
 
-        let x_range = 3..5; //1..8; //3..5;
-        let y_range = 3..5; //1..3; //3..5;
-
-        // let x_range = 1..8; //3..5;
-        // let y_range = 1..3; //3..5;
+        let x_range = 3..5;
+        let y_range = 3..5;
 
         let start = morton::encode2(x_range.start, y_range.start);
         // inclusive x_range and y_range endpoints, but compute the exclusive end
