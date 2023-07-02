@@ -760,7 +760,7 @@ impl<V: BitVec> WaveletMatrix<V> {
 
                     if !overlaps(&symbol_range_masked, &node_range_masked) {
                         println!(
-                            "no overlap between {:?} and {:?}",
+                            "warning: no overlap between {:?} and {:?}",
                             symbol_range_masked, node_range_masked
                         );
                         continue;
@@ -788,26 +788,22 @@ impl<V: BitVec> WaveletMatrix<V> {
                     let right_child = left_child.end..left_child.end + level.bit;
 
                     if overlaps(&left_child, &symbol_range) {
-                        // println!("left {:?} => {:?}", node_range, start.0..end.0);
-                        // let child_node_range = start.0..end.0;
-                        // let masked_child_node_range = mask_range(child_node_range, level_pow2);
-                        
-                        
+                        // let masked = mask_range(left_child, level_pow2);
+                        // if overlaps(&symbol_range_masked, &masked) {
                         go.left(x.value((skip, left_symbol, start.0, end.0)));
+                        // }
                     }
 
                     if overlaps(&right_child, &symbol_range) {
-                        // println!(
-                        //     "right {:?} => {:?}",
-                        //     node_range,
-                        //     level.num_zeros + start.1..level.num_zeros + end.1
-                        // );
+                        // let masked = mask_range(right_child, level_pow2);
+                        // if overlaps(&symbol_range_masked, &masked) {
                         go.right(x.value((
                             skip,
                             left_symbol + level.bit,
                             level.num_zeros + start.1,
                             level.num_zeros + end.1,
                         )));
+                        // }
                     }
                 }
             });
@@ -872,8 +868,8 @@ mod tests {
         }
         // caution: easy to go out of bounds here in either x or y alone
 
-        let x_range = 3..5;
-        let y_range = 3..5;
+        let x_range = 3..5; //1..8; //3..5;
+        let y_range = 3..5; //1..3; //3..5;
 
         let start = morton::encode2(x_range.start, y_range.start);
         // inclusive x_range and y_range endpoints, but compute the exclusive end
