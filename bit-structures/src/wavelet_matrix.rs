@@ -254,7 +254,7 @@ impl WaveletMatrix<Dense> {
         &self,
         symbol_range: Range<u32>,
         range: Range<u32>,
-        dims: usize,
+        dims: u32,
     ) -> u32 {
         self.count_symbol_ranges(&[symbol_range], range, dims)
             .first()
@@ -270,6 +270,10 @@ impl WaveletMatrix<Dense> {
         morton::encode3(0, 0, u32::MAX),
     ];
 
+    fn mask_range(range: Range<u32>, mask: u32) -> Range<u32> {
+        (range.start & mask)..((range.end - 1) & mask) + 1
+    }
+
     // instrument w go-left, go-right stuff.. want to see the process for a single batch.
     // note: visits individual quadtree nodes, even those that are adjacent in the z-order.
     // so eg. the border query on an 8x8 grid (querying the 6x6 interior) will visit 39 tree
@@ -278,7 +282,7 @@ impl WaveletMatrix<Dense> {
         &self,
         symbol_ranges: &[Range<u32>],
         range: Range<u32>,
-        dims: usize,
+        dims: u32,
     ) -> Vec<u32> {
         let masks = match dims {
             1 => &Self::S1[..],
@@ -301,16 +305,10 @@ impl WaveletMatrix<Dense> {
         let mut nodes_visited = 0;
         let mut nodes_skipped = 0;
 
-        let mask_range = |range: Range<u32>, level_pow| {
-            let mask = masks[level_pow as usize % dims];
-            (range.start & mask)..((range.end - 1) & mask) + 1
-        };
-
         for level in self.levels(0) {
-            // power of 2 of the child node size
-            let level_pow = level.bit.trailing_zeros();
-            // dbg!(level.bit, level_pow);
+            let dim = level.bit.trailing_zeros() % dims;
             // dbg!(traversal.results().len());
+            let mask = masks[dim as usize];
 
             traversal.traverse(|xs, go| {
                 let mut rank_cache = RangedRankCache::new();
@@ -323,17 +321,16 @@ impl WaveletMatrix<Dense> {
 
                     // the symbols represented at this level in this dimension
                     // we could find a way to do this once per batch index
-                    let level_range = mask_range(symbol_range.clone(), level_pow);
+                    let level_range = Self::mask_range(symbol_range.clone(), mask);
                     nodes_visited += 1;
-                    // let start = level.ranks(start);
-                    // let end = level.ranks(end);
+                    // let (start, end) = (level.ranks(start), level.ranks(end));
                     let (start, end) = rank_cache.get(start, end, level);
 
                     let mid = left_symbol + level.bit;
 
-                    {
+                    if start.0 != end.0 {
                         // left child
-                        let child_range = mask_range(left_symbol..mid, level_pow);
+                        let child_range = Self::mask_range(left_symbol..mid, mask);
                         let skip = if fully_contains(&level_range, &child_range) {
                             skip + 1
                         } else {
@@ -342,14 +339,14 @@ impl WaveletMatrix<Dense> {
                         if skip == dims {
                             counts[x.key] += end.0 - start.0;
                             nodes_skipped += 1;
-                        } else if start.0 != end.0 && overlaps(level_range.clone(), child_range) {
+                        } else if overlaps(level_range.clone(), child_range) {
                             go.left(x.value((skip, left_symbol, start.0, end.0)));
                         }
                     }
 
-                    {
+                    if start.1 != end.1 {
                         // right child
-                        let child_range = mask_range(mid..mid + level.bit, level_pow);
+                        let child_range = Self::mask_range(mid..mid + level.bit, mask);
                         let skip = if fully_contains(&level_range, &child_range) {
                             skip + 1
                         } else {
@@ -359,7 +356,7 @@ impl WaveletMatrix<Dense> {
                             // println!("counting range {:?}", mid..mid + level.bit);
                             counts[x.key] += end.1 - start.1;
                             nodes_skipped += 1;
-                        } else if start.1 != end.1 && overlaps(level_range, child_range) {
+                        } else if overlaps(level_range, child_range) {
                             go.right(x.value((
                                 skip,
                                 left_symbol + level.bit,
@@ -372,6 +369,8 @@ impl WaveletMatrix<Dense> {
                 // rank_cache.log_stats();
             });
         }
+
+        assert!(traversal.results().is_empty());
 
         // dbg!(nodes_visited, nodes_skipped);
         counts
@@ -847,8 +846,69 @@ fn fully_contains<T: BitBlock>(a: &Range<T>, b: &Range<T>) -> bool {
 mod tests {
     use super::*;
     use crate::morton;
-    use rand::Rng;
+    use rand::{seq::SliceRandom, Rng};
     use std::time::{Duration, SystemTime};
+
+    #[test]
+    fn test_count_symbol_ranges_64() {
+        let mut rng = rand::thread_rng();
+        let mut symbols = vec![];
+
+        let side_length: u32 = 8;
+        let dims = 3;
+        let n = side_length.pow(dims);
+        for i in 0..n {
+            let repetitions = i + 1;
+            for _ in 0..repetitions {
+                symbols.push(i)
+            }
+        }
+        symbols.shuffle(&mut rng);
+
+        let wm = WaveletMatrix::new(symbols.clone(), n - 1);
+
+        // 8^4 = 4096
+        // 8^6 = 262144
+        // x2 and y2 are inclusive bounds
+        // todo: figure out how to parameterize this by dimension
+        let z_side_length = if false { side_length } else { 1 }; // make this effectively 2d
+        for x1 in 0..side_length {
+            for x2 in x1..side_length {
+                for y1 in 0..side_length {
+                    for y2 in y1..side_length {
+                        for z1 in 0..z_side_length {
+                            for z2 in z1..z_side_length {
+                                // let start = morton::encode2(x1, y1);
+                                // let end = morton::encode2(x2, y2) + 1;
+                                let start = morton::encode3(x1, y1, z1);
+                                let end = morton::encode3(x2, y2, z2) + 1;
+
+                                let range = start..end;
+                                let count = wm.count_symbol_range(range, 0..wm.len(), dims);
+                                let naive_count = symbols
+                                    .iter()
+                                    .copied()
+                                    .filter(|&symbol| {
+                                        let x = morton::decode3x(symbol);
+                                        let y = morton::decode3y(symbol);
+                                        let z = morton::decode3z(symbol);
+                                        x1 <= x
+                                            && x <= x2
+                                            && y1 <= y
+                                            && y <= y2
+                                            && z1 <= z
+                                            && z <= z2
+                                    })
+                                    .count()
+                                    as u32;
+                                assert_eq!(count, naive_count);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
 
     fn ascend(x: Range<u32>) -> Range<u32> {
         // clear low bits to see if it affects query speed
@@ -860,12 +920,12 @@ mod tests {
         }
     }
 
-    #[test]
+    // #[test]
     fn test_count() {
         let mut rng = rand::thread_rng();
         let dims = 3;
         let base: u32 = 1 << 6; // bits per dimension
-        let (n, k) = (10_000_000, base.pow(dims)); // n numbers in [0, k)
+        let (n, k) = (100_000, base.pow(dims)); // n numbers in [0, k)
 
         let mut symbols = vec![];
         for _ in 0..n {
@@ -876,7 +936,7 @@ mod tests {
         dbg!(wm.num_levels());
         let mut wm_duration = Duration::ZERO;
 
-        let q = 100;
+        let q = 1000;
 
         let mut wm_counts = vec![];
         let mut test_counts: Vec<u32> = vec![];
@@ -947,7 +1007,7 @@ mod tests {
         for query in &queries {
             // println!("\nnew query\n");
             let query_start_time = SystemTime::now();
-            let wm_count = wm.count_symbol_range(query.clone(), 0..wm.len(), dims as usize);
+            let wm_count = wm.count_symbol_range(query.clone(), 0..wm.len(), dims);
             let query_end_time = SystemTime::now();
             let dur = query_end_time.duration_since(query_start_time).unwrap();
             wm_duration += dur;
@@ -961,7 +1021,7 @@ mod tests {
 
         // todo: implement batch queries for batches of symbol ranges in the same wm range
         let start_time = SystemTime::now();
-        let res = wm.count_symbol_ranges(&queries, 0..wm.len(), dims as usize);
+        let res = wm.count_symbol_ranges(&queries, 0..wm.len(), dims);
         let end_time = SystemTime::now();
         println!(
             "time for batch query on {:?} inputs: {:?}",
