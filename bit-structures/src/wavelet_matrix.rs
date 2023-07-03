@@ -6,8 +6,9 @@ use num::{One, PrimInt, Zero};
 use std::{collections::VecDeque, ops::Range};
 
 // todo
-// - figure out if we ever recurse with empty ranges (can add an assert in traverse)
+// - audit whether we recurse into zero-width nodes in any cases
 //   - i think we can check start.0 != end.0 and start.1 != end.1
+//   - we fixed this in count_symbol_ranges
 // - verify that the intermediate traversals are indeed in ascending wavelet matrix order
 // - consider a SymbolCount struct rather than returning tuples
 // - ignore_bits
@@ -717,6 +718,9 @@ impl<V: BitVec> WaveletMatrix<V> {
     }
 
     // instrument w go-left, go-right stuff.. want to see the process for a single batch.
+    // note: visits individual quadtree nodes, even those that are adjacent in the z-order.
+    // so eg. the border query on an 8x8 grid (querying the 6x6 interior) will visit 39 tree
+    // nodes, short-circuiting 20.
     fn count_symbol_ranges(
         &self,
         symbol_ranges: &[Range<V::Ones>],
@@ -747,7 +751,11 @@ impl<V: BitVec> WaveletMatrix<V> {
         };
 
         for level in self.levels(0) {
-            let level_pow = level.bit.trailing_zeros(); // power of 2 of the child node size
+            // power of 2 of the child node size
+            let level_pow = level.bit.trailing_zeros();
+            // dbg!(level.bit, level_pow);
+            // dbg!(traversal.results().len());
+
             traversal.traverse(|xs, go| {
                 let mut rank_cache = RangedRankCache::new();
 
@@ -755,7 +763,7 @@ impl<V: BitVec> WaveletMatrix<V> {
                     let (skip, left_symbol, start, end) = x.value;
                     let symbol_range = symbol_ranges[x.key].clone();
 
-                    // assert!(!(start..end).is_empty());
+                    debug_assert!(!(start..end).is_empty());
 
                     // the symbols represented at this level in this dimension
                     // we could find a way to do this once per batch index
@@ -776,15 +784,18 @@ impl<V: BitVec> WaveletMatrix<V> {
                             0
                         };
                         if skip == dims {
+                            // println!("counting range {:?}", left_symbol..mid);
                             counts[x.key] += end.0 - start.0;
                             nodes_skipped += 1;
-                        } else if overlaps(level_range.clone(), child_range) {
+                        } else if start.0 != end.0 && overlaps(level_range.clone(), child_range) {
                             go.left(x.value((skip, left_symbol, start.0, end.0)));
                         }
                     }
 
                     // total for 100 queries: 902.838ms
                     // time for batch query on 100 inputs: Ok(1.195601s)
+                    // total for 100 queries: 826.082ms
+                    // time for batch query on 100 inputs: Ok(927.15ms)
 
                     {
                         // note: if child range is empty, then we can totally stop, right?
@@ -797,9 +808,10 @@ impl<V: BitVec> WaveletMatrix<V> {
                             0
                         };
                         if skip == dims {
+                            // println!("counting range {:?}", mid..mid + level.bit);
                             counts[x.key] += end.1 - start.1;
                             nodes_skipped += 1;
-                        } else if overlaps(level_range, child_range) {
+                        } else if start.1 != end.1 && overlaps(level_range, child_range) {
                             go.right(x.value((
                                 skip,
                                 left_symbol + level.bit,
@@ -832,8 +844,9 @@ fn fully_contains<T: BitBlock>(a: Range<T>, b: Range<T>) -> bool {
 mod tests {
     use super::*;
     use crate::morton;
-    use rand::distributions::Uniform;
+
     use rand::prelude::Distribution;
+    use rand::{distributions::Uniform, Rng};
     use std::time::{Duration, SystemTime};
 
     fn ascend(x: Range<u32>) -> Range<u32> {
@@ -860,7 +873,7 @@ mod tests {
         dbg!(wm.num_levels());
         let mut wm_duration = Duration::ZERO;
 
-        let q = 100;
+        let q = 1000;
 
         let mut wm_counts = vec![];
         let mut test_counts = vec![];
@@ -875,6 +888,7 @@ mod tests {
             // let x = unif.sample(&mut rng);
             // let y = unif.sample(&mut rng);
             // let sz = 500;
+
             // let x_range = x.saturating_sub(sz)..x.max(sz);
             // let y_range = y.saturating_sub(sz)..y.max(sz);
 
@@ -936,36 +950,39 @@ mod tests {
     }
 
     // #[test]
-    // fn test_get() {
-    //     let mut symbols = vec![];
-    //     for i in 0..64 {
-    //         // if i % 2 == 1 {
-    //         symbols.push(i)
-    //         // }
-    //     }
-    //     let max_symbol = symbols.iter().max().copied().unwrap_or(0);
-    //     let wm = WaveletMatrix::new(symbols.clone(), max_symbol);
-    //     for (i, sym) in symbols.iter().copied().enumerate() {
-    //         assert_eq!(sym, wm.get(i as u32));
-    //     }
-    //     // caution: easy to go out of bounds here in either x or y alone
-    //     let x_range = 3..8;
-    //     let y_range = 3..5;
-    //     let start = morton::encode2(x_range.start, y_range.start);
-    //     // inclusive x_range and y_range endpoints, but compute the exclusive end
-    //     let end = morton::encode2(x_range.end - 1, y_range.end - 1) + 1;
-    //     assert!(end <= max_symbol + 1);
-    //     dbg!(start, end);
-    //     let range = start..end;
-    //     println!("{:?}", wm.count_symbol_range(range, 0..wm.len(), 2));
-    //     panic!("count_all");
-    //     // dbg!(sym, wm.rank(sym, 0..wm.len()));
-    //     // dbg!(i, wm.quantile(i as u32, 0..wm.len()));
-    //     // println!("{:?}", wm.count_all(10..15));
-    //     // dbg!(wm.select(10, 1, 0..wm.len()));
-    //     // let indices = &[0, 1, 2, 1, 2, 0, 13];
-    //     // dbg!(wm.get_batch(indices));
-    //     // ;
-    //     // panic!("get");
-    // }
+    fn test_get() {
+        let mut symbols = vec![];
+        let pow = 6;
+        let n = 2.pow(pow);
+        let side = 2.pow(pow / 2);
+        for i in 0..n {
+            // if i % 2 == 1 {
+            symbols.push(i)
+            // }
+        }
+        let max_symbol = symbols.iter().max().copied().unwrap_or(0);
+        let wm = WaveletMatrix::new(symbols.clone(), n - 1);
+        for (i, sym) in symbols.iter().copied().enumerate() {
+            assert_eq!(sym, wm.get(i as u32));
+        }
+        // caution: easy to go out of bounds here in either x or y alone
+        let x_range = 1..side - 1;
+        let y_range = 1..side - 1;
+        let start = morton::encode2(x_range.start, y_range.start);
+        // inclusive x_range and y_range endpoints, but compute the exclusive end
+        let end = morton::encode2(x_range.end - 1, y_range.end - 1) + 1;
+        assert!(end <= max_symbol + 1);
+        dbg!(start, end);
+        let range = start..end;
+        println!("{:?}", wm.count_symbol_range(range, 0..wm.len(), 2));
+        panic!("count_all");
+        // dbg!(sym, wm.rank(sym, 0..wm.len()));
+        // dbg!(i, wm.quantile(i as u32, 0..wm.len()));
+        // println!("{:?}", wm.count_all(10..15));
+        // dbg!(wm.select(10, 1, 0..wm.len()));
+        // let indices = &[0, 1, 2, 1, 2, 0, 13];
+        // dbg!(wm.get_batch(indices));
+        // ;
+        // panic!("get");
+    }
 }
