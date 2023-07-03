@@ -91,6 +91,25 @@ impl WaveletMatrix32 {
         Ok(obj.into())
     }
 
+    pub fn count_symbol_ranges(
+        &self,
+        symbol_ranges: &[Ones],
+        range_lo: u32,
+        range_hi: u32,
+        dims: u32,
+    ) -> Result<JsValue, String> {
+        assert!(symbol_ranges.len() % 2 == 0,);
+        let symbol_ranges: Vec<_> = symbol_ranges.chunks_exact(2).map(|x| x[0]..x[1]).collect();
+        let range = range_lo..range_hi;
+        let counts = self
+            .0
+            .count_symbol_ranges(&symbol_ranges, range, dims as usize);
+        let obj = js_sys::Object::new();
+        let err = "could not set js property";
+        js_sys::Reflect::set(&obj, &"counts".into(), &Uint32Array::from(&counts[..])).expect(err);
+        js_sys::Reflect::set(&obj, &"length".into(), &counts.len().into()).expect(err);
+        Ok(obj.into())
+    }
     pub fn len(&self) -> Ones {
         self.0.len()
     }

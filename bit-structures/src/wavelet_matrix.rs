@@ -2,7 +2,7 @@ use crate::bincode_helpers::{borrow_decode_impl, decode_impl, encode_impl};
 use crate::bit_block::BitBlock;
 use crate::morton;
 use crate::{bit_buf::BitBuf, bit_vec::BitVec, dense_bit_vec::DenseBitVec};
-use num::{One, PrimInt, Zero};
+use num::{One, Zero};
 use std::{collections::VecDeque, ops::Range};
 
 // todo
@@ -250,7 +250,12 @@ impl WaveletMatrix<Dense> {
         WaveletMatrix::from_bitvecs(levels, max_symbol)
     }
 
-    fn count_symbol_range(&self, symbol_range: Range<u32>, range: Range<u32>, dims: usize) -> u32 {
+    pub fn count_symbol_range(
+        &self,
+        symbol_range: Range<u32>,
+        range: Range<u32>,
+        dims: usize,
+    ) -> u32 {
         self.count_symbol_ranges(&[symbol_range], range, dims)
             .first()
             .copied()
@@ -269,7 +274,7 @@ impl WaveletMatrix<Dense> {
     // note: visits individual quadtree nodes, even those that are adjacent in the z-order.
     // so eg. the border query on an 8x8 grid (querying the 6x6 interior) will visit 39 tree
     // nodes, short-circuiting 20.
-    fn count_symbol_ranges(
+    pub fn count_symbol_ranges(
         &self,
         symbol_ranges: &[Range<u32>],
         range: Range<u32>,
@@ -846,6 +851,8 @@ mod tests {
     use std::time::{Duration, SystemTime};
 
     fn ascend(x: Range<u32>) -> Range<u32> {
+        // clear low bits to see if it affects query speed
+        // let x = ((x.start >> 5) << 5)..((x.end >> 5) << 5);
         if x.start < x.end {
             x
         } else {
@@ -857,22 +864,22 @@ mod tests {
     fn test_count() {
         let mut rng = rand::thread_rng();
         let dims = 3;
-        let base = 1 << 10; // bits per dimension
-        let (n, k) = (1_000_000, base.pow(dims)); // n numbers in [0, k)
+        let base: u32 = 1 << 6; // bits per dimension
+        let (n, k) = (10_000_000, base.pow(dims)); // n numbers in [0, k)
 
         let mut symbols = vec![];
         for _ in 0..n {
-            symbols.push(rng.gen_range(0..k));
+            symbols.push(rng.gen_range(0..k)); // / 1024) * 1024
         }
         let max_symbol = k - 1;
         let wm = WaveletMatrix::new(symbols.clone(), max_symbol);
         dbg!(wm.num_levels());
         let mut wm_duration = Duration::ZERO;
 
-        let q = 1000;
+        let q = 100;
 
         let mut wm_counts = vec![];
-        let mut test_counts = vec![];
+        let mut test_counts: Vec<u32> = vec![];
         let mut batch_counts = vec![];
         let mut queries = vec![];
 
@@ -897,7 +904,6 @@ mod tests {
                 _ => panic!("as_dims must be 1, 2, or 3."),
             };
 
-            dbg!(end, max_symbol);
             assert!(end <= max_symbol + 1);
 
             let range = start..end;
@@ -938,10 +944,6 @@ mod tests {
             test_counts.push(test_count);
         }
 
-        // this will no longer be associated with the test count.
-        // also, we have interleaved the start (x, y) and end (x, y) – how do we even sort?
-        // queries.sort_by_key(|range| range.start);
-
         for query in &queries {
             // println!("\nnew query\n");
             let query_start_time = SystemTime::now();
@@ -974,8 +976,8 @@ mod tests {
     fn test_get() {
         let mut symbols = vec![];
         let pow = 6;
-        let n = 2.pow(pow);
-        let side = 2.pow(pow / 2);
+        let n = 2u32.pow(pow);
+        let side = 2u32.pow(pow / 2);
         for i in 0..n {
             // if i % 2 == 1 {
             symbols.push(i)

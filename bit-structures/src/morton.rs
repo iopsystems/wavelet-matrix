@@ -1,5 +1,6 @@
 // Translated to Rust from C code provided by Fabian Geisen:
 // https://fgiesen.wordpress.com/2009/12/13/decoding-morton-codes/
+// todo: impl 4d by performing two 2d interleavings
 
 pub const fn encode(range: std::ops::Range<u32>) -> u32 {
     encode2(range.start, range.end)
