@@ -6,6 +6,7 @@ use num::{One, Zero};
 use std::{collections::VecDeque, ops::Range};
 
 // todo
+// - in the symbol count 64 test, try varying the range of the query so it is not always 1..wm.len().
 // - audit whether we recurse into zero-width nodes in any cases
 //   - i think we can check start.0 != end.0 and start.1 != end.1
 //   - we fixed this in count_symbol_ranges
