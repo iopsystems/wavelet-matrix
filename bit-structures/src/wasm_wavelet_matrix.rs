@@ -1,4 +1,5 @@
 use crate::dense_bit_vec::DenseBitVec;
+use crate::wavelet_matrix;
 use crate::{wasm_bindgen, wavelet_matrix::WaveletMatrix};
 use js_sys::Uint32Array;
 use wasm_bindgen::JsValue;
@@ -101,7 +102,8 @@ impl WaveletMatrix32 {
         assert!(symbol_ranges.len() % 2 == 0,);
         let symbol_ranges: Vec<_> = symbol_ranges.chunks_exact(2).map(|x| x[0]..x[1]).collect();
         let range = range_lo..range_hi;
-        let counts = self.0.count_symbol_ranges(&symbol_ranges, range, dims);
+        let masks = wavelet_matrix::morton_masks_for_dims(dims, self.0.num_levels());
+        let counts = self.0.count_symbol_ranges(&symbol_ranges, range, &masks);
         let obj = js_sys::Object::new();
         let err = "could not set js property";
         js_sys::Reflect::set(&obj, &"counts".into(), &Uint32Array::from(&counts[..])).expect(err);

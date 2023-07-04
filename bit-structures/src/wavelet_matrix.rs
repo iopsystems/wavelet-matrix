@@ -255,23 +255,15 @@ impl WaveletMatrix<Dense> {
         &self,
         symbol_range: Range<u32>,
         range: Range<u32>,
-        dims: u32,
+        masks: &[u32],
     ) -> u32 {
-        self.count_symbol_ranges(&[symbol_range], range, dims)
+        self.count_symbol_ranges(&[symbol_range], range, masks)
             .first()
             .copied()
             .unwrap()
     }
 
-    const S1: [u32; 1] = [u32::MAX];
-    const S2: [u32; 2] = [morton::encode2(0, u32::MAX), morton::encode2(u32::MAX, 0)];
-    const S3: [u32; 3] = [
-        morton::encode3(0, 0, u32::MAX),
-        morton::encode3(0, u32::MAX, 0),
-        morton::encode3(u32::MAX, 0, 0),
-    ];
-
-    fn mask_range(range: Range<u32>, mask: u32) -> Range<u32> {
+    fn mask_range(range: &Range<u32>, mask: u32) -> Range<u32> {
         (range.start & mask)..((range.end - 1) & mask) + 1
     }
 
@@ -298,6 +290,7 @@ impl WaveletMatrix<Dense> {
             Self::unset_bits(acc, mask)
         }
     }
+
     // instrument w go-left, go-right stuff.. want to see the process for a single batch.
     // note: visits individual quadtree nodes, even those that are adjacent in the z-order.
     // so eg. the border query on an 8x8 grid (querying the 6x6 interior) will visit 39 tree
@@ -306,19 +299,15 @@ impl WaveletMatrix<Dense> {
         &self,
         symbol_ranges: &[Range<u32>],
         range: Range<u32>,
-        dims: u32,
+        masks: &[u32],
     ) -> Vec<u32> {
-        let masks = match dims {
-            1 => &Self::S1[..],
-            2 => &Self::S2[..],
-            3 => &Self::S3[..],
-            _ => panic!("only 1-3 dimensions currently supported"),
-        };
         assert!(symbol_ranges
             .iter()
             .all(|symbol_range| !symbol_range.is_empty()));
         let mut traversal = Traversal::new();
         // (symbol_range start, symbol range end, mask accumulator, leftmost symbol of node, start, end)
+        // the mask accumulator contains the status of whether this node's range is fully included in the
+        // symbol range for that dimension. if all mask bits are set, we can stop the recursion early.
         traversal.init(
             symbol_ranges
                 .iter()
@@ -329,21 +318,8 @@ impl WaveletMatrix<Dense> {
         let mut nodes_visited = 0;
         let mut nodes_skipped = 0;
 
-        // the acc signal is the union of all masks.
-        // note: we should also debug_assert that the masks are mutually exclusive,
-        // ie. for the set of unique masks, any mask xor any other mask is zero.
-        // let all_masks = masks
-        //     .iter()
-        //     .take(self.levels.len())
-        //     .copied()
-        //     .reduce(Self::set_bits)
-        //     .unwrap_or(0);
-        // let mut all_masks = 0; // mask
-
-        // condition: masks should be mututally exclusive and together have all 32 bits set.
-        // that way we do not have to union the masks manually, which would require iterating
-        // them multiple times or collecting into an intermediate structure.
-        // with this constrait, we can iterate them all once.
+        // the union of all masks, ie. set each bit that is set in any mask
+        let all_masks = masks.iter().copied().reduce(Self::set_bits).unwrap_or(0);
 
         for (level, mask) in self.levels(0).zip(masks.iter().copied().cycle()) {
             traversal.traverse(|xs, go| {
@@ -351,13 +327,13 @@ impl WaveletMatrix<Dense> {
 
                 for x in xs {
                     let (acc, left_symbol, start, end) = x.value;
-                    let symbol_range = symbol_ranges[x.key].clone();
+                    let symbol_range = &symbol_ranges[x.key];
 
                     debug_assert!(!(start..end).is_empty());
 
                     // the symbols represented at this level in this dimension
                     // we could find a way to do this once per batch index
-                    let level_range = Self::mask_range(symbol_range.clone(), mask);
+                    let level_range = Self::mask_range(symbol_range, mask);
                     nodes_visited += 1;
                     // let (start, end) = (level.ranks(start), level.ranks(end));
                     let (start, end) = rank_cache.get(start, end, level);
@@ -366,27 +342,26 @@ impl WaveletMatrix<Dense> {
 
                     if start.0 != end.0 {
                         // left child
-                        let child_range = Self::mask_range(left_symbol..mid, mask);
+                        let child_range = Self::mask_range(&(left_symbol..mid), mask);
                         let includes = range_includes(&level_range, &child_range);
                         let acc = Self::accumulate_masks(acc, mask, includes);
-                        if acc == u32::MAX {
+                        if acc == all_masks {
                             counts[x.key] += end.0 - start.0;
                             nodes_skipped += 1;
-                        } else if range_overlaps(level_range.clone(), child_range) {
+                        } else if range_overlaps(&level_range, &child_range) {
                             go.left(x.value((acc, left_symbol, start.0, end.0)));
                         }
                     }
 
                     if start.1 != end.1 {
                         // right child
-                        let child_range = Self::mask_range(mid..mid + level.bit, mask);
+                        let child_range = Self::mask_range(&(mid..mid + level.bit), mask);
                         let includes = range_includes(&level_range, &child_range);
                         let acc = Self::accumulate_masks(acc, mask, includes);
-                        if acc == u32::MAX {
-                            // println!("counting range {:?}", mid..mid + level.bit);
+                        if acc == all_masks {
                             counts[x.key] += end.1 - start.1;
                             nodes_skipped += 1;
-                        } else if range_overlaps(level_range, child_range) {
+                        } else if range_overlaps(&level_range, &child_range) {
                             go.right(x.value((
                                 acc,
                                 left_symbol + level.bit,
@@ -862,7 +837,7 @@ impl<V: BitVec> WaveletMatrix<V> {
     }
 }
 
-fn range_overlaps<T: BitBlock>(a: Range<T>, b: Range<T>) -> bool {
+fn range_overlaps<T: BitBlock>(a: &Range<T>, b: &Range<T>) -> bool {
     a.start < b.end && b.start < a.end
 }
 
@@ -870,6 +845,23 @@ fn range_overlaps<T: BitBlock>(a: Range<T>, b: Range<T>) -> bool {
 fn range_includes<T: BitBlock>(a: &Range<T>, b: &Range<T>) -> bool {
     // if a starts before b, and a ends after b.
     a.start <= b.start && a.end >= b.end
+}
+
+pub fn morton_masks_for_dims(dims: u32, num_levels: usize) -> Vec<u32> {
+    const S1: [u32; 1] = [u32::MAX];
+    const S2: [u32; 2] = [morton::encode2(0, u32::MAX), morton::encode2(u32::MAX, 0)];
+    const S3: [u32; 3] = [
+        morton::encode3(0, 0, u32::MAX),
+        morton::encode3(0, u32::MAX, 0),
+        morton::encode3(u32::MAX, 0, 0),
+    ];
+    let masks = match dims {
+        1 => &S1[..],
+        2 => &S2[..],
+        3 => &S3[..],
+        _ => panic!("only 1-3 dimensions currently supported"),
+    };
+    masks.iter().copied().cycle().take(num_levels).collect()
 }
 
 #[cfg(test)]
@@ -896,6 +888,7 @@ mod tests {
         symbols.shuffle(&mut rng);
 
         let wm = WaveletMatrix::new(symbols.clone(), n - 1);
+        let masks = morton_masks_for_dims(dims, wm.num_levels());
 
         // 8^4 = 4096
         // 8^6 = 262144
@@ -914,7 +907,7 @@ mod tests {
                                 let end = morton::encode3(x2, y2, z2) + 1;
 
                                 let range = start..end;
-                                let count = wm.count_symbol_range(range, 0..wm.len(), dims);
+                                let count = wm.count_symbol_range(range, 0..wm.len(), &masks);
                                 let naive_count = symbols
                                     .iter()
                                     .copied()
@@ -964,6 +957,9 @@ mod tests {
         let max_symbol = k - 1;
         let wm = WaveletMatrix::new(symbols.clone(), max_symbol);
         dbg!(wm.num_levels());
+
+        let masks = morton_masks_for_dims(dims, wm.num_levels());
+
         let mut wm_duration = Duration::ZERO;
 
         let q = 1000;
@@ -1037,7 +1033,7 @@ mod tests {
         for query in &queries {
             // println!("\nnew query\n");
             let query_start_time = SystemTime::now();
-            let wm_count = wm.count_symbol_range(query.clone(), 0..wm.len(), dims);
+            let wm_count = wm.count_symbol_range(query.clone(), 0..wm.len(), &masks);
             let query_end_time = SystemTime::now();
             let dur = query_end_time.duration_since(query_start_time).unwrap();
             wm_duration += dur;
@@ -1051,7 +1047,7 @@ mod tests {
 
         // todo: implement batch queries for batches of symbol ranges in the same wm range
         let start_time = SystemTime::now();
-        let res = wm.count_symbol_ranges(&queries, 0..wm.len(), dims);
+        let res = wm.count_symbol_ranges(&queries, 0..wm.len(), &masks);
         let end_time = SystemTime::now();
         println!(
             "time for batch query on {:?} inputs: {:?}",
@@ -1087,7 +1083,9 @@ mod tests {
         assert!(end <= max_symbol + 1);
         dbg!(start, end);
         let range = start..end;
-        println!("{:?}", wm.count_symbol_range(range, 0..wm.len(), 2));
+        let dims = 2;
+        let masks = morton_masks_for_dims(dims, wm.num_levels());
+        println!("{:?}", wm.count_symbol_range(range, 0..wm.len(), &masks));
         panic!("count_all");
         // dbg!(sym, wm.rank(sym, 0..wm.len()));
         // dbg!(i, wm.quantile(i as u32, 0..wm.len()));
