@@ -264,11 +264,11 @@ impl WaveletMatrix<Dense> {
     }
 
     const S1: [u32; 1] = [u32::MAX];
-    const S2: [u32; 2] = [morton::encode2(u32::MAX, 0), morton::encode2(0, u32::MAX)];
+    const S2: [u32; 2] = [morton::encode2(0, u32::MAX), morton::encode2(u32::MAX, 0)];
     const S3: [u32; 3] = [
-        morton::encode3(u32::MAX, 0, 0),
-        morton::encode3(0, u32::MAX, 0),
         morton::encode3(0, 0, u32::MAX),
+        morton::encode3(0, u32::MAX, 0),
+        morton::encode3(u32::MAX, 0, 0),
     ];
 
     fn mask_range(range: Range<u32>, mask: u32) -> Range<u32> {
@@ -306,11 +306,7 @@ impl WaveletMatrix<Dense> {
         let mut nodes_visited = 0;
         let mut nodes_skipped = 0;
 
-        for level in self.levels(0) {
-            let dim = level.bit.trailing_zeros() % dims;
-            // dbg!(traversal.results().len());
-            let mask = masks[dim as usize];
-
+        for (level, mask) in self.levels(0).zip(masks.iter().copied().cycle()) {
             traversal.traverse(|xs, go| {
                 let mut rank_cache = RangedRankCache::new();
 
