@@ -275,6 +275,29 @@ impl WaveletMatrix<Dense> {
         (range.start & mask)..((range.end - 1) & mask) + 1
     }
 
+    fn set_bits(value: u32, mask: u32) -> u32 {
+        value | mask
+    }
+
+    fn unset_bits(value: u32, mask: u32) -> u32 {
+        value & !mask
+    }
+
+    // acc represents an accumulated mask consisting of the set/unset
+    // bits resulting from previous calls to this function.
+    // the idea is that we want to toggle individual masks on and off
+    // such that we can detect if there is ever a time that all have
+    // been turned on.
+    // since mask bits are disjoint (eg. the x bits are distinct from
+    // y bits in 2d morton order), we can tell whether they're all set
+    // by checking equality with u32::MAX.
+    fn accumulate_masks(acc: u32, mask: u32, cond: bool) -> u32 {
+        if cond {
+            Self::set_bits(acc, mask)
+        } else {
+            Self::unset_bits(acc, mask)
+        }
+    }
     // instrument w go-left, go-right stuff.. want to see the process for a single batch.
     // note: visits individual quadtree nodes, even those that are adjacent in the z-order.
     // so eg. the border query on an 8x8 grid (querying the 6x6 interior) will visit 39 tree
@@ -295,7 +318,7 @@ impl WaveletMatrix<Dense> {
             .iter()
             .all(|symbol_range| !symbol_range.is_empty()));
         let mut traversal = Traversal::new();
-        // (symbol_range start, symbol range end,, skip, leftmost symbol of node, start, end)
+        // (symbol_range start, symbol range end, mask accumulator, leftmost symbol of node, start, end)
         traversal.init(
             symbol_ranges
                 .iter()
@@ -306,12 +329,28 @@ impl WaveletMatrix<Dense> {
         let mut nodes_visited = 0;
         let mut nodes_skipped = 0;
 
+        // the acc signal is the union of all masks.
+        // note: we should also debug_assert that the masks are mutually exclusive,
+        // ie. for the set of unique masks, any mask xor any other mask is zero.
+        // let all_masks = masks
+        //     .iter()
+        //     .take(self.levels.len())
+        //     .copied()
+        //     .reduce(Self::set_bits)
+        //     .unwrap_or(0);
+        // let mut all_masks = 0; // mask
+
+        // condition: masks should be mututally exclusive and together have all 32 bits set.
+        // that way we do not have to union the masks manually, which would require iterating
+        // them multiple times or collecting into an intermediate structure.
+        // with this constrait, we can iterate them all once.
+
         for (level, mask) in self.levels(0).zip(masks.iter().copied().cycle()) {
             traversal.traverse(|xs, go| {
                 let mut rank_cache = RangedRankCache::new();
 
                 for x in xs {
-                    let (skip, left_symbol, start, end) = x.value;
+                    let (acc, left_symbol, start, end) = x.value;
                     let symbol_range = symbol_ranges[x.key].clone();
 
                     debug_assert!(!(start..end).is_empty());
@@ -328,34 +367,28 @@ impl WaveletMatrix<Dense> {
                     if start.0 != end.0 {
                         // left child
                         let child_range = Self::mask_range(left_symbol..mid, mask);
-                        let skip = if fully_contains(&level_range, &child_range) {
-                            skip + 1
-                        } else {
-                            0
-                        };
-                        if skip == dims {
+                        let includes = range_includes(&level_range, &child_range);
+                        let acc = Self::accumulate_masks(acc, mask, includes);
+                        if acc == u32::MAX {
                             counts[x.key] += end.0 - start.0;
                             nodes_skipped += 1;
-                        } else if overlaps(level_range.clone(), child_range) {
-                            go.left(x.value((skip, left_symbol, start.0, end.0)));
+                        } else if range_overlaps(level_range.clone(), child_range) {
+                            go.left(x.value((acc, left_symbol, start.0, end.0)));
                         }
                     }
 
                     if start.1 != end.1 {
                         // right child
                         let child_range = Self::mask_range(mid..mid + level.bit, mask);
-                        let skip = if fully_contains(&level_range, &child_range) {
-                            skip + 1
-                        } else {
-                            0
-                        };
-                        if skip == dims {
+                        let includes = range_includes(&level_range, &child_range);
+                        let acc = Self::accumulate_masks(acc, mask, includes);
+                        if acc == u32::MAX {
                             // println!("counting range {:?}", mid..mid + level.bit);
                             counts[x.key] += end.1 - start.1;
                             nodes_skipped += 1;
-                        } else if overlaps(level_range, child_range) {
+                        } else if range_overlaps(level_range, child_range) {
                             go.right(x.value((
-                                skip,
+                                acc,
                                 left_symbol + level.bit,
                                 level.num_zeros + start.1,
                                 level.num_zeros + end.1,
@@ -829,12 +862,12 @@ impl<V: BitVec> WaveletMatrix<V> {
     }
 }
 
-fn overlaps<T: BitBlock>(a: Range<T>, b: Range<T>) -> bool {
+fn range_overlaps<T: BitBlock>(a: Range<T>, b: Range<T>) -> bool {
     a.start < b.end && b.start < a.end
 }
 
 // Return true if a fully contains b
-fn fully_contains<T: BitBlock>(a: &Range<T>, b: &Range<T>) -> bool {
+fn range_includes<T: BitBlock>(a: &Range<T>, b: &Range<T>) -> bool {
     // if a starts before b, and a ends after b.
     a.start <= b.start && a.end >= b.end
 }
@@ -917,7 +950,7 @@ mod tests {
         }
     }
 
-    // #[test]
+    #[test]
     fn test_count() {
         let mut rng = rand::thread_rng();
         let dims = 3;
@@ -1026,7 +1059,7 @@ mod tests {
             end_time.duration_since(start_time)
         );
         assert_eq!(wm_counts, res);
-        panic!("wheee");
+        // panic!("wheee");
     }
 
     // #[test]
