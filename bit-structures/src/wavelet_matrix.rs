@@ -263,38 +263,56 @@ impl WaveletMatrix<Dense> {
         range: Range<u32>,
         masks: &[u32],
     ) -> u32 {
-        self.count_symbol_ranges(&[symbol_range], range, masks)
-            .first()
-            .copied()
-            .unwrap()
-    }
+        let mut traversal = Traversal::new();
+        traversal.init(std::iter::once((0, 0, range.start, range.end)));
 
-    fn mask_range(range: &Range<u32>, mask: u32) -> Range<u32> {
-        (range.start & mask)..((range.end - 1) & mask) + 1
-    }
+        let mut count = 0;
+        let all_masks = masks.iter().copied().reduce(set_bits).unwrap_or(0);
 
-    fn set_bits(value: u32, mask: u32) -> u32 {
-        value | mask
-    }
+        for (level, &mask) in self.levels.iter().zip(masks) {
+            let level_range = mask_range(&symbol_range, mask);
+            let b = level.bit;
+            traversal.traverse(|xs, go| {
+                let mut rank_cache = RangedRankCache::new();
+                for x in xs {
+                    let (acc, left_symbol, start, end) = x.value;
+                    debug_assert!(!(start..end).is_empty());
 
-    fn unset_bits(value: u32, mask: u32) -> u32 {
-        value & !mask
-    }
+                    let (start, end) = rank_cache.get(start, end, level);
 
-    // acc represents an accumulated mask consisting of the set/unset
-    // bits resulting from previous calls to this function.
-    // the idea is that we want to toggle individual masks on and off
-    // such that we can detect if there is ever a time that all have
-    // been turned on.
-    // since mask bits are disjoint (eg. the x bits are distinct from
-    // y bits in 2d morton order), we can tell whether they're all set
-    // by checking equality with u32::MAX.
-    fn accumulate_masks(acc: u32, mask: u32, cond: bool) -> u32 {
-        if cond {
-            Self::set_bits(acc, mask)
-        } else {
-            Self::unset_bits(acc, mask)
+                    if start.0 != end.0 {
+                        // left child
+                        let child_range = mask_range(&(left_symbol..left_symbol + b), mask);
+                        let includes = range_includes(&level_range, &child_range);
+                        let acc = accumulate_masks(acc, mask, includes);
+                        if acc == all_masks {
+                            count += end.0 - start.0;
+                        } else if range_overlaps(&level_range, &child_range) {
+                            go.left(x.value((acc, left_symbol, start.0, end.0)));
+                        }
+                    }
+
+                    if start.1 != end.1 {
+                        // right child
+                        let child_range = mask_range(&(left_symbol + b..left_symbol + b + b), mask);
+                        let includes = range_includes(&level_range, &child_range);
+                        let acc = accumulate_masks(acc, mask, includes);
+                        if acc == all_masks {
+                            count += end.1 - start.1;
+                        } else if range_overlaps(&level_range, &child_range) {
+                            go.right(x.value((
+                                acc,
+                                left_symbol + b,
+                                level.num_zeros + start.1,
+                                level.num_zeros + end.1,
+                            )));
+                        }
+                    }
+                }
+            });
         }
+        assert!(traversal.is_empty());
+        count
     }
 
     // instrument w go-left, go-right stuff.. want to see the process for a single batch.
@@ -311,23 +329,19 @@ impl WaveletMatrix<Dense> {
             .iter()
             .all(|symbol_range| !symbol_range.is_empty()));
         let mut traversal = Traversal::new();
-        // (symbol_range start, symbol range end, mask accumulator, leftmost symbol of node, start, end)
+        // (mask accumulator, leftmost symbol of node, start, end)
         // the mask accumulator contains the status of whether this node's range is fully included in the
         // symbol range for that dimension. if all mask bits are set, we can stop the recursion early.
-        traversal.init(
-            symbol_ranges
-                .iter()
-                .map(|_symbol_range| (0, 0, range.start, range.end)),
-        );
+        traversal.init(std::iter::repeat((0, 0, range.start, range.end)).take(symbol_ranges.len()));
 
         let mut counts = vec![0; symbol_ranges.len()];
         let mut nodes_visited = 0;
         let mut nodes_skipped = 0;
 
         // the union of all masks, ie. set each bit that is set in any mask
-        let all_masks = masks.iter().copied().reduce(Self::set_bits).unwrap_or(0);
+        let all_masks = masks.iter().copied().reduce(set_bits).unwrap_or(0);
 
-        for (level, mask) in self.levels(0).zip(masks.iter().copied().cycle()) {
+        for (level, &mask) in self.levels.iter().zip(masks) {
             traversal.traverse(|xs, go| {
                 let mut rank_cache = RangedRankCache::new();
 
@@ -339,18 +353,17 @@ impl WaveletMatrix<Dense> {
 
                     // the symbols represented at this level in this dimension
                     // we could find a way to do this once per batch index
-                    let level_range = Self::mask_range(symbol_range, mask);
+                    let level_range = mask_range(symbol_range, mask);
                     nodes_visited += 1;
                     // let (start, end) = (level.ranks(start), level.ranks(end));
                     let (start, end) = rank_cache.get(start, end, level);
-
                     let mid = left_symbol + level.bit;
 
                     if start.0 != end.0 {
                         // left child
-                        let child_range = Self::mask_range(&(left_symbol..mid), mask);
+                        let child_range = mask_range(&(left_symbol..mid), mask);
                         let includes = range_includes(&level_range, &child_range);
-                        let acc = Self::accumulate_masks(acc, mask, includes);
+                        let acc = accumulate_masks(acc, mask, includes);
                         if acc == all_masks {
                             counts[x.key] += end.0 - start.0;
                             nodes_skipped += 1;
@@ -361,9 +374,9 @@ impl WaveletMatrix<Dense> {
 
                     if start.1 != end.1 {
                         // right child
-                        let child_range = Self::mask_range(&(mid..mid + level.bit), mask);
+                        let child_range = mask_range(&(mid..mid + level.bit), mask);
                         let includes = range_includes(&level_range, &child_range);
-                        let acc = Self::accumulate_masks(acc, mask, includes);
+                        let acc = accumulate_masks(acc, mask, includes);
                         if acc == all_masks {
                             counts[x.key] += end.1 - start.1;
                             nodes_skipped += 1;
@@ -385,6 +398,34 @@ impl WaveletMatrix<Dense> {
 
         // dbg!(nodes_visited, nodes_skipped);
         counts
+    }
+}
+
+fn mask_range(range: &Range<u32>, mask: u32) -> Range<u32> {
+    (range.start & mask)..((range.end - 1) & mask) + 1
+}
+
+fn set_bits(value: u32, mask: u32) -> u32 {
+    value | mask
+}
+
+fn unset_bits(value: u32, mask: u32) -> u32 {
+    value & !mask
+}
+
+// acc represents an accumulated mask consisting of the set/unset
+// bits resulting from previous calls to this function.
+// the idea is that we want to toggle individual masks on and off
+// such that we can detect if there is ever a time that all have
+// been turned on.
+// since mask bits are disjoint (eg. the x bits are distinct from
+// y bits in 2d morton order), we can tell whether they're all set
+// by checking equality with u32::MAX.
+fn accumulate_masks(acc: u32, mask: u32, cond: bool) -> u32 {
+    if cond {
+        set_bits(acc, mask)
+    } else {
+        unset_bits(acc, mask)
     }
 }
 
@@ -878,7 +919,7 @@ mod tests {
     use std::time::{Duration, SystemTime};
 
     #[test]
-    fn test_count_symbol_ranges_64() {
+    fn test_count_symbol_range_64() {
         let mut rng = rand::thread_rng();
         let mut symbols = vec![];
 
