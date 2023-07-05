@@ -3,10 +3,6 @@
 // Note: We can implelement 4d codes by performing two 2d interleavings.
 // Note: This encodes 2d as yxyxyxyx and 3d as zyxzyxzyxzyx.
 
-pub const fn encode(range: std::ops::Range<u32>) -> u32 {
-    encode2(range.start, range.end)
-}
-
 pub const fn encode2(x: u32, y: u32) -> u32 {
     (part_1_by_1(y) << 1) + part_1_by_1(x)
 }

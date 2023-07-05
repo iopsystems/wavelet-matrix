@@ -61,7 +61,9 @@ impl WaveletMatrix32 {
     pub fn count_all_batch(&self, ranges: &[Ones]) -> Result<JsValue, String> {
         assert!(ranges.len() % 2 == 0,);
         let ranges: Vec<_> = ranges.chunks_exact(2).map(|x| x[0]..x[1]).collect();
-        let mut traversal = self.0.count_all_batch(&ranges);
+        let mut traversal =
+            self.0
+                .count_all_batch(0..self.0.max_symbol() + 1, &ranges, &self.0.default_masks());
         let mut input_index = Vec::new();
         let mut symbol = Vec::new();
         let mut start = Vec::new();

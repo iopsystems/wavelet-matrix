@@ -7,6 +7,8 @@ use std::debug_assert;
 use std::{collections::VecDeque, ops::Range};
 
 // todo
+// - decide if symbols should be u32, u64, or V::Ones (or another generic), and be consistent throughout.
+// - consider the (internal) use of inclusive Extents to simplify range handling
 // - consider using the extent crate for ranges: https://github.com/graydon/extent/blob/main/src/lib.rs
 // - in the symbol count 64 test, try varying the range of the query so it is not always 1..wm.len().
 // - audit whether we recurse into zero-width nodes in any cases
@@ -27,9 +29,9 @@ type Dense = DenseBitVec<u32, u8>;
 
 #[derive(Debug, Copy, Clone)]
 pub struct CountAll<T: BitBlock> {
-    pub symbol: T,
-    pub start: T,
-    pub end: T,
+    pub symbol: T, // leftmost symbol in the node
+    pub start: T,  // index  range start
+    pub end: T,    // index range end
 }
 impl<T: BitBlock> CountAll<T> {
     fn new(symbol: T, start: T, end: T) -> Self {
@@ -42,7 +44,7 @@ impl<T: BitBlock> CountAll<T> {
 #[derive(Copy, Clone, Debug)]
 struct CountSymbolRange {
     acc: u32,   // mask accumulator
-    left: u32,  // left symbol
+    left: u32,  // leftmost symbol in the node
     start: u32, // index  range start
     end: u32,   // index range end
 }
@@ -405,19 +407,23 @@ impl WaveletMatrix<Dense> {
 }
 
 // Return the union of set bits across all masks in `masks`
-fn union_masks(masks: &[u32]) -> u32 {
-    masks.iter().copied().reduce(set_bits).unwrap_or(0)
+fn union_masks<T: BitBlock>(masks: &[T]) -> T {
+    masks.iter().copied().reduce(set_bits).unwrap_or(T::zero())
 }
 
-fn mask_range(range: Range<u32>, mask: u32) -> Range<u32> {
-    (range.start & mask)..((range.end - 1) & mask) + 1
+fn mask_range<T: BitBlock>(range: Range<T>, mask: T) -> Range<T> {
+    (range.start & mask)..((range.end - T::one()) & mask) + T::one()
 }
 
-fn set_bits(value: u32, mask: u32) -> u32 {
+fn mask_symbol<T: BitBlock>(symbol: T, mask: T) -> T {
+    symbol & mask
+}
+
+fn set_bits<T: BitBlock>(value: T, mask: T) -> T {
     value | mask
 }
 
-fn unset_bits(value: u32, mask: u32) -> u32 {
+fn unset_bits<T: BitBlock>(value: T, mask: T) -> T {
     value & !mask
 }
 
@@ -425,12 +431,12 @@ fn unset_bits(value: u32, mask: u32) -> u32 {
 // when the target search range is `symbol_range`.
 // basically, decide whether to set or un-set the bits based on whether the node range is fully contained
 // within symbol_range.
-fn accumulate_mask(
-    node_range: Range<u32>,
-    mask: u32,
-    symbol_range: &Range<u32>,
-    accumulator: u32,
-) -> u32 {
+fn accumulate_mask<T: BitBlock>(
+    node_range: Range<T>,
+    mask: T,
+    symbol_range: &Range<T>,
+    accumulator: T,
+) -> T {
     toggle_bits(
         accumulator,
         mask,
@@ -448,7 +454,7 @@ fn accumulate_mask(
 // by checking equality with u32::MAX.
 // This function conditionally toggles the bits in `accumulator` specified by `mask`
 // on or off, based on the value of `cond`.
-fn toggle_bits(accumulator: u32, mask: u32, cond: bool) -> u32 {
+fn toggle_bits<T: BitBlock>(accumulator: T, mask: T, cond: bool) -> T {
     if cond {
         set_bits(accumulator, mask)
     } else {
@@ -808,9 +814,14 @@ impl<V: BitVec> WaveletMatrix<V> {
     }
 
     pub fn count_all(&self, range: Range<V::Ones>) -> Traversal<CountAll<V::Ones>> {
-        self.count_all_batch(&[range])
+        self.count_all_batch(0..self.max_symbol() + 1, &[range], &self.default_masks())
     }
 
+    pub fn default_masks(&self) -> Vec<u32> {
+        std::iter::repeat(u32::MAX) // V::Ones::max_value()
+            .take(self.num_levels())
+            .collect()
+    }
     // Count the number of occurrences of each symbol in the given index range.
     // Returns a vec of (input_index, symbol, start, end) tuples.
     // Returning (start, end) rather than a count `end - start` is helpful for
@@ -819,18 +830,24 @@ impl<V: BitVec> WaveletMatrix<V> {
     // of the wavelet matrix, where symbols are sorted in ascending bit-reversed order.
     // TODO: Is there a way to do ~half the number of rank queries for contiguous
     // ranges that share a midpoint, ie. [a..b, b..c, c..d]?
-    pub fn count_all_batch(&self, ranges: &[Range<V::Ones>]) -> Traversal<CountAll<V::Ones>> {
+    pub fn count_all_batch(
+        &self,
+        symbol_range: Range<u32>,
+        ranges: &[Range<V::Ones>],
+        masks: &[u32],
+    ) -> Traversal<CountAll<V::Ones>> {
         for range in ranges {
             assert!(range.end <= self.len());
         }
 
         let mut traversal = Traversal::new(ranges.iter().map(|range| CountAll {
-            symbol: V::zero(),
+            symbol: V::zero(), // the leftmost symbol in the current node
             start: range.start,
             end: range.end,
         }));
 
-        for level in self.levels(0) {
+        for (level, mask) in self.levels.iter().zip(masks.iter().copied()) {
+            let symbol_range = mask_range(symbol_range.clone(), mask);
             traversal.traverse(|xs, go| {
                 // Cache the most recent rank call in case the next one is the same.
                 // This means caching the `end` of the previous range, and checking
@@ -838,17 +855,31 @@ impl<V: BitVec> WaveletMatrix<V> {
                 let mut rank_cache = RangedRankCache::new();
                 for x in xs {
                     let CountAll { symbol, start, end } = x.val;
-                    // let start = level.ranks(start);
-                    // let end = level.ranks(end);
+
+                    let (left, mid, right) = level.splits(symbol);
+
+                    // let (start, end) = (level.ranks(start), level.ranks(end));
                     let (start, end) = rank_cache.get(start, end, level);
 
                     // if there are any left children, go left
-                    if start.0 != end.0 {
+                    // note: the as_u32 calls should not be needed
+                    // (and can overflow if we have a higher tree...)
+                    if start.0 != end.0
+                        && overlaps(
+                            &symbol_range,
+                            &mask_range(left.as_u32()..mid.as_u32(), mask),
+                        )
+                    {
                         go.left(x.val(CountAll::new(symbol, start.0, end.0)));
                     }
 
                     // if there are any right children, set the level bit and go right
-                    if start.1 != end.1 {
+                    if start.1 != end.1
+                        && overlaps(
+                            &symbol_range,
+                            &mask_range(mid.as_u32()..right.as_u32(), mask),
+                        )
+                    {
                         go.right(x.val(CountAll::new(
                             symbol + level.bit,
                             level.num_zeros + start.1,
@@ -1138,35 +1169,54 @@ mod tests {
         // panic!("wheee");
     }
 
-    // #[test]
+    #[test]
     fn test_get() {
         let mut symbols = vec![];
         let pow = 6;
         let n = 2u32.pow(pow);
-        let side = 2u32.pow(pow / 2);
+        let _side = 2u32.pow(pow / 2);
         for i in 0..n {
             // if i % 2 == 1 {
             symbols.push(i)
             // }
         }
-        let max_symbol = symbols.iter().max().copied().unwrap_or(0);
+        // let max_symbol = symbols.iter().max().copied().unwrap_or(0);
         let wm = WaveletMatrix::new(symbols.clone(), n - 1);
         for (i, sym) in symbols.iter().copied().enumerate() {
             assert_eq!(sym, wm.get(i as u32));
         }
+
+        // test morton range querying
+        // let x_range = 3..5;
+        // let y_range = 3..5;
+        // let start = morton::encode2(x_range.start, y_range.start);
+        // let end = morton::encode2(x_range.end - 1, y_range.end - 1) + 1;
+        // let masks = morton_masks_for_dims(2, wm.num_levels());
+        // dbg!(start..end);
+        // let mut xs = wm.count_all_batch(start..end, &[0..wm.len()], &masks);
+        // for x in xs.results() {
+        //     println!(
+        //         "({:?}, {:?}): {:?}",
+        //         morton::decode2x(x.val.symbol),
+        //         morton::decode2y(x.val.symbol),
+        //         x.val.end - x.val.start
+        //     );
+        // }
+        // panic!("aah");
+
         // caution: easy to go out of bounds here in either x or y alone
-        let x_range = 1..side - 1;
-        let y_range = 1..side - 1;
-        let start = morton::encode2(x_range.start, y_range.start);
-        // inclusive x_range and y_range endpoints, but compute the exclusive end
-        let end = morton::encode2(x_range.end - 1, y_range.end - 1) + 1;
-        assert!(end <= max_symbol + 1);
-        dbg!(start, end);
-        let range = start..end;
-        let dims = 2;
-        let masks = morton_masks_for_dims(dims, wm.num_levels());
-        println!("{:?}", wm.count_symbol_range(range, 0..wm.len(), &masks));
-        panic!("count_all");
+        // let x_range = 1..side - 1;
+        // let y_range = 1..side - 1;
+        // let start = morton::encode2(x_range.start, y_range.start);
+        // // inclusive x_range and y_range endpoints, but compute the exclusive end
+        // let end = morton::encode2(x_range.end - 1, y_range.end - 1) + 1;
+        // assert!(end <= max_symbol + 1);
+        // dbg!(start, end);
+        // let range = start..end;
+        // let dims = 2;
+        // let masks = morton_masks_for_dims(dims, wm.num_levels());
+        // println!("{:?}", wm.count_symbol_range(range, 0..wm.len(), &masks));
+        // panic!("count_all");
         // dbg!(sym, wm.rank(sym, 0..wm.len()));
         // dbg!(i, wm.quantile(i as u32, 0..wm.len()));
         // println!("{:?}", wm.count_all(10..15));
@@ -1175,5 +1225,6 @@ mod tests {
         // dbg!(wm.get_batch(indices));
         // ;
         // panic!("get");
+        // */
     }
 }
