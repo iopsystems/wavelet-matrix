@@ -7,6 +7,7 @@ use std::ops::Deref;
 use std::{collections::VecDeque, ops::Range};
 
 // todo
+// - consider using the extent crate for ranges: https://github.com/graydon/extent/blob/main/src/lib.rs
 // - in the symbol count 64 test, try varying the range of the query so it is not always 1..wm.len().
 // - audit whether we recurse into zero-width nodes in any cases
 //   - i think we can check start.0 != end.0 and start.1 != end.1
@@ -280,58 +281,54 @@ impl WaveletMatrix<Dense> {
         // type representing the state of an individual traversal path down the wavelet tree
         #[derive(Copy, Clone)]
         struct Val {
-            acc: u32,
-            left_symbol: u32,
-            start: u32,
-            end: u32,
+            acc: u32,   // mask accumulator
+            left: u32,  // left symbol
+            start: u32, // index  range start
+            end: u32,   // index range end
         }
 
         let all_masks = masks.iter().copied().reduce(set_bits).unwrap_or(0);
         let mut count = 0;
-        let mut traversal = Traversal::new(std::iter::once(Val {
+        let mut traversal = Traversal::new([Val {
             acc: 0,
-            left_symbol: 0,
+            left: 0,
             start: range.start,
             end: range.end,
-        }));
+        }]);
 
         for (level, &mask) in self.levels.iter().zip(masks) {
             let level_range = mask_range(symbol_range.clone(), mask);
-            let b = level.bit;
             traversal.traverse(|xs, go| {
                 let mut rank_cache = RangedRankCache::new();
                 for x in xs {
                     debug_assert!(!(x.start..x.end).is_empty());
+                    let (left, mid, right) = level.splits(x.left);
+                    let node_range = mask_range(left..right, mask);
+                    let acc = toggle_bits(x.acc, mask, range_includes(&level_range, &node_range));
+                    if acc == all_masks {
+                        count += x.end - x.start;
+                        continue;
+                    }
                     let (start, end) = rank_cache.get(x.start, x.end, level);
                     if start.0 != end.0 {
                         // left child
-                        let child_range = mask_range(x.left_symbol..x.left_symbol + b, mask);
-                        let includes = range_includes(&level_range, &child_range);
-                        let acc = accumulate_masks(x.acc, mask, includes);
-                        if acc == all_masks {
-                            count += end.0 - start.0;
-                        } else if range_overlaps(&level_range, &child_range) {
+                        let left_range = mask_range(left..mid, mask);
+                        if range_overlaps(&level_range, &left_range) {
                             go.left(x.value(Val {
                                 acc,
-                                left_symbol: x.left_symbol,
+                                left,
                                 start: start.0,
                                 end: end.0,
                             }));
                         }
                     }
-
                     if start.1 != end.1 {
                         // right child
-                        let child_range =
-                            mask_range(x.left_symbol + b..x.left_symbol + b + b, mask);
-                        let includes = range_includes(&level_range, &child_range);
-                        let acc = accumulate_masks(x.acc, mask, includes);
-                        if acc == all_masks {
-                            count += end.1 - start.1;
-                        } else if range_overlaps(&level_range, &child_range) {
+                        let right_range = mask_range(mid..right, mask);
+                        if range_overlaps(&level_range, &right_range) {
                             go.right(x.value(Val {
                                 acc,
-                                left_symbol: x.left_symbol + b,
+                                left: mid,
                                 start: level.num_zeros + start.1,
                                 end: level.num_zeros + end.1,
                             }));
@@ -340,7 +337,10 @@ impl WaveletMatrix<Dense> {
                 }
             });
         }
-        assert!(traversal.is_empty());
+        for x in traversal.results() {
+            count += x.end - x.start;
+        }
+        // assert!(traversal.is_empty());
         count
     }
 
@@ -393,7 +393,7 @@ impl WaveletMatrix<Dense> {
                         // left child
                         let child_range = mask_range(left_symbol..mid, mask);
                         let includes = range_includes(&level_range, &child_range);
-                        let acc = accumulate_masks(acc, mask, includes);
+                        let acc = toggle_bits(acc, mask, includes);
                         if acc == all_masks {
                             counts[x.key] += end.0 - start.0;
                             nodes_skipped += 1;
@@ -406,7 +406,7 @@ impl WaveletMatrix<Dense> {
                         // right child
                         let child_range = mask_range(mid..mid + level.bit, mask);
                         let includes = range_includes(&level_range, &child_range);
-                        let acc = accumulate_masks(acc, mask, includes);
+                        let acc = toggle_bits(acc, mask, includes);
                         if acc == all_masks {
                             counts[x.key] += end.1 - start.1;
                             nodes_skipped += 1;
@@ -451,7 +451,9 @@ fn unset_bits(value: u32, mask: u32) -> u32 {
 // since mask bits are disjoint (eg. the x bits are distinct from
 // y bits in 2d morton order), we can tell whether they're all set
 // by checking equality with u32::MAX.
-fn accumulate_masks(acc: u32, mask: u32, cond: bool) -> u32 {
+// This function conditionally toggles the bits in `acc` specified by `mask`
+// on or off, based on the value of `cond`.
+fn toggle_bits(acc: u32, mask: u32, cond: bool) -> u32 {
     if cond {
         set_bits(acc, mask)
     } else {
@@ -610,6 +612,15 @@ impl<V: BitVec> Level<V> {
         let num_ones = self.bv.rank1(index);
         let num_zeros = index - num_ones;
         Ranks(num_zeros, num_ones)
+    }
+
+    // Given the start index of a left node on this level, return the split points
+    // that cover the range:
+    // - left is the start of the left node
+    // - mid is the start of the right node
+    // - right is one past the end of the right node
+    pub fn splits(&self, left: V::Ones) -> (V::Ones, V::Ones, V::Ones) {
+        (left, left + self.bit, left + self.bit + self.bit)
     }
 }
 
