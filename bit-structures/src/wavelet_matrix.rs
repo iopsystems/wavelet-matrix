@@ -111,11 +111,9 @@ impl<T> Traversal<T> {
         slice
     }
 
+    // note: we check whether *next* is empty since that is what will be traversed next, since
+    // `next` is swapped into `cur` in `traversal.traverse()`.
     pub fn is_empty(&self) -> bool {
-        self.cur.is_empty()
-    }
-
-    pub fn next_is_empty(&self) -> bool {
         self.next.is_empty()
     }
 }
@@ -383,7 +381,7 @@ impl WaveletMatrix<Dense> {
             });
         }
 
-        assert!(traversal.next_is_empty());
+        assert!(traversal.is_empty());
 
         // dbg!(nodes_visited, nodes_skipped);
         counts
