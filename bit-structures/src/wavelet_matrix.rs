@@ -266,13 +266,11 @@ impl WaveletMatrix<Dense> {
         masks: &[u32],
     ) -> u32 {
         let all_masks = masks.iter().copied().reduce(set_bits).unwrap_or(0);
-
         let mut traversal = Traversal::new(std::iter::once((0, 0, range.start, range.end)));
-
         let mut count = 0;
 
         for (level, &mask) in self.levels.iter().zip(masks) {
-            let level_range = mask_range(&symbol_range, mask);
+            let level_range = mask_range(symbol_range.clone(), mask);
             let b = level.bit;
             traversal.traverse(|xs, go| {
                 let mut rank_cache = RangedRankCache::new();
@@ -284,7 +282,7 @@ impl WaveletMatrix<Dense> {
 
                     if start.0 != end.0 {
                         // left child
-                        let child_range = mask_range(&(left_symbol..left_symbol + b), mask);
+                        let child_range = mask_range(left_symbol..left_symbol + b, mask);
                         let includes = range_includes(&level_range, &child_range);
                         let acc = accumulate_masks(acc, mask, includes);
                         if acc == all_masks {
@@ -296,7 +294,7 @@ impl WaveletMatrix<Dense> {
 
                     if start.1 != end.1 {
                         // right child
-                        let child_range = mask_range(&(left_symbol + b..left_symbol + b + b), mask);
+                        let child_range = mask_range(left_symbol + b..left_symbol + b + b, mask);
                         let includes = range_includes(&level_range, &child_range);
                         let acc = accumulate_masks(acc, mask, includes);
                         if acc == all_masks {
@@ -356,7 +354,7 @@ impl WaveletMatrix<Dense> {
 
                     // the symbols represented at this level in this dimension
                     // we could find a way to do this once per batch index
-                    let level_range = mask_range(symbol_range, mask);
+                    let level_range = mask_range(symbol_range.clone(), mask);
                     nodes_visited += 1;
                     // let (start, end) = (level.ranks(start), level.ranks(end));
                     let (start, end) = rank_cache.get(start, end, level);
@@ -364,7 +362,7 @@ impl WaveletMatrix<Dense> {
 
                     if start.0 != end.0 {
                         // left child
-                        let child_range = mask_range(&(left_symbol..mid), mask);
+                        let child_range = mask_range(left_symbol..mid, mask);
                         let includes = range_includes(&level_range, &child_range);
                         let acc = accumulate_masks(acc, mask, includes);
                         if acc == all_masks {
@@ -377,7 +375,7 @@ impl WaveletMatrix<Dense> {
 
                     if start.1 != end.1 {
                         // right child
-                        let child_range = mask_range(&(mid..mid + level.bit), mask);
+                        let child_range = mask_range(mid..mid + level.bit, mask);
                         let includes = range_includes(&level_range, &child_range);
                         let acc = accumulate_masks(acc, mask, includes);
                         if acc == all_masks {
@@ -404,7 +402,7 @@ impl WaveletMatrix<Dense> {
     }
 }
 
-fn mask_range(range: &Range<u32>, mask: u32) -> Range<u32> {
+fn mask_range(range: Range<u32>, mask: u32) -> Range<u32> {
     (range.start & mask)..((range.end - 1) & mask) + 1
 }
 
