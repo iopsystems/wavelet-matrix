@@ -110,6 +110,10 @@ impl<T> Traversal<T> {
         self.num_left = 0; // update this so that calling results multiple times does not re-reverse the left
         slice
     }
+
+    pub fn is_empty(&self) -> bool {
+        self.cur.is_empty()
+    }
 }
 
 struct Go<'a, T> {
@@ -375,7 +379,7 @@ impl WaveletMatrix<Dense> {
             });
         }
 
-        assert!(traversal.results().is_empty());
+        assert!(traversal.is_empty());
 
         // dbg!(nodes_visited, nodes_skipped);
         counts
