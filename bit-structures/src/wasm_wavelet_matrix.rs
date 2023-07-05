@@ -70,10 +70,10 @@ impl WaveletMatrix32 {
         let mut count = Vec::new();
         for x in traversal.results() {
             input_index.push(Ones::try_from(x.key).unwrap());
-            symbol.push(x.value.symbol);
-            start.push(x.value.start);
-            end.push(x.value.end);
-            count.push(x.value.end - x.value.start);
+            symbol.push(x.val.symbol);
+            start.push(x.val.start);
+            end.push(x.val.end);
+            count.push(x.val.end - x.val.start);
         }
         let obj = js_sys::Object::new();
         let err = "could not set js property";

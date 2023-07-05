@@ -3,7 +3,6 @@ use crate::bit_block::BitBlock;
 use crate::morton;
 use crate::{bit_buf::BitBuf, bit_vec::BitVec, dense_bit_vec::DenseBitVec};
 use num::{One, Zero};
-use std::ops::Deref;
 use std::{collections::VecDeque, ops::Range};
 
 // todo
@@ -37,6 +36,27 @@ impl<T: BitBlock> CountAll<T> {
     }
 }
 
+// type representing the state of an individual traversal path down the wavelet tree
+// during a count_symbol_range operation
+#[derive(Copy, Clone)]
+struct CountSymbolRange {
+    acc: u32,   // mask accumulator
+    left: u32,  // left symbol
+    start: u32, // index  range start
+    end: u32,   // index range end
+}
+
+impl CountSymbolRange {
+    fn new(acc: u32, left: u32, start: u32, end: u32) -> Self {
+        CountSymbolRange {
+            acc,
+            left,
+            start,
+            end,
+        }
+    }
+}
+
 // Helper for traversing the wavelet matrix level by level,
 // reusing space when possible and keeping the elements in
 // sorted order with respect to the ordering of wavelet tree
@@ -44,8 +64,8 @@ impl<T: BitBlock> CountAll<T> {
 // right nodes).
 #[derive(Debug)]
 pub struct Traversal<T> {
-    cur: VecDeque<KeyValue<T>>,
-    next: VecDeque<KeyValue<T>>,
+    cur: VecDeque<KeyVal<T>>,
+    next: VecDeque<KeyVal<T>>,
     num_left: usize,
 }
 
@@ -63,14 +83,14 @@ impl<T> Traversal<T> {
     }
 
     fn init(&mut self, values: impl IntoIterator<Item = T>) {
-        let iter = values.into_iter().enumerate().map(KeyValue::from_tuple);
+        let iter = values.into_iter().enumerate().map(KeyVal::from_tuple);
         self.cur.clear();
         self.next.clear();
         self.next.extend(iter);
         self.num_left = 0;
     }
 
-    fn traverse(&mut self, mut f: impl FnMut(&[KeyValue<T>], &mut Go<KeyValue<T>>)) {
+    fn traverse(&mut self, mut f: impl FnMut(&[KeyVal<T>], &mut Go<KeyVal<T>>)) {
         // precondition: `next` contains things to traverse.
         // postcondition: `next` has the next things to traverse, with (reversed)
         // left children followed by (non-reversed) right children, and num_left
@@ -105,7 +125,7 @@ impl<T> Traversal<T> {
         self.num_left = go.num_left;
     }
 
-    pub fn results(&mut self) -> &mut [KeyValue<T>] {
+    pub fn results(&mut self) -> &mut [KeyVal<T>] {
         let slice = self.next.make_contiguous();
         // note: reverse only required if we want to return results in wm order,
         // which might be nice if we are eg. looking up associated data.
@@ -146,42 +166,31 @@ impl<T> Go<'_, T> {
 // The Key is (currently) the input index associated with this query, so we can track it through
 // the tree.
 #[derive(Debug, Copy, Clone, PartialEq, bincode::Encode, bincode::Decode)]
-pub struct KeyValue<T> {
+pub struct KeyVal<T> {
     pub key: usize,
-    pub value: T,
-}
-
-// note: experimenting with this as a usability improvement, so that we can use the value
-// passed to the traversal callback as a T.
-// question: are there performance implications vs. destructuring once inside the callback?
-impl<T> Deref for KeyValue<T> {
-    type Target = T;
-
-    fn deref(&self) -> &Self::Target {
-        &self.value
-    }
+    pub val: T,
 }
 
 // Associate a usize key to an arbitrary value; used for propagating the metadata
 // of which original query element a partial query result is associated with as we
 // traverse the wavelet tree
-impl<T> KeyValue<T> {
-    fn new(key: usize, value: T) -> KeyValue<T> {
-        KeyValue { key, value }
+impl<T> KeyVal<T> {
+    fn new(key: usize, value: T) -> KeyVal<T> {
+        KeyVal { key, val: value }
     }
     // construct a BatchValue from an (key, value) tuple
-    fn from_tuple((key, value): (usize, T)) -> KeyValue<T> {
-        KeyValue { key, value }
+    fn from_tuple((key, value): (usize, T)) -> KeyVal<T> {
+        KeyVal { key, val: value }
     }
-    fn map<U>(self, f: impl FnOnce(T) -> U) -> KeyValue<U> {
-        KeyValue {
+    fn map<U>(self, f: impl FnOnce(T) -> U) -> KeyVal<U> {
+        KeyVal {
             key: self.key,
-            value: f(self.value),
+            val: f(self.val),
         }
     }
-    // return a new KeyValue with the previous key and new value
-    fn value(self, value: T) -> KeyValue<T> {
-        KeyValue { value, ..self }
+    // return a new KeyVal with the previous key and new value
+    fn val(self, value: T) -> KeyVal<T> {
+        KeyVal { val: value, ..self }
     }
 }
 
@@ -278,157 +287,144 @@ impl WaveletMatrix<Dense> {
         range: Range<u32>,
         masks: &[u32],
     ) -> u32 {
-        // type representing the state of an individual traversal path down the wavelet tree
-        #[derive(Copy, Clone)]
-        struct Val {
-            acc: u32,   // mask accumulator
-            left: u32,  // left symbol
-            start: u32, // index  range start
-            end: u32,   // index range end
-        }
-
-        let all_masks = masks.iter().copied().reduce(set_bits).unwrap_or(0);
+        let all_masks = union_masks(masks);
         let mut count = 0;
-        let mut traversal = Traversal::new([Val {
-            acc: 0,
-            left: 0,
-            start: range.start,
-            end: range.end,
-        }]);
-
-        for (level, &mask) in self.levels.iter().zip(masks) {
-            let level_range = mask_range(symbol_range.clone(), mask);
+        let mut traversal = Traversal::new([CountSymbolRange::new(0, 0, range.start, range.end)]);
+        for (level, mask) in self.levels.iter().zip(masks.iter().copied()) {
+            let symbol_range = mask_range(symbol_range.clone(), mask);
             traversal.traverse(|xs, go| {
                 let mut rank_cache = RangedRankCache::new();
                 for x in xs {
-                    debug_assert!(!(x.start..x.end).is_empty());
-                    let (left, mid, right) = level.splits(x.left);
-                    let node_range = mask_range(left..right, mask);
-                    let acc = toggle_bits(x.acc, mask, range_includes(&level_range, &node_range));
-                    if acc == all_masks {
-                        count += x.end - x.start;
-                        continue;
-                    }
-                    let (start, end) = rank_cache.get(x.start, x.end, level);
+                    let (left, mid, right) = level.splits(x.val.left);
+                    let (start, end) = rank_cache.get(x.val.start, x.val.end, level);
+
+                    // left child
                     if start.0 != end.0 {
-                        // left child
-                        let left_range = mask_range(left..mid, mask);
-                        if range_overlaps(&level_range, &left_range) {
-                            go.left(x.value(Val {
-                                acc,
-                                left,
-                                start: start.0,
-                                end: end.0,
-                            }));
-                        }
-                    }
-                    if start.1 != end.1 {
-                        // right child
-                        let right_range = mask_range(mid..right, mask);
-                        if range_overlaps(&level_range, &right_range) {
-                            go.right(x.value(Val {
-                                acc,
-                                left: mid,
-                                start: level.num_zeros + start.1,
-                                end: level.num_zeros + end.1,
-                            }));
-                        }
-                    }
-                }
-            });
-        }
-        for x in traversal.results() {
-            count += x.end - x.start;
-        }
-        // assert!(traversal.is_empty());
-        count
-    }
-
-    // instrument w go-left, go-right stuff.. want to see the process for a single batch.
-    // note: visits individual quadtree nodes, even those that are adjacent in the z-order.
-    // so eg. the border query on an 8x8 grid (querying the 6x6 interior) will visit 39 tree
-    // nodes, short-circuiting 20.
-    pub fn count_symbol_range_batch(
-        &self,
-        symbol_ranges: &[Range<u32>],
-        range: Range<u32>,
-        masks: &[u32],
-    ) -> Vec<u32> {
-        assert!(symbol_ranges
-            .iter()
-            .all(|symbol_range| !symbol_range.is_empty()));
-        // (mask accumulator, leftmost symbol of node, start, end)
-        // the mask accumulator contains the status of whether this node's range is fully included in the
-        // symbol range for that dimension. if all mask bits are set, we can stop the recursion early.
-        let mut traversal = Traversal::new(
-            std::iter::repeat((0, 0, range.start, range.end)).take(symbol_ranges.len()),
-        );
-
-        let mut counts = vec![0; symbol_ranges.len()];
-        let mut nodes_visited = 0;
-        let mut nodes_skipped = 0;
-
-        // the union of all masks, ie. set each bit that is set in any mask
-        let all_masks = masks.iter().copied().reduce(set_bits).unwrap_or(0);
-
-        for (level, &mask) in self.levels.iter().zip(masks) {
-            traversal.traverse(|xs, go| {
-                let mut rank_cache = RangedRankCache::new();
-
-                for x in xs {
-                    let (acc, left_symbol, start, end) = x.value;
-                    let symbol_range = &symbol_ranges[x.key];
-
-                    debug_assert!(!(start..end).is_empty());
-
-                    // the symbols represented at this level in this dimension
-                    // we could find a way to do this once per batch index
-                    let level_range = mask_range(symbol_range.clone(), mask);
-                    nodes_visited += 1;
-                    // let (start, end) = (level.ranks(start), level.ranks(end));
-                    let (start, end) = rank_cache.get(start, end, level);
-                    let mid = left_symbol + level.bit;
-
-                    if start.0 != end.0 {
-                        // left child
-                        let child_range = mask_range(left_symbol..mid, mask);
-                        let includes = range_includes(&level_range, &child_range);
-                        let acc = toggle_bits(acc, mask, includes);
+                        let acc = accumulate_mask(left..mid, mask, &symbol_range, x.val.acc);
                         if acc == all_masks {
-                            counts[x.key] += end.0 - start.0;
-                            nodes_skipped += 1;
-                        } else if range_overlaps(&level_range, &child_range) {
-                            go.left(x.value((acc, left_symbol, start.0, end.0)));
+                            count += end.0 - start.0;
+                        } else if overlaps(&symbol_range, &mask_range(left..mid, mask)) {
+                            go.left(x.val(CountSymbolRange::new(acc, left, start.0, end.0)));
                         }
                     }
 
+                    // right child
                     if start.1 != end.1 {
-                        // right child
-                        let child_range = mask_range(mid..mid + level.bit, mask);
-                        let includes = range_includes(&level_range, &child_range);
-                        let acc = toggle_bits(acc, mask, includes);
+                        let acc = accumulate_mask(mid..right, mask, &symbol_range, x.val.acc);
                         if acc == all_masks {
-                            counts[x.key] += end.1 - start.1;
-                            nodes_skipped += 1;
-                        } else if range_overlaps(&level_range, &child_range) {
-                            go.right(x.value((
+                            count += end.1 - start.1;
+                        } else if overlaps(&symbol_range, &mask_range(mid..right, mask)) {
+                            go.right(x.val(CountSymbolRange::new(
                                 acc,
-                                left_symbol + level.bit,
+                                mid,
                                 level.num_zeros + start.1,
                                 level.num_zeros + end.1,
                             )));
                         }
                     }
                 }
-                // rank_cache.log_stats();
             });
         }
 
-        assert!(traversal.is_empty());
+        for x in traversal.results() {
+            count += x.val.end - x.val.start;
+        }
 
-        // dbg!(nodes_visited, nodes_skipped);
+        count
+    }
+
+    // Count the number of occurences of symbols in each of the symbol ranges,
+    // returning a parallel array of counts.
+    // Range is an index range.
+    // Masks is a slice of bitmasks, one per level, indicating the bitmask operational
+    // at that level, to enable multidimensional queries.
+    // To search in 1d, pass std::iter::repeat(u32::MAX).take(wm.num_levels()).collect().
+    pub fn count_symbol_range_batch(
+        &self,
+        symbol_ranges: &[Range<u32>],
+        range: Range<u32>,
+        masks: &[u32],
+    ) -> Vec<u32> {
+        // Union all bitmasks so we can tell when we the symbol range is fully contained within
+        // the query range at a particular wavelet tree node, in order to avoid needless recursion.
+        let all_masks = union_masks(masks);
+
+        // The return vector of counts
+        let mut counts = vec![0; symbol_ranges.len()];
+
+        // Initialize a wavelet matrix traversal with one entry per symbol range we're searching.
+        let init = CountSymbolRange::new(0, 0, range.start, range.end);
+        let mut traversal = Traversal::new(std::iter::repeat(init).take(symbol_ranges.len()));
+
+        for (level, mask) in self.levels.iter().zip(masks.iter().copied()) {
+            traversal.traverse(|xs, go| {
+                // Cache rank queries when the start of the current range is the same as the end of the previous range
+                let mut rank_cache = RangedRankCache::new();
+                for x in xs {
+                    // The symbol range corresponding to the current query, masked to the relevant dimensions at this level
+                    let symbol_range = mask_range(symbol_ranges[x.key].clone(), mask);
+
+                    // Left, middle, and right symbol indices for the children of this node.
+                    let (left, mid, right) = level.splits(x.val.left);
+
+                    // Tuples representing the rank0/1 of start and rank0/1 of end
+                    let (start, end) = rank_cache.get(x.val.start, x.val.end, level);
+
+                    // Check the left child if there are any elements there
+                    if start.0 != end.0 {
+                        // Determine whether we can short-circuit the recursion because the symbols
+                        // represented by the left child are fully contained in symbol_range.
+                        // We need to consider more than just this dimension, though, since we can
+                        // only stop the recursion at the point when the symbol ranges are contained
+                        // in all dimensions.
+                        // Each "dimension" is indicated by a different mask, with each symbol bit
+                        // assigned to exactly one mask. We accumulate masks by setting the bits in the
+                        // accumulator that correspond to all the 1-bits in this mask if the (masked) node
+                        // range is fully contained in the (masked) query symbol range, and unsets them otherwise.
+                        // When we see that all bits are set, then we can stop the recursion because it means
+                        // that the most recent check in each dimension indicated that the symbols represented
+                        // by this node are fully contained in the query symbol range.
+                        // Note that we check against the union across all provided masks, so we don't need to
+                        // query all levels if we don't want to.
+                        // The masks array can also be shorter than the number of levels, which means that the
+                        // query will ignore the levels below that (aggregating across them).
+                        let acc = accumulate_mask(left..mid, mask, &symbol_range, x.val.acc);
+                        if acc == all_masks {
+                            counts[x.key] += end.0 - start.0;
+                        } else if overlaps(&symbol_range, &mask_range(left..mid, mask)) {
+                            // We need to recurse into the left child. Do so with the new acc value.
+                            go.left(x.val(CountSymbolRange::new(acc, left, start.0, end.0)));
+                        }
+                    }
+
+                    // right child
+                    if start.1 != end.1 {
+                        // See the comments for the left node; the logical structure here is identical.
+                        let acc = accumulate_mask(mid..right, mask, &symbol_range, x.val.acc);
+                        if acc == all_masks {
+                            counts[x.key] += end.1 - start.1;
+                        } else if overlaps(&symbol_range, &mask_range(mid..right, mask)) {
+                            go.right(x.val(CountSymbolRange::new(
+                                acc,
+                                mid,
+                                level.num_zeros + start.1,
+                                level.num_zeros + end.1,
+                            )));
+                        }
+                    }
+                }
+            });
+        }
+        for x in traversal.results() {
+            counts[x.key] += x.val.end - x.val.start;
+        }
         counts
     }
+}
+
+// Return the union of set bits across all masks in `masks`
+fn union_masks(masks: &[u32]) -> u32 {
+    masks.iter().copied().reduce(set_bits).unwrap_or(0)
 }
 
 fn mask_range(range: Range<u32>, mask: u32) -> Range<u32> {
@@ -441,6 +437,18 @@ fn set_bits(value: u32, mask: u32) -> u32 {
 
 fn unset_bits(value: u32, mask: u32) -> u32 {
     value & !mask
+}
+
+// given a current acc value, compute the acc value after visiting the node represented by `node_range`
+// when the target search range is `symbol_range`.
+// basically, decide whether to set or un-set the bits based on whether the node range is fully contained
+// within symbol_range.
+fn accumulate_mask(node_range: Range<u32>, mask: u32, symbol_range: &Range<u32>, acc: u32) -> u32 {
+    toggle_bits(
+        acc,
+        mask,
+        fully_contains(symbol_range, &mask_range(node_range, mask)),
+    )
 }
 
 // acc represents an accumulated mask consisting of the set/unset
@@ -842,19 +850,19 @@ impl<V: BitVec> WaveletMatrix<V> {
                 // if it is the same as the `start` of the current range.
                 let mut rank_cache = RangedRankCache::new();
                 for x in xs {
-                    let CountAll { symbol, start, end } = x.value;
+                    let CountAll { symbol, start, end } = x.val;
                     // let start = level.ranks(start);
                     // let end = level.ranks(end);
                     let (start, end) = rank_cache.get(start, end, level);
 
                     // if there are any left children, go left
                     if start.0 != end.0 {
-                        go.left(x.value(CountAll::new(symbol, start.0, end.0)));
+                        go.left(x.val(CountAll::new(symbol, start.0, end.0)));
                     }
 
                     // if there are any right children, set the level bit and go right
                     if start.1 != end.1 {
-                        go.right(x.value(CountAll::new(
+                        go.right(x.val(CountAll::new(
                             symbol + level.bit,
                             level.num_zeros + start.1,
                             level.num_zeros + end.1,
@@ -876,14 +884,14 @@ impl<V: BitVec> WaveletMatrix<V> {
         for level in self.levels(0) {
             traversal.traverse(|xs, go| {
                 for x in xs {
-                    let (index, symbol) = x.value;
+                    let (index, symbol) = x.val;
                     if !level.bv.get(index) {
                         let index = level.bv.rank0(index);
-                        go.left(x.value((index, symbol)));
+                        go.left(x.val((index, symbol)));
                     } else {
                         let index = level.num_zeros + level.bv.rank1(index);
                         let symbol = symbol + level.bit;
-                        go.right(x.value((index, symbol)));
+                        go.right(x.val((index, symbol)));
                     }
                 }
             });
@@ -922,12 +930,12 @@ impl<V: BitVec> WaveletMatrix<V> {
     }
 }
 
-fn range_overlaps<T: BitBlock>(a: &Range<T>, b: &Range<T>) -> bool {
+fn overlaps<T: BitBlock>(a: &Range<T>, b: &Range<T>) -> bool {
     a.start < b.end && b.start < a.end
 }
 
 // Return true if a fully contains b
-fn range_includes<T: BitBlock>(a: &Range<T>, b: &Range<T>) -> bool {
+fn fully_contains<T: BitBlock>(a: &Range<T>, b: &Range<T>) -> bool {
     // if a starts before b, and a ends after b.
     a.start <= b.start && a.end >= b.end
 }
