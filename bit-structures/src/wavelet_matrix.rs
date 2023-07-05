@@ -343,7 +343,7 @@ impl WaveletMatrix<Dense> {
                         // since we can early-out not only if a contiguous 'xy' range is detected, but also
                         // a contiguous 'yx' range – so long as the symbol range is contained in the most
                         // recent branching in all dimensions, we can stop the recursion early and count the
-                        // elements in the node, since all children are contained within the query range.
+                        // node's children, since that means all children are contained within the query range.
                         //
                         // Each "dimension" is indicated by a different mask. So far, use cases have meant that
                         // each bit of the symbol is assigned to at most one mask.
