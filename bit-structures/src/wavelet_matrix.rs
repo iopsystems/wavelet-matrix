@@ -9,7 +9,7 @@ use std::{collections::VecDeque, ops::Range};
 // - in the symbol count 64 test, try varying the range of the query so it is not always 1..wm.len().
 // - audit whether we recurse into zero-width nodes in any cases
 //   - i think we can check start.0 != end.0 and start.1 != end.1
-//   - we fixed this in count_symbol_ranges
+//   - we fixed this in count_symbol_range_batch
 // - verify that the intermediate traversals are indeed in ascending wavelet matrix order
 // - consider a SymbolCount struct rather than returning tuples
 // - ignore_bits
@@ -50,12 +50,14 @@ pub struct Traversal<T> {
 // Traverse a wavelet matrix levelwise, at each level maintaining tree nodes
 // in order they appear in the wavelet matrix (left children preceding right).
 impl<T> Traversal<T> {
-    fn new() -> Self {
-        Self {
+    fn new(values: impl IntoIterator<Item = T>) -> Self {
+        let mut traversal = Self {
             cur: VecDeque::new(),
             next: VecDeque::new(),
             num_left: 0,
-        }
+        };
+        traversal.init(values);
+        traversal
     }
 
     fn init(&mut self, values: impl IntoIterator<Item = T>) {
@@ -263,11 +265,11 @@ impl WaveletMatrix<Dense> {
         range: Range<u32>,
         masks: &[u32],
     ) -> u32 {
-        let mut traversal = Traversal::new();
-        traversal.init(std::iter::once((0, 0, range.start, range.end)));
+        let all_masks = masks.iter().copied().reduce(set_bits).unwrap_or(0);
+
+        let mut traversal = Traversal::new(std::iter::once((0, 0, range.start, range.end)));
 
         let mut count = 0;
-        let all_masks = masks.iter().copied().reduce(set_bits).unwrap_or(0);
 
         for (level, &mask) in self.levels.iter().zip(masks) {
             let level_range = mask_range(&symbol_range, mask);
@@ -319,7 +321,7 @@ impl WaveletMatrix<Dense> {
     // note: visits individual quadtree nodes, even those that are adjacent in the z-order.
     // so eg. the border query on an 8x8 grid (querying the 6x6 interior) will visit 39 tree
     // nodes, short-circuiting 20.
-    pub fn count_symbol_ranges(
+    pub fn count_symbol_range_batch(
         &self,
         symbol_ranges: &[Range<u32>],
         range: Range<u32>,
@@ -328,11 +330,12 @@ impl WaveletMatrix<Dense> {
         assert!(symbol_ranges
             .iter()
             .all(|symbol_range| !symbol_range.is_empty()));
-        let mut traversal = Traversal::new();
         // (mask accumulator, leftmost symbol of node, start, end)
         // the mask accumulator contains the status of whether this node's range is fully included in the
         // symbol range for that dimension. if all mask bits are set, we can stop the recursion early.
-        traversal.init(std::iter::repeat((0, 0, range.start, range.end)).take(symbol_ranges.len()));
+        let mut traversal = Traversal::new(
+            std::iter::repeat((0, 0, range.start, range.end)).take(symbol_ranges.len()),
+        );
 
         let mut counts = vec![0; symbol_ranges.len()];
         let mut nodes_visited = 0;
@@ -788,8 +791,7 @@ impl<V: BitVec> WaveletMatrix<V> {
             assert!(range.end <= self.len());
         }
 
-        let mut traversal = Traversal::new();
-        traversal.init(ranges.iter().map(|range| CountAll {
+        let mut traversal = Traversal::new(ranges.iter().map(|range| CountAll {
             symbol: V::zero(),
             start: range.start,
             end: range.end,
@@ -830,10 +832,8 @@ impl<V: BitVec> WaveletMatrix<V> {
 
     pub fn get_batch(&self, indices: &[V::Ones]) -> Traversal<(V::Ones, V::Ones)> {
         // stores (wm index, symbol) entries, each corresponding to an input index.
-        let mut traversal = Traversal::new();
         // todo: struct for IndexSymbol?
-        let iter = indices.iter().copied().map(|index| (index, V::zero()));
-        traversal.init(iter);
+        let mut traversal = Traversal::new(indices.iter().copied().map(|index| (index, V::zero())));
 
         for level in self.levels(0) {
             traversal.traverse(|xs, go| {
@@ -1094,7 +1094,7 @@ mod tests {
 
         // todo: implement batch queries for batches of symbol ranges in the same wm range
         let start_time = SystemTime::now();
-        let res = wm.count_symbol_ranges(&queries, 0..wm.len(), &masks);
+        let res = wm.count_symbol_range_batch(&queries, 0..wm.len(), &masks);
         let end_time = SystemTime::now();
         println!(
             "time for batch query on {:?} inputs: {:?}",
