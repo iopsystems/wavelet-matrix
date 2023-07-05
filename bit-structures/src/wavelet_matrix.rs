@@ -384,29 +384,22 @@ impl WaveletMatrix<Dense> {
         // virtual bottom level of the wavelet tree, each node representing an individual symbol,
         // so there should be no uncounted nodes left over. This is a bit subtle when masks are
         // involved but I think the same logic applies.
-        // if masks.len() == self.num_levels() {
-        //     // dbg!(traversal.results());
-        //     if !traversal.is_empty() {
-        //         dbg!(symbol_ranges);
-        //     }
-        //     debug_assert!(traversal.is_empty());
-        // } else {
-        //     // Count any nodes left over in the traversal if it didn't traverse all levels,
-        //     // ie. some bottom levels were ignored.
-        //     //
-        //     // I'm not sure if this is actually the behavior we want – it means that symbols
-        //     // outside the range will be counted...
-        //     //
-        //     // Yeah, let's comment this out for now and leave this note here to decide later.
-        //     //
-        //     // for x in traversal.results() {
-        //     //     counts[x.key] += x.val.end - x.val.start;
-        //     // }
-        // }
-
-        for x in traversal.results() {
-            counts[x.key] += x.val.end - x.val.start;
+        if masks.len() == self.num_levels() {
+            debug_assert!(traversal.is_empty());
+        } else {
+            // Count any nodes left over in the traversal if it didn't traverse all levels,
+            // ie. some bottom levels were ignored.
+            //
+            // I'm not sure if this is actually the behavior we want – it means that symbols
+            // outside the range will be counted...
+            //
+            // Yeah, let's comment this out for now and leave this note here to decide later.
+            //
+            // for x in traversal.results() {
+            //     counts[x.key] += x.val.end - x.val.start;
+            // }
         }
+
         counts
     }
 }
