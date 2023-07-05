@@ -3,6 +3,7 @@ use crate::bit_block::BitBlock;
 use crate::morton;
 use crate::{bit_buf::BitBuf, bit_vec::BitVec, dense_bit_vec::DenseBitVec};
 use num::{One, Zero};
+use std::debug_assert;
 use std::{collections::VecDeque, ops::Range};
 
 // todo
@@ -375,6 +376,13 @@ impl WaveletMatrix<Dense> {
                 }
             });
         }
+        if masks.len() == self.num_levels() {
+            debug_assert!(traversal.is_empty());
+        }
+        // Count any nodes left over in the traversal if it didn't traverse all levels.
+        // I'm not sure what the meaning of this is yet – maybe it should be removed,
+        // which would mean that only nodes that are fully contained in all dimensions
+        // up to the queried level would be counted.
         for x in traversal.results() {
             counts[x.key] += x.val.end - x.val.start;
         }
