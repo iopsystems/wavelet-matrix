@@ -287,50 +287,10 @@ impl WaveletMatrix<Dense> {
         range: Range<u32>,
         masks: &[u32],
     ) -> u32 {
-        let all_masks = union_masks(masks);
-        let mut count = 0;
-        let mut traversal = Traversal::new([CountSymbolRange::new(0, 0, range.start, range.end)]);
-        for (level, mask) in self.levels.iter().zip(masks.iter().copied()) {
-            let symbol_range = mask_range(symbol_range.clone(), mask);
-            traversal.traverse(|xs, go| {
-                let mut rank_cache = RangedRankCache::new();
-                for x in xs {
-                    let (left, mid, right) = level.splits(x.val.left);
-                    let (start, end) = rank_cache.get(x.val.start, x.val.end, level);
-
-                    // left child
-                    if start.0 != end.0 {
-                        let acc = accumulate_mask(left..mid, mask, &symbol_range, x.val.acc);
-                        if acc == all_masks {
-                            count += end.0 - start.0;
-                        } else if overlaps(&symbol_range, &mask_range(left..mid, mask)) {
-                            go.left(x.val(CountSymbolRange::new(acc, left, start.0, end.0)));
-                        }
-                    }
-
-                    // right child
-                    if start.1 != end.1 {
-                        let acc = accumulate_mask(mid..right, mask, &symbol_range, x.val.acc);
-                        if acc == all_masks {
-                            count += end.1 - start.1;
-                        } else if overlaps(&symbol_range, &mask_range(mid..right, mask)) {
-                            go.right(x.val(CountSymbolRange::new(
-                                acc,
-                                mid,
-                                level.num_zeros + start.1,
-                                level.num_zeros + end.1,
-                            )));
-                        }
-                    }
-                }
-            });
-        }
-
-        for x in traversal.results() {
-            count += x.val.end - x.val.start;
-        }
-
-        count
+        self.count_symbol_range_batch(&[symbol_range], range, masks)
+            .first()
+            .copied()
+            .unwrap()
     }
 
     // Count the number of occurences of symbols in each of the symbol ranges,
