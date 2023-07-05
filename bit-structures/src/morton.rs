@@ -1,6 +1,7 @@
 // Translated to Rust from C code provided by Fabian Geisen:
 // https://fgiesen.wordpress.com/2009/12/13/decoding-morton-codes/
-// Note: we can implelement 4d codes by performing two 2d interleavings.
+// Note: We can implelement 4d codes by performing two 2d interleavings.
+// Note: This encodes 2d as yxyxyxyx and 3d as zyxzyxzyxzyx.
 
 pub const fn encode(range: std::ops::Range<u32>) -> u32 {
     encode2(range.start, range.end)
