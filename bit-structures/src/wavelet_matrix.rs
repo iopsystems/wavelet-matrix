@@ -39,7 +39,7 @@ impl<T: BitBlock> CountAll<T> {
 
 // type representing the state of an individual traversal path down the wavelet tree
 // during a count_symbol_range operation
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, Debug)]
 struct CountSymbolRange {
     acc: u32,   // mask accumulator
     left: u32,  // left symbol
@@ -328,27 +328,30 @@ impl WaveletMatrix<Dense> {
                     // Left, middle, and right symbol indices for the children of this node.
                     let (left, mid, right) = level.splits(x.val.left);
 
-                    // Tuples representing the rank0/1 of start and rank0/1 of end
+                    // Tuples representing the rank0/1 of start and rank0/1 of end.
                     let (start, end) = rank_cache.get(x.val.start, x.val.end, level);
 
                     // Check the left child if there are any elements there
                     if start.0 != end.0 {
                         // Determine whether we can short-circuit the recursion because the symbols
-                        // represented by the left child are fully contained in symbol_range.
-                        // We need to consider more than just this dimension, though, since we can
-                        // only stop the recursion at the point when the symbol ranges are contained
-                        // in all dimensions.
-                        // Each "dimension" is indicated by a different mask, with each symbol bit
-                        // assigned to exactly one mask. We accumulate masks by setting the bits in the
-                        // accumulator that correspond to all the 1-bits in this mask if the (masked) node
-                        // range is fully contained in the (masked) query symbol range, and unsets them otherwise.
-                        // When we see that all bits are set, then we can stop the recursion because it means
-                        // that the most recent check in each dimension indicated that the symbols represented
-                        // by this node are fully contained in the query symbol range.
-                        // Note that we check against the union across all provided masks, so we don't need to
-                        // query all levels if we don't want to.
-                        // The masks array can also be shorter than the number of levels, which means that the
-                        // query will ignore the levels below that (aggregating across them).
+                        // represented by the left child are fully contained in symbol_range in all
+                        // dimensions (ie. for all distinct masks). For example, if the masks represent
+                        // a two-dimensional query, we need to check that (effectively) the quadtree
+                        // node, represented by two contiguous dimensions, is contained. It's a bit subtle
+                        // since we can early-out not only if a contiguous 'xy' range is detected, but also
+                        // a contiguous 'yx' range – so long as the symbol range is contained in the most
+                        // recent branching in all dimensions, we can stop the recursion early and count the
+                        // elements in the node, since all children are contained within the query range.
+                        //
+                        // Each "dimension" is indicated by a different mask. So far, use cases have meant that
+                        // each bit of the symbol is assigned to at most one mask.
+                        //
+                        // To accumulate a new mask to the accumulator, we will either set or un-set all the bits
+                        // corresponding to this mask. We will set them if the symbol range represented by this node
+                        // is fully contained in the query range, and un-set them otherwise.
+                        //
+                        // If the node is contained in all dimensions, then the accumulator will be equal to all_masks,
+                        // and we can stop the recursion early.
                         let acc = accumulate_mask(left..mid, mask, &symbol_range, x.val.acc);
                         if acc == all_masks {
                             counts[x.key] += end.0 - start.0;
@@ -376,17 +379,31 @@ impl WaveletMatrix<Dense> {
                 }
             });
         }
+
         // For complete queries, the last iteration of the loop above finds itself recursing to the
         // virtual bottom level of the wavelet tree, each node representing an individual symbol,
         // so there should be no uncounted nodes left over. This is a bit subtle when masks are
         // involved but I think the same logic applies.
-        if masks.len() == self.num_levels() {
-            debug_assert!(traversal.is_empty());
-        }
-        // Count any nodes left over in the traversal if it didn't traverse all levels.
-        // I'm not sure what the meaning of this is yet – maybe it should be removed,
-        // which would mean that only nodes that are fully contained in all dimensions
-        // up to the queried level would be counted.
+        // if masks.len() == self.num_levels() {
+        //     // dbg!(traversal.results());
+        //     if !traversal.is_empty() {
+        //         dbg!(symbol_ranges);
+        //     }
+        //     debug_assert!(traversal.is_empty());
+        // } else {
+        //     // Count any nodes left over in the traversal if it didn't traverse all levels,
+        //     // ie. some bottom levels were ignored.
+        //     //
+        //     // I'm not sure if this is actually the behavior we want – it means that symbols
+        //     // outside the range will be counted...
+        //     //
+        //     // Yeah, let's comment this out for now and leave this note here to decide later.
+        //     //
+        //     // for x in traversal.results() {
+        //     //     counts[x.key] += x.val.end - x.val.start;
+        //     // }
+        // }
+
         for x in traversal.results() {
             counts[x.key] += x.val.end - x.val.start;
         }
