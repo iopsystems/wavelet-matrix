@@ -425,15 +425,20 @@ fn unset_bits(value: u32, mask: u32) -> u32 {
 // when the target search range is `symbol_range`.
 // basically, decide whether to set or un-set the bits based on whether the node range is fully contained
 // within symbol_range.
-fn accumulate_mask(node_range: Range<u32>, mask: u32, symbol_range: &Range<u32>, acc: u32) -> u32 {
+fn accumulate_mask(
+    node_range: Range<u32>,
+    mask: u32,
+    symbol_range: &Range<u32>,
+    accumulator: u32,
+) -> u32 {
     toggle_bits(
-        acc,
+        accumulator,
         mask,
         fully_contains(symbol_range, &mask_range(node_range, mask)),
     )
 }
 
-// acc represents an accumulated mask consisting of the set/unset
+// accumulator represents an accumulated mask consisting of the set/unset
 // bits resulting from previous calls to this function.
 // the idea is that we want to toggle individual masks on and off
 // such that we can detect if there is ever a time that all have
@@ -441,13 +446,13 @@ fn accumulate_mask(node_range: Range<u32>, mask: u32, symbol_range: &Range<u32>,
 // since mask bits are disjoint (eg. the x bits are distinct from
 // y bits in 2d morton order), we can tell whether they're all set
 // by checking equality with u32::MAX.
-// This function conditionally toggles the bits in `acc` specified by `mask`
+// This function conditionally toggles the bits in `accumulator` specified by `mask`
 // on or off, based on the value of `cond`.
-fn toggle_bits(acc: u32, mask: u32, cond: bool) -> u32 {
+fn toggle_bits(accumulator: u32, mask: u32, cond: bool) -> u32 {
     if cond {
-        set_bits(acc, mask)
+        set_bits(accumulator, mask)
     } else {
-        unset_bits(acc, mask)
+        unset_bits(accumulator, mask)
     }
 }
 
