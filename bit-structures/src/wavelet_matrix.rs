@@ -3,6 +3,7 @@ use crate::bit_block::BitBlock;
 use crate::morton;
 use crate::{bit_buf::BitBuf, bit_vec::BitVec, dense_bit_vec::DenseBitVec};
 use num::{One, Zero};
+use std::ops::Deref;
 use std::{collections::VecDeque, ops::Range};
 
 // todo
@@ -149,6 +150,17 @@ pub struct KeyValue<T> {
     pub value: T,
 }
 
+// note: experimenting with this as a usability improvement, so that we can use the value
+// passed to the traversal callback as a T.
+// question: are there performance implications vs. destructuring once inside the callback?
+impl<T> Deref for KeyValue<T> {
+    type Target = T;
+
+    fn deref(&self) -> &Self::Target {
+        &self.value
+    }
+}
+
 // Associate a usize key to an arbitrary value; used for propagating the metadata
 // of which original query element a partial query result is associated with as we
 // traverse the wavelet tree
@@ -265,9 +277,23 @@ impl WaveletMatrix<Dense> {
         range: Range<u32>,
         masks: &[u32],
     ) -> u32 {
+        // type representing the state of an individual traversal path down the wavelet tree
+        #[derive(Copy, Clone)]
+        struct Val {
+            acc: u32,
+            left_symbol: u32,
+            start: u32,
+            end: u32,
+        }
+
         let all_masks = masks.iter().copied().reduce(set_bits).unwrap_or(0);
-        let mut traversal = Traversal::new(std::iter::once((0, 0, range.start, range.end)));
         let mut count = 0;
+        let mut traversal = Traversal::new(std::iter::once(Val {
+            acc: 0,
+            left_symbol: 0,
+            start: range.start,
+            end: range.end,
+        }));
 
         for (level, &mask) in self.levels.iter().zip(masks) {
             let level_range = mask_range(symbol_range.clone(), mask);
@@ -275,37 +301,40 @@ impl WaveletMatrix<Dense> {
             traversal.traverse(|xs, go| {
                 let mut rank_cache = RangedRankCache::new();
                 for x in xs {
-                    let (acc, left_symbol, start, end) = x.value;
-                    debug_assert!(!(start..end).is_empty());
-
-                    let (start, end) = rank_cache.get(start, end, level);
-
+                    debug_assert!(!(x.start..x.end).is_empty());
+                    let (start, end) = rank_cache.get(x.start, x.end, level);
                     if start.0 != end.0 {
                         // left child
-                        let child_range = mask_range(left_symbol..left_symbol + b, mask);
+                        let child_range = mask_range(x.left_symbol..x.left_symbol + b, mask);
                         let includes = range_includes(&level_range, &child_range);
-                        let acc = accumulate_masks(acc, mask, includes);
+                        let acc = accumulate_masks(x.acc, mask, includes);
                         if acc == all_masks {
                             count += end.0 - start.0;
                         } else if range_overlaps(&level_range, &child_range) {
-                            go.left(x.value((acc, left_symbol, start.0, end.0)));
+                            go.left(x.value(Val {
+                                acc,
+                                left_symbol: x.left_symbol,
+                                start: start.0,
+                                end: end.0,
+                            }));
                         }
                     }
 
                     if start.1 != end.1 {
                         // right child
-                        let child_range = mask_range(left_symbol + b..left_symbol + b + b, mask);
+                        let child_range =
+                            mask_range(x.left_symbol + b..x.left_symbol + b + b, mask);
                         let includes = range_includes(&level_range, &child_range);
-                        let acc = accumulate_masks(acc, mask, includes);
+                        let acc = accumulate_masks(x.acc, mask, includes);
                         if acc == all_masks {
                             count += end.1 - start.1;
                         } else if range_overlaps(&level_range, &child_range) {
-                            go.right(x.value((
+                            go.right(x.value(Val {
                                 acc,
-                                left_symbol + b,
-                                level.num_zeros + start.1,
-                                level.num_zeros + end.1,
-                            )));
+                                left_symbol: x.left_symbol + b,
+                                start: level.num_zeros + start.1,
+                                end: level.num_zeros + end.1,
+                            }));
                         }
                     }
                 }
