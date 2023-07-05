@@ -114,6 +114,10 @@ impl<T> Traversal<T> {
     pub fn is_empty(&self) -> bool {
         self.cur.is_empty()
     }
+
+    pub fn next_is_empty(&self) -> bool {
+        self.next.is_empty()
+    }
 }
 
 struct Go<'a, T> {
@@ -379,7 +383,7 @@ impl WaveletMatrix<Dense> {
             });
         }
 
-        assert!(traversal.is_empty());
+        assert!(traversal.next_is_empty());
 
         // dbg!(nodes_visited, nodes_skipped);
         counts
