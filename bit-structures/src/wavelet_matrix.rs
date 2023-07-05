@@ -376,6 +376,10 @@ impl WaveletMatrix<Dense> {
                 }
             });
         }
+        // For complete queries, the last iteration of the loop above finds itself recursing to the
+        // virtual bottom level of the wavelet tree, each node representing an individual symbol,
+        // so there should be no uncounted nodes left over. This is a bit subtle when masks are
+        // involved but I think the same logic applies.
         if masks.len() == self.num_levels() {
             debug_assert!(traversal.is_empty());
         }
