@@ -18,6 +18,7 @@ pub mod utils;
 mod bincode_helpers;
 mod dense_multi_bit_vec;
 mod morton;
+mod nonempty_extent;
 mod wasm_dense_bit_vec_32;
 mod wasm_histogram32;
 mod wasm_sparse_bit_vec_32;

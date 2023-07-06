@@ -7,6 +7,7 @@ use std::ops::{
 
 // todo:
 // - audit uses of .usize() and switch to as_usize() where appropriate
+// - consider using PrimInt for u8 and u16, keeping BitBlock to u32 and u64 only
 
 /// Trait representing an unsigned integer type used as a block of bits,
 /// which allows our bit-based structures to be generic over block sizes.
@@ -158,6 +159,7 @@ macro_rules! bit_block_impl {
                 <$t>::try_from(value).unwrap()
             }
         }
+
      )*)
  }
 

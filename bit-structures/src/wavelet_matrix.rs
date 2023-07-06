@@ -1,6 +1,7 @@
 use crate::bincode_helpers::{borrow_decode_impl, decode_impl, encode_impl};
 use crate::bit_block::BitBlock;
 use crate::morton;
+use crate::nonempty_extent::Extent;
 use crate::{bit_buf::BitBuf, bit_vec::BitVec, dense_bit_vec::DenseBitVec};
 use num::{One, Zero};
 use std::debug_assert;
@@ -44,7 +45,7 @@ impl<T: BitBlock> CountAll<T> {
 // during a count_symbol_range operation
 #[derive(Copy, Clone, Debug)]
 struct CountSymbolRange {
-    acc: u32,   // mask accumulator
+    acc: u32,   // mask accumulator for the levels traversed so far
     left: u32,  // leftmost symbol in the node
     start: u32, // index  range start
     end: u32,   // index range end
@@ -94,7 +95,7 @@ impl<T> Traversal<T> {
         self.num_left = 0;
     }
 
-    fn traverse(&mut self, mut f: impl FnMut(&[KeyVal<T>], &mut Go<KeyVal<T>>)) {
+    fn traverse(&mut self, mut f: impl FnMut(&[KeyVal<T>], &mut Goer<KeyVal<T>>)) {
         // precondition: `next` contains things to traverse.
         // postcondition: `next` has the next things to traverse, with (reversed)
         // left children followed by (non-reversed) right children, and num_left
@@ -115,7 +116,7 @@ impl<T> Traversal<T> {
 
         // for lifetime reasons (to avoid having to pass &mut self into f), create
         // an auxiliary structure to let f recurse left and right.
-        let mut go = Go {
+        let mut go = Goer {
             next: &mut self.next,
             num_left: 0,
         };
@@ -146,12 +147,14 @@ impl<T> Traversal<T> {
     }
 }
 
-struct Go<'a, T> {
+// Passed into the traversal callback as a way to control the recursion.
+// Goes left and/or right.
+struct Goer<'a, T> {
     next: &'a mut VecDeque<T>,
     num_left: usize,
 }
 
-impl<T> Go<'_, T> {
+impl<T> Goer<'_, T> {
     fn left(&mut self, kv: T) {
         // left children are appended to the front of the queue
         // which causes them to be in reverse order
@@ -197,27 +200,6 @@ impl<T> KeyVal<T> {
         KeyVal { val: value, ..self }
     }
 }
-
-#[derive(Debug)]
-pub struct WaveletMatrix<V: BitVec> {
-    levels: Vec<Level<V>>, // wm levels (bit planes)
-    max_symbol: u32,       // maximum symbol value
-    len: V::Ones,          // number of symbols
-}
-
-impl<V: BitVec> bincode::Encode for WaveletMatrix<V> {
-    encode_impl!(levels, max_symbol, len);
-}
-impl<V: BitVec> bincode::Decode for WaveletMatrix<V> {
-    decode_impl!(levels, max_symbol, len);
-}
-impl<'de, V: BitVec> bincode::BorrowDecode<'de> for WaveletMatrix<V> {
-    borrow_decode_impl!(levels, max_symbol, len);
-}
-
-// store (rank0, rank1)
-#[derive(Copy, Clone)]
-struct Ranks<T>(T, T);
 
 struct RangedRankCache<V: BitVec> {
     end_index: Option<V::Ones>, // previous end index
@@ -265,6 +247,23 @@ impl<V: BitVec> RangedRankCache<V> {
             self.num_hits + self.num_misses,
         );
     }
+}
+
+#[derive(Debug)]
+pub struct WaveletMatrix<V: BitVec> {
+    levels: Vec<Level<V>>, // wm levels (bit planes)
+    max_symbol: u32,       // maximum symbol value
+    len: V::Ones,          // number of symbols
+}
+
+impl<V: BitVec> bincode::Encode for WaveletMatrix<V> {
+    encode_impl!(levels, max_symbol, len);
+}
+impl<V: BitVec> bincode::Decode for WaveletMatrix<V> {
+    decode_impl!(levels, max_symbol, len);
+}
+impl<'de, V: BitVec> bincode::BorrowDecode<'de> for WaveletMatrix<V> {
+    borrow_decode_impl!(levels, max_symbol, len);
 }
 
 impl WaveletMatrix<Dense> {
@@ -416,7 +415,16 @@ fn mask_range<T: BitBlock>(range: Range<T>, mask: T) -> Range<T> {
     (range.start & mask)..((range.end - T::one()) & mask) + T::one()
 }
 
+fn mask_extent<T: BitBlock>(extent: Extent<T>, mask: u32) -> Extent<T> {
+    let mask = T::from_u32(mask);
+    Extent::new(extent.start() & mask, extent.end() & mask)
+}
+
 fn mask_symbol<T: BitBlock>(symbol: T, mask: T) -> T {
+    symbol & mask
+}
+
+fn masked<T: BitBlock>(symbol: T, mask: T) -> T {
     symbol & mask
 }
 
@@ -604,6 +612,10 @@ impl<'de, V: BitVec> bincode::BorrowDecode<'de> for Level<V> {
     borrow_decode_impl!(bv, num_zeros, bit);
 }
 
+// Stores (rank0, rank1) as resulting from the Level::ranks function
+#[derive(Copy, Clone)]
+struct Ranks<T>(T, T);
+
 impl<V: BitVec> Level<V> {
     // Returns (rank0(index), rank1(index))
     // This means that if x = ranks(index), x.0 is rank0 and x.1 is rank1.
@@ -623,6 +635,15 @@ impl<V: BitVec> Level<V> {
     // - right is one past the end of the right node
     pub fn splits(&self, left: V::Ones) -> (V::Ones, V::Ones, V::Ones) {
         (left, left + self.bit, left + self.bit + self.bit)
+    }
+
+    pub fn children(&self, left: V::Ones, mask: u32) -> (Extent<V::Ones>, Extent<V::Ones>) {
+        let mid = left + self.bit;
+        let right = mid + self.bit;
+        (
+            mask_extent(Extent::new(left, mid - V::one()), mask),
+            mask_extent(Extent::new(mid, right - V::one()), mask),
+        )
     }
 }
 
@@ -815,14 +836,19 @@ impl<V: BitVec> WaveletMatrix<V> {
     }
 
     pub fn count_all(&self, range: Range<V::Ones>) -> Traversal<CountAll<V::Ones>> {
-        self.count_all_batch(0..self.max_symbol() + 1, &[range], &self.default_masks())
+        self.count_all_batch(
+            V::zero()..V::Ones::from_u32(self.max_symbol() + 1),
+            &[range],
+            &self.default_masks(),
+        )
     }
 
     pub fn default_masks(&self) -> Vec<u32> {
-        std::iter::repeat(u32::MAX) // V::Ones::max_value()
+        std::iter::repeat(u32::max_value())
             .take(self.num_levels())
             .collect()
     }
+
     // Count the number of occurrences of each symbol in the given index range.
     // Returns a vec of (input_index, symbol, start, end) tuples.
     // Returning (start, end) rather than a count `end - start` is helpful for
@@ -833,7 +859,7 @@ impl<V: BitVec> WaveletMatrix<V> {
     // ranges that share a midpoint, ie. [a..b, b..c, c..d]?
     pub fn count_all_batch(
         &self,
-        symbol_range: Range<u32>,
+        symbol_range: Range<V::Ones>,
         ranges: &[Range<V::Ones>],
         masks: &[u32],
     ) -> Traversal<CountAll<V::Ones>> {
@@ -847,40 +873,30 @@ impl<V: BitVec> WaveletMatrix<V> {
             end: range.end,
         }));
 
+        assert!(!symbol_range.is_empty());
+        let symbol_extent = Extent::new(symbol_range.start, symbol_range.end - V::one());
+
         for (level, mask) in self.levels.iter().zip(masks.iter().copied()) {
-            let symbol_range = mask_range(symbol_range.clone(), mask);
+            // let symbol_extent = mask_range(symbol_extent.clone(), mask);
+            // let mask = V::Ones::from_u32(mask); // todo: mask should be the same type as the symbol
+            let symbol_extent = mask_extent(symbol_extent, mask);
             traversal.traverse(|xs, go| {
                 // Cache the most recent rank call in case the next one is the same.
                 // This means caching the `end` of the previous range, and checking
                 // if it is the same as the `start` of the current range.
                 let mut rank_cache = RangedRankCache::new();
                 for x in xs {
-                    let CountAll { symbol, start, end } = x.val;
-
-                    let (left, mid, right) = level.splits(symbol);
-
-                    // let (start, end) = (level.ranks(start), level.ranks(end));
-                    let (start, end) = rank_cache.get(start, end, level);
+                    let symbol = x.val.symbol;
+                    let (left, right) = level.children(symbol, mask);
+                    let (start, end) = rank_cache.get(x.val.start, x.val.end, level);
 
                     // if there are any left children, go left
-                    // note: the as_u32 calls should not be needed
-                    // (and can overflow if we have a higher tree...)
-                    if start.0 != end.0
-                        && overlaps(
-                            &symbol_range,
-                            &mask_range(left.as_u32()..mid.as_u32(), mask),
-                        )
-                    {
+                    if start.0 != end.0 && symbol_extent.overlaps(left) {
                         go.left(x.val(CountAll::new(symbol, start.0, end.0)));
                     }
 
                     // if there are any right children, set the level bit and go right
-                    if start.1 != end.1
-                        && overlaps(
-                            &symbol_range,
-                            &mask_range(mid.as_u32()..right.as_u32(), mask),
-                        )
-                    {
+                    if start.1 != end.1 && symbol_extent.overlaps(right) {
                         go.right(x.val(CountAll::new(
                             symbol + level.bit,
                             level.num_zeros + start.1,
