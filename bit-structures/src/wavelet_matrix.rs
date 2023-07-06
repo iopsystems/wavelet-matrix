@@ -835,12 +835,13 @@ impl<V: BitVec> WaveletMatrix<V> {
         symbol
     }
 
-    pub fn count_all(&self, range: Range<V::Ones>) -> Traversal<CountAll<V::Ones>> {
-        self.count_all_batch(
-            V::zero()..V::Ones::from_u32(self.max_symbol() + 1),
-            &[range],
-            &self.default_masks(),
-        )
+    pub fn count_all(
+        &self,
+        symbol_range: Extent<V::Ones>,
+        range: Range<V::Ones>,
+        masks: &[u32],
+    ) -> Traversal<CountAll<V::Ones>> {
+        self.count_all_batch(symbol_range, &[range], masks)
     }
 
     pub fn default_masks(&self) -> Vec<u32> {
@@ -859,7 +860,7 @@ impl<V: BitVec> WaveletMatrix<V> {
     // ranges that share a midpoint, ie. [a..b, b..c, c..d]?
     pub fn count_all_batch(
         &self,
-        symbol_range: Range<V::Ones>,
+        symbol_extent: Extent<V::Ones>,
         ranges: &[Range<V::Ones>],
         masks: &[u32],
     ) -> Traversal<CountAll<V::Ones>> {
@@ -872,9 +873,6 @@ impl<V: BitVec> WaveletMatrix<V> {
             start: range.start,
             end: range.end,
         }));
-
-        assert!(!symbol_range.is_empty());
-        let symbol_extent = Extent::new(symbol_range.start, symbol_range.end - V::one());
 
         for (level, mask) in self.levels.iter().zip(masks.iter().copied()) {
             // let symbol_extent = mask_range(symbol_extent.clone(), mask);

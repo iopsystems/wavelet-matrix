@@ -1,6 +1,8 @@
 use crate::dense_bit_vec::DenseBitVec;
+use crate::nonempty_extent::Extent;
 use crate::wavelet_matrix;
 use crate::{wasm_bindgen, wavelet_matrix::WaveletMatrix};
+use js_sys::Reflect;
 use js_sys::Uint32Array;
 use wasm_bindgen::JsValue;
 
@@ -52,18 +54,39 @@ impl WaveletMatrix32 {
         self.0.select(symbol, k, range_lo..range_hi)
     }
 
-    pub fn count_all(&self, range_lo: Ones, range_hi: Ones) -> Result<JsValue, String> {
-        self.count_all_batch(&[range_lo, range_hi])
+    pub fn count_all(
+        &self,
+        symbol_range_lo: Ones,
+        symbol_range_hi_inclusve: Ones,
+        range_lo: Ones,
+        range_hi: Ones,
+        masks: &[u32],
+    ) -> Result<JsValue, String> {
+        self.count_all_batch(
+            symbol_range_lo,
+            symbol_range_hi_inclusve,
+            &[range_lo, range_hi],
+            masks,
+        )
     }
 
     // ranges alternates lo, hi, lo, hi, ...
     // because i could not find an efficient way to pass a nested slice or similar
-    pub fn count_all_batch(&self, ranges: &[Ones]) -> Result<JsValue, String> {
+    pub fn count_all_batch(
+        &self,
+        symbol_range_lo: Ones,
+        symbol_range_hi_inclusve: Ones,
+        ranges: &[Ones],
+        masks: &[u32],
+    ) -> Result<JsValue, String> {
         assert!(ranges.len() % 2 == 0,);
         let ranges: Vec<_> = ranges.chunks_exact(2).map(|x| x[0]..x[1]).collect();
-        let mut traversal =
-            self.0
-                .count_all_batch(0..self.0.max_symbol() + 1, &ranges, &self.0.default_masks());
+        let mut traversal = self.0.count_all_batch(
+            // Extent::new(0, self.0.max_symbol()),
+            Extent::new(symbol_range_lo, symbol_range_hi_inclusve),
+            &ranges,
+            masks,
+        );
         let mut input_index = Vec::new();
         let mut symbol = Vec::new();
         let mut start = Vec::new();
@@ -79,18 +102,21 @@ impl WaveletMatrix32 {
         }
         let obj = js_sys::Object::new();
         let err = "could not set js property";
-        js_sys::Reflect::set(
+        Reflect::set(
             &obj,
             &"input_index".into(),
             &Uint32Array::from(&input_index[..]),
         )
         .expect(err);
-        js_sys::Reflect::set(&obj, &"symbol".into(), &Uint32Array::from(&symbol[..])).expect(err);
+
+        Reflect::set(&obj, &"symbol".into(), &Uint32Array::from(&symbol[..])).expect(err);
         // put count right after symbol for better output in the observable inspector
-        js_sys::Reflect::set(&obj, &"count".into(), &Uint32Array::from(&count[..])).expect(err);
-        js_sys::Reflect::set(&obj, &"start".into(), &Uint32Array::from(&start[..])).expect(err);
-        js_sys::Reflect::set(&obj, &"end".into(), &Uint32Array::from(&end[..])).expect(err);
-        js_sys::Reflect::set(&obj, &"length".into(), &symbol.len().into()).expect(err);
+        Reflect::set(&obj, &"count".into(), &Uint32Array::from(&count[..])).expect(err);
+        Reflect::set(&obj, &"start".into(), &Uint32Array::from(&start[..])).expect(err);
+        Reflect::set(&obj, &"end".into(), &Uint32Array::from(&end[..])).expect(err);
+        Reflect::set(&obj, &"length".into(), &symbol.len().into()).expect(err);
+        // js_sys::Array::get(&self, index)
+
         Ok(obj.into())
     }
 
@@ -110,8 +136,8 @@ impl WaveletMatrix32 {
             .count_symbol_range_batch(&symbol_ranges, range, &masks);
         let obj = js_sys::Object::new();
         let err = "could not set js property";
-        js_sys::Reflect::set(&obj, &"counts".into(), &Uint32Array::from(&counts[..])).expect(err);
-        js_sys::Reflect::set(&obj, &"length".into(), &counts.len().into()).expect(err);
+        Reflect::set(&obj, &"counts".into(), &Uint32Array::from(&counts[..])).expect(err);
+        Reflect::set(&obj, &"length".into(), &counts.len().into()).expect(err);
         Ok(obj.into())
     }
     pub fn len(&self) -> Ones {
@@ -120,6 +146,10 @@ impl WaveletMatrix32 {
 
     pub fn num_levels(&self) -> usize {
         self.0.num_levels()
+    }
+
+    pub fn max_symbol(&self) -> u32 {
+        self.0.max_symbol()
     }
 
     pub fn encode(&self) -> Vec<u8> {

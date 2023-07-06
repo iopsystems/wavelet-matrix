@@ -1,6 +1,7 @@
 // Represents a non-empty inclusive range.
 // The non-empty invariant is upheld upon construction
 use num::PrimInt;
+use std::ops::Range;
 
 #[derive(Copy, Clone, Debug)]
 pub struct Extent<T: PrimInt> {
@@ -30,5 +31,12 @@ impl<T: PrimInt> Extent<T> {
 
     pub fn end(&self) -> T {
         self.end
+    }
+}
+
+impl<N: PrimInt> From<Range<N>> for Extent<N> {
+    fn from(r: Range<N>) -> Self {
+        assert!(!r.is_empty());
+        Self::new(r.start, r.end - N::one())
     }
 }
