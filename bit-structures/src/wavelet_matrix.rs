@@ -33,6 +33,7 @@ pub struct CountAll<T: BitBlock> {
     pub start: T,  // index  range start
     pub end: T,    // index range end
 }
+
 impl<T: BitBlock> CountAll<T> {
     fn new(symbol: T, start: T, end: T) -> Self {
         Self { symbol, start, end }
@@ -568,7 +569,7 @@ fn build_bitvecs_large_alphabet(mut data: Vec<u32>, num_levels: usize) -> Vec<De
         levels.push(DenseBitVec::new(bits, 10, 10));
     }
 
-    // For the last level we don'T need to do anything but build the bitvector
+    // For the last level we don't need to do anything but build the bitvector
     {
         let mut bits = BitBuf::new(data.len());
         let level_bit = 1 << 0;

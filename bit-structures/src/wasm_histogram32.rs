@@ -32,6 +32,7 @@ impl Histogram32 {
         bin_indices: &[usize],
         counts: &[Ones],
     ) -> Histogram32 {
+        // note: bin indices and counts need to be parallel but need not be sorted.
         let mut b = Histogram::<V>::builder(a, b, n);
         for (&bin_index, &count) in bin_indices.iter().zip(counts.iter()) {
             b.increment_index(bin_index, count)

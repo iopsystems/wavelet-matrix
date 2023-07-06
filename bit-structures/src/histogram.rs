@@ -7,6 +7,9 @@
 // Prototype histogram visualization:
 //   https://observablehq.com/d/35f0b601ed888da9
 
+// todo:
+// - audit zero-count histogram behavior (should it return 0 for quantile queries?)
+
 use crate::bincode_helpers::{borrow_decode_impl, decode_impl, encode_impl};
 use crate::bit_block::BitBlock;
 use crate::bit_vec::{BitVecFromSorted, MultiBitVec};
@@ -61,6 +64,10 @@ impl<V: MultiBitVec> Histogram<V> {
 
     /// Return an upper bound on the value of the q-th quantile.
     pub fn quantile(&self, q: f64) -> V::Ones {
+        if self.count().is_zero() {
+            return V::zero(); // todo: should this be None?
+        }
+
         // Number of observations at or below the q-th quantile
         let k = self.quantile_to_count(q);
 
@@ -304,6 +311,14 @@ mod tests {
     use super::*;
     use crate::dense_multi_bit_vec::DenseMultiBitVec;
     use crate::slice_bit_vec::SliceBitVec;
+
+    #[test]
+    fn test_zero() {
+        let h = Histogram::<SliceBitVec<u32>>::builder(0, 7, 64).build();
+        assert_eq!(h.quantile(0.0), 0);
+        assert_eq!(h.quantile(0.5), 0);
+        assert_eq!(h.quantile(1.0), 0);
+    }
 
     #[test]
     fn test_bin_index() {
