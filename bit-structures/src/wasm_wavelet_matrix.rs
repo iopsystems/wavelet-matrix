@@ -2,8 +2,9 @@ use crate::dense_bit_vec::DenseBitVec;
 use crate::nonempty_extent::Extent;
 use crate::wavelet_matrix;
 use crate::{wasm_bindgen, wavelet_matrix::WaveletMatrix};
-use js_sys::Reflect;
 use js_sys::Uint32Array;
+use js_sys::{Object, Reflect};
+use std::ops::Range;
 use wasm_bindgen::JsValue;
 
 // note: the Ones type refers to the length of the WM (since that is what determines bitvec size).
@@ -19,8 +20,49 @@ pub struct SymbolCount {
 #[wasm_bindgen]
 pub struct WaveletMatrix32(WaveletMatrix<DenseBitVec<Ones>>);
 
+struct CountsOpts {
+    indices: Range<u32>,
+    symbols: Extent<u32>,
+    masks: Box<[u32]>,
+}
+
 #[wasm_bindgen]
 impl WaveletMatrix32 {
+    pub fn counts(&self, opts: Object) -> Result<JsValue, String> {
+        assert!(opts.is_undefined() || opts.is_object());
+        let indices: Range<u32>;
+        let symbols: Extent<u32>;
+        let masks: Box<[u32]>;
+
+        if opts.is_undefined() {
+            indices = 0..self.0.len();
+            symbols = Extent::new(0, self.0.max_symbol());
+            masks = self.0.default_masks().into_boxed_slice();
+        } else {
+            let o = Reflect::get(&opts, &"indices".into());
+        }
+
+        // // assert!(!opts.// opts.is_object
+        // let is_obj = opts.is_object();
+        // let indices = if is_obj {
+        //     let start = Reflect::get(opts, &"indices")
+        // } else {
+        //     0..self.0.len()
+        // };
+
+        //         indices: 0..self.0.len(),
+        //         symbols: Extent::new(0, self.0.max_symbol()),
+        //         masks: self.0.default_masks().into_boxed_slice(),
+        //     }
+        // } else {
+
+        // }
+
+        // let x = Reflect::get(&opts, &"hey".into()).unwrap();
+        // x.
+        todo!()
+    }
+
     #[wasm_bindgen(constructor)]
     pub fn new(data: &[Ones], max_symbol: Ones) -> WaveletMatrix32 {
         // note: to_vec copies the data. ideally we would just take ownership of the passed-in data.
@@ -69,6 +111,15 @@ impl WaveletMatrix32 {
             masks,
         )
     }
+
+    // first = 0,
+    // last = this.length,
+    // lower = 0,
+    // upper = this.maxSymbol,
+    // ignoreBits = 0,
+    // assertPowerOfTwoSymbols = false, // optionally turn on additional error checking for ignorebits
+    // subcodeSeparator = 0,
+    // sort = false,
 
     // ranges alternates lo, hi, lo, hi, ...
     // because i could not find an efficient way to pass a nested slice or similar
