@@ -254,16 +254,17 @@ pub struct WaveletMatrix<V: BitVec> {
     levels: Vec<Level<V>>, // wm levels (bit planes)
     max_symbol: u32,       // maximum symbol value
     len: V::Ones,          // number of symbols
+    default_masks: Vec<u32>,
 }
 
 impl<V: BitVec> bincode::Encode for WaveletMatrix<V> {
-    encode_impl!(levels, max_symbol, len);
+    encode_impl!(levels, max_symbol, len, default_masks);
 }
 impl<V: BitVec> bincode::Decode for WaveletMatrix<V> {
-    decode_impl!(levels, max_symbol, len);
+    decode_impl!(levels, max_symbol, len, default_masks);
 }
 impl<'de, V: BitVec> bincode::BorrowDecode<'de> for WaveletMatrix<V> {
-    borrow_decode_impl!(levels, max_symbol, len);
+    borrow_decode_impl!(levels, max_symbol, len, default_masks);
 }
 
 impl WaveletMatrix<Dense> {
@@ -288,7 +289,7 @@ impl WaveletMatrix<Dense> {
         &self,
         symbol_range: Range<u32>,
         range: Range<u32>,
-        masks: &[u32],
+        masks: Option<&[u32]>,
     ) -> u32 {
         self.count_symbol_range_batch(&[symbol_range], range, masks)
             .first()
@@ -306,8 +307,10 @@ impl WaveletMatrix<Dense> {
         &self,
         symbol_ranges: &[Range<u32>],
         range: Range<u32>,
-        masks: &[u32],
+        masks: Option<&[u32]>,
     ) -> Vec<u32> {
+        let masks = masks.unwrap_or_else(|| &self.default_masks);
+
         // Union all bitmasks so we can tell when we the symbol range is fully contained within
         // the query range at a particular wavelet tree node, in order to avoid needless recursion.
         let all_masks = union_masks(masks);
@@ -681,10 +684,14 @@ impl<V: BitVec> WaveletMatrix<V> {
                 bv: bits,
             })
             .collect();
-        WaveletMatrix {
+        let num_levels = levels.len();
+        Self {
             levels,
             max_symbol,
             len,
+            default_masks: std::iter::repeat(u32::max_value())
+                .take(num_levels)
+                .collect(),
         }
     }
 
@@ -839,15 +846,9 @@ impl<V: BitVec> WaveletMatrix<V> {
         &self,
         symbol_range: Extent<V::Ones>,
         range: Range<V::Ones>,
-        masks: &[u32],
+        masks: Option<&[u32]>,
     ) -> Traversal<CountAll<V::Ones>> {
         self.count_all_batch(symbol_range, &[range], masks)
-    }
-
-    pub fn default_masks(&self) -> Vec<u32> {
-        std::iter::repeat(u32::max_value())
-            .take(self.num_levels())
-            .collect()
     }
 
     // Count the number of occurrences of each symbol in the given index range.
@@ -862,8 +863,10 @@ impl<V: BitVec> WaveletMatrix<V> {
         &self,
         symbol_extent: Extent<V::Ones>,
         ranges: &[Range<V::Ones>],
-        masks: &[u32],
+        masks: Option<&[u32]>,
     ) -> Traversal<CountAll<V::Ones>> {
+        let masks = masks.unwrap_or_else(|| &self.default_masks);
+
         for range in ranges {
             assert!(range.end <= self.len());
         }
@@ -1033,7 +1036,7 @@ mod tests {
                                 let end = morton::encode3(x2, y2, z2) + 1;
 
                                 let range = start..end;
-                                let count = wm.count_symbol_range(range, 0..wm.len(), &masks);
+                                let count = wm.count_symbol_range(range, 0..wm.len(), Some(&masks));
                                 let naive_count = symbols
                                     .iter()
                                     .copied()
@@ -1159,7 +1162,7 @@ mod tests {
         for query in &queries {
             // println!("\nnew query\n");
             let query_start_time = SystemTime::now();
-            let wm_count = wm.count_symbol_range(query.clone(), 0..wm.len(), &masks);
+            let wm_count = wm.count_symbol_range(query.clone(), 0..wm.len(), Some(&masks));
             let query_end_time = SystemTime::now();
             let dur = query_end_time.duration_since(query_start_time).unwrap();
             wm_duration += dur;
@@ -1173,7 +1176,7 @@ mod tests {
 
         // todo: implement batch queries for batches of symbol ranges in the same wm range
         let start_time = SystemTime::now();
-        let res = wm.count_symbol_range_batch(&queries, 0..wm.len(), &masks);
+        let res = wm.count_symbol_range_batch(&queries, 0..wm.len(), Some(&masks));
         let end_time = SystemTime::now();
         println!(
             "time for batch query on {:?} inputs: {:?}",
