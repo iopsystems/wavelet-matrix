@@ -16,7 +16,7 @@ impl<T: PrimInt> Extent<T> {
     }
     // Return true if self overlaps other
     pub fn overlaps(&self, other: Extent<T>) -> bool {
-        self.start < other.end && other.start < self.end
+        self.start <= other.end && other.start <= self.end
     }
 
     // Return true if self fully contains other

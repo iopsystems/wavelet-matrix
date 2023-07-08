@@ -7,9 +7,7 @@ use wasm_bindgen::JsValue;
 
 // todo
 // - investigate exposing exclusive symbol range from the js side, which can represent 33-bit integers
-//   and accept the argument as a u64.. or maybe only the Morton extents 
-// note: the Ones type refers to the length of the WM (since that is what determines bitvec size).
-// currently the symbol type is always u32.
+//   and accept the argument as a u64..
 type Ones = u32;
 
 #[wasm_bindgen]
