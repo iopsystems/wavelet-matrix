@@ -1003,13 +1003,13 @@ mod tests {
         symbols.shuffle(&mut rng);
 
         let wm = WaveletMatrix::new(symbols.clone(), n - 1);
-        let masks = morton_masks_for_dims(dims, wm.num_levels());
+        let masks = wm.morton_masks_for_dims(dims);
 
         // 8^4 = 4096
         // 8^6 = 262144
         // x2 and y2 are inclusive bounds
         // todo: figure out how to parameterize this by dimension
-        let z_side_length = if false { side_length } else { 1 }; // make this effectively 2d
+        let z_side_length = if false { side_length } else { 0 }; // make this effectively 2d
         for x1 in 0..side_length {
             for x2 in x1..side_length {
                 for y1 in 0..side_length {
@@ -1076,7 +1076,7 @@ mod tests {
         let wm = WaveletMatrix::new(symbols.clone(), max_symbol);
         dbg!(wm.num_levels());
 
-        let masks = morton_masks_for_dims(dims, wm.num_levels());
+        let masks = wm.morton_masks_for_dims(dims);
 
         let mut wm_duration = Duration::ZERO;
 
