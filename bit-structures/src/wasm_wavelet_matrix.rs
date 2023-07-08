@@ -1,6 +1,5 @@
 use crate::dense_bit_vec::DenseBitVec;
 use crate::nonempty_extent::Extent;
-use crate::wavelet_matrix;
 use crate::{wasm_bindgen, wavelet_matrix::WaveletMatrix};
 use js_sys::Reflect;
 use js_sys::Uint32Array;
@@ -19,25 +18,66 @@ pub struct SymbolCount {
 #[wasm_bindgen]
 pub struct WaveletMatrix32(WaveletMatrix<DenseBitVec<Ones>>);
 
+fn box_to_ref<T: ?Sized>(b: &Option<Box<T>>) -> Option<&T> {
+    b.as_ref().map(|x| x.as_ref())
+}
+
 #[wasm_bindgen]
 impl WaveletMatrix32 {
-    pub fn counts_rs(
+    pub fn count_raw(
         &self,
-        symbol_lo: Option<u32>,
-        symbol_hi: Option<u32>,
         range_lo: Option<u32>,
         range_hi: Option<u32>,
+        symbol_lo: Option<Box<[u32]>>,
+        symbol_hi: Option<Box<[u32]>>,
         masks: Option<Box<[u32]>>,
     ) -> Result<JsValue, String> {
-        let range_lo = range_lo.unwrap_or(0);
-        let range_hi = range_hi.unwrap_or(self.0.len());
-        let symbol_lo = symbol_lo.unwrap_or(0);
-        let symbol_hi = symbol_hi.unwrap_or(self.0.max_symbol());
-        let masks = masks.as_ref().map(|x| x.as_ref());
+        let range = range_lo.unwrap_or(0)..range_hi.unwrap_or(self.0.len());
 
-        let range = range_lo..range_hi;
-        let symbols = Extent::new(symbol_lo, symbol_hi);
-        let mut traversal = self.0.count_all_batch(symbols, &[range], masks);
+        let symbol_ranges = if let (Some(symbol_lo), Some(symbol_hi)) = (symbol_lo, symbol_hi) {
+            assert!(symbol_lo.len() == symbol_hi.len());
+            let mut symbol_ranges = Vec::with_capacity(symbol_lo.len());
+            for (&lo, &hi) in symbol_lo.iter().zip(symbol_hi.iter()) {
+                symbol_ranges.push(lo..hi)
+            }
+            symbol_ranges
+        } else {
+            vec![0..self.0.len()]
+        };
+
+        let masks = box_to_ref(&masks);
+
+        let counts = self.0.count_batch(range, &symbol_ranges, masks);
+        Ok(Uint32Array::from(&counts[..]).into())
+    }
+
+    pub fn counts_raw(
+        &self,
+        range_lo: Option<Box<[u32]>>,
+        range_hi: Option<Box<[u32]>>,
+        symbol_lo: Option<u32>,
+        symbol_hi: Option<u32>,
+        masks: Option<Box<[u32]>>,
+    ) -> Result<JsValue, String> {
+        let ranges = if let (Some(range_lo), Some(range_hi)) = (range_lo, range_hi) {
+            assert!(range_lo.len() == range_hi.len());
+            let mut ranges = Vec::with_capacity(range_lo.len());
+            for (&lo, &hi) in range_lo.iter().zip(range_hi.iter()) {
+                ranges.push(lo..hi)
+            }
+            ranges
+        } else {
+            vec![0..self.0.len()]
+        };
+
+        let symbols = Extent::new(
+            symbol_lo.unwrap_or(0),
+            symbol_hi.unwrap_or(self.0.max_symbol()),
+        );
+
+        let masks = box_to_ref(&masks);
+
+        let mut traversal = self.0.counts(&ranges, symbols, masks);
 
         let mut input_index = Vec::new();
         let mut symbol = Vec::new();
@@ -92,7 +132,7 @@ impl WaveletMatrix32 {
     }
 
     pub fn count(&self, symbol: Ones, range_lo: Ones, range_hi: Ones) -> Ones {
-        self.0.count(symbol, range_lo..range_hi)
+        self.0.count(range_lo..range_hi, symbol)
     }
 
     pub fn quantile(&self, k: Ones, range_lo: Ones, range_hi: Ones) -> SymbolCount {
@@ -104,22 +144,6 @@ impl WaveletMatrix32 {
         self.0.select(symbol, k, range_lo..range_hi)
     }
 
-    pub fn count_all(
-        &self,
-        symbol_range_lo: Ones,
-        symbol_range_hi_inclusve: Ones,
-        range_lo: Ones,
-        range_hi: Ones,
-        masks: &[u32],
-    ) -> Result<JsValue, String> {
-        self.count_all_batch(
-            symbol_range_lo,
-            symbol_range_hi_inclusve,
-            &[range_lo, range_hi],
-            masks,
-        )
-    }
-
     // first = 0,
     // last = this.length,
     // lower = 0,
@@ -129,76 +153,6 @@ impl WaveletMatrix32 {
     // subcodeSeparator = 0,
     // sort = false,
 
-    // ranges alternates lo, hi, lo, hi, ...
-    // because i could not find an efficient way to pass a nested slice or similar
-    pub fn count_all_batch(
-        &self,
-        symbol_range_lo: Ones,
-        symbol_range_hi_inclusve: Ones,
-        ranges: &[Ones],
-        masks: &[u32],
-    ) -> Result<JsValue, String> {
-        assert!(ranges.len() % 2 == 0,);
-        let ranges: Vec<_> = ranges.chunks_exact(2).map(|x| x[0]..x[1]).collect();
-        let mut traversal = self.0.count_all_batch(
-            // Extent::new(0, self.0.max_symbol()),
-            Extent::new(symbol_range_lo, symbol_range_hi_inclusve),
-            &ranges,
-            Some(masks),
-        );
-        let mut input_index = Vec::new();
-        let mut symbol = Vec::new();
-        let mut start = Vec::new();
-        let mut end = Vec::new();
-        // add this for now, even though it could be computed from start and end.
-        let mut count = Vec::new();
-        for x in traversal.results() {
-            input_index.push(Ones::try_from(x.key).unwrap());
-            symbol.push(x.val.symbol);
-            start.push(x.val.start);
-            end.push(x.val.end);
-            count.push(x.val.end - x.val.start);
-        }
-        let obj = js_sys::Object::new();
-        let err = "could not set js property";
-        Reflect::set(
-            &obj,
-            &"input_index".into(),
-            &Uint32Array::from(&input_index[..]),
-        )
-        .expect(err);
-
-        Reflect::set(&obj, &"symbol".into(), &Uint32Array::from(&symbol[..])).expect(err);
-        // put count right after symbol for better output in the observable inspector
-        Reflect::set(&obj, &"count".into(), &Uint32Array::from(&count[..])).expect(err);
-        Reflect::set(&obj, &"start".into(), &Uint32Array::from(&start[..])).expect(err);
-        Reflect::set(&obj, &"end".into(), &Uint32Array::from(&end[..])).expect(err);
-        Reflect::set(&obj, &"length".into(), &symbol.len().into()).expect(err);
-        // js_sys::Array::get(&self, index)
-
-        Ok(obj.into())
-    }
-
-    pub fn count_symbol_range_batch(
-        &self,
-        symbol_ranges: &[Ones],
-        range_lo: u32,
-        range_hi: u32,
-        dims: u32,
-    ) -> Result<JsValue, String> {
-        assert!(symbol_ranges.len() % 2 == 0,);
-        let symbol_ranges: Vec<_> = symbol_ranges.chunks_exact(2).map(|x| x[0]..x[1]).collect();
-        let range = range_lo..range_hi;
-        let masks = wavelet_matrix::morton_masks_for_dims(dims, self.0.num_levels());
-        let counts = self
-            .0
-            .count_symbol_range_batch(&symbol_ranges, range, Some(&masks));
-        let obj = js_sys::Object::new();
-        let err = "could not set js property";
-        Reflect::set(&obj, &"counts".into(), &Uint32Array::from(&counts[..])).expect(err);
-        Reflect::set(&obj, &"length".into(), &counts.len().into()).expect(err);
-        Ok(obj.into())
-    }
     pub fn len(&self) -> Ones {
         self.0.len()
     }

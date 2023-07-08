@@ -14,7 +14,7 @@ use std::{collections::VecDeque, ops::Range};
 // - in the symbol count 64 test, try varying the range of the query so it is not always 1..wm.len().
 // - audit whether we recurse into zero-width nodes in any cases
 //   - i think we can check start.0 != end.0 and start.1 != end.1
-//   - we fixed this in count_symbol_range_batch
+//   - we fixed this in count_batch
 // - verify that the intermediate traversals are indeed in ascending wavelet matrix order
 // - consider a SymbolCount struct rather than returning tuples
 // - ignore_bits
@@ -285,31 +285,19 @@ impl WaveletMatrix<Dense> {
         WaveletMatrix::from_bitvecs(levels, max_symbol)
     }
 
-    pub fn count_symbol_range(
-        &self,
-        symbol_range: Range<u32>,
-        range: Range<u32>,
-        masks: Option<&[u32]>,
-    ) -> u32 {
-        self.count_symbol_range_batch(&[symbol_range], range, masks)
-            .first()
-            .copied()
-            .unwrap()
-    }
-
     // Count the number of occurences of symbols in each of the symbol ranges,
     // returning a parallel array of counts.
     // Range is an index range.
     // Masks is a slice of bitmasks, one per level, indicating the bitmask operational
     // at that level, to enable multidimensional queries.
     // To search in 1d, pass std::iter::repeat(u32::MAX).take(wm.num_levels()).collect().
-    pub fn count_symbol_range_batch(
+    pub fn count_batch(
         &self,
-        symbol_ranges: &[Range<u32>],
         range: Range<u32>,
+        symbol_ranges: &[Range<u32>],
         masks: Option<&[u32]>,
     ) -> Vec<u32> {
-        let masks = masks.unwrap_or_else(|| &self.default_masks);
+        let masks = masks.unwrap_or(&self.default_masks);
 
         // Union all bitmasks so we can tell when we the symbol range is fully contained within
         // the query range at a particular wavelet tree node, in order to avoid needless recursion.
@@ -735,7 +723,7 @@ impl<V: BitVec> WaveletMatrix<V> {
     }
 
     // number of times the symbol appears in the query range
-    pub fn count(&self, symbol: V::Ones, range: Range<V::Ones>) -> V::Ones {
+    pub fn count(&self, range: Range<V::Ones>, symbol: V::Ones) -> V::Ones {
         let range = self.locate(symbol, range, 0).1;
         range.end - range.start
     }
@@ -842,15 +830,6 @@ impl<V: BitVec> WaveletMatrix<V> {
         symbol
     }
 
-    pub fn count_all(
-        &self,
-        symbol_range: Extent<V::Ones>,
-        range: Range<V::Ones>,
-        masks: Option<&[u32]>,
-    ) -> Traversal<CountAll<V::Ones>> {
-        self.count_all_batch(symbol_range, &[range], masks)
-    }
-
     // Count the number of occurrences of each symbol in the given index range.
     // Returns a vec of (input_index, symbol, start, end) tuples.
     // Returning (start, end) rather than a count `end - start` is helpful for
@@ -859,13 +838,18 @@ impl<V: BitVec> WaveletMatrix<V> {
     // of the wavelet matrix, where symbols are sorted in ascending bit-reversed order.
     // TODO: Is there a way to do ~half the number of rank queries for contiguous
     // ranges that share a midpoint, ie. [a..b, b..c, c..d]?
-    pub fn count_all_batch(
+    pub fn counts(
         &self,
-        symbol_extent: Extent<V::Ones>,
         ranges: &[Range<V::Ones>],
+        // note: this is inclusive because the requirement comes up in practice, eg.
+        // a 32-bit integer can represent 3 10-bit integers, and you may want to query
+        // for the 10-bit subcomponents separately, eg. 0..1025. But to represent 1025
+        // in each dimension would require 33 bits. instead, inclusive extents allow
+        // representing 0..1025 (11 bits) as 0..=1024 (10 bits).
+        symbol_extent: Extent<V::Ones>,
         masks: Option<&[u32]>,
     ) -> Traversal<CountAll<V::Ones>> {
-        let masks = masks.unwrap_or_else(|| &self.default_masks);
+        let masks = masks.unwrap_or(&self.default_masks);
 
         for range in ranges {
             assert!(range.end <= self.len());
@@ -878,8 +862,6 @@ impl<V: BitVec> WaveletMatrix<V> {
         }));
 
         for (level, mask) in self.levels.iter().zip(masks.iter().copied()) {
-            // let symbol_extent = mask_range(symbol_extent.clone(), mask);
-            // let mask = V::Ones::from_u32(mask); // todo: mask should be the same type as the symbol
             let symbol_extent = mask_extent(symbol_extent, mask);
             traversal.traverse(|xs, go| {
                 // Cache the most recent rank call in case the next one is the same.
@@ -908,15 +890,15 @@ impl<V: BitVec> WaveletMatrix<V> {
                 rank_cache.log_stats();
             });
         }
-
         traversal
     }
 
+    // todo: get with ranges rather than indices (in fact, indices could be represented as a special case,
+    // though maybe it is faster this way and we should implement that separately)
     pub fn get_batch(&self, indices: &[V::Ones]) -> Traversal<(V::Ones, V::Ones)> {
         // stores (wm index, symbol) entries, each corresponding to an input index.
         // todo: struct for IndexSymbol?
         let mut traversal = Traversal::new(indices.iter().copied().map(|index| (index, V::zero())));
-
         for level in self.levels(0) {
             traversal.traverse(|xs, go| {
                 for x in xs {
@@ -932,7 +914,6 @@ impl<V: BitVec> WaveletMatrix<V> {
                 }
             });
         }
-
         traversal
     }
 
@@ -1035,8 +1016,11 @@ mod tests {
                                 let start = morton::encode3(x1, y1, z1);
                                 let end = morton::encode3(x2, y2, z2) + 1;
 
-                                let range = start..end;
-                                let count = wm.count_symbol_range(range, 0..wm.len(), Some(&masks));
+                                let count = wm
+                                    .count_batch(0..wm.len(), &[start..end], Some(&masks))
+                                    .first()
+                                    .copied()
+                                    .unwrap();
                                 let naive_count = symbols
                                     .iter()
                                     .copied()
@@ -1162,7 +1146,11 @@ mod tests {
         for query in &queries {
             // println!("\nnew query\n");
             let query_start_time = SystemTime::now();
-            let wm_count = wm.count_symbol_range(query.clone(), 0..wm.len(), Some(&masks));
+            let wm_count = wm
+                .count_batch(0..wm.len(), &[query.clone()], Some(&masks))
+                .first()
+                .copied()
+                .unwrap();
             let query_end_time = SystemTime::now();
             let dur = query_end_time.duration_since(query_start_time).unwrap();
             wm_duration += dur;
@@ -1176,7 +1164,7 @@ mod tests {
 
         // todo: implement batch queries for batches of symbol ranges in the same wm range
         let start_time = SystemTime::now();
-        let res = wm.count_symbol_range_batch(&queries, 0..wm.len(), Some(&masks));
+        let res = wm.count_batch(0..wm.len(), &queries, Some(&masks));
         let end_time = SystemTime::now();
         println!(
             "time for batch query on {:?} inputs: {:?}",
@@ -1211,7 +1199,7 @@ mod tests {
         // let end = morton::encode2(x_range.end - 1, y_range.end - 1) + 1;
         // let masks = morton_masks_for_dims(2, wm.num_levels());
         // dbg!(start..end);
-        // let mut xs = wm.count_all_batch(start..end, &[0..wm.len()], &masks);
+        // let mut xs = wm.counts(start..end, &[0..wm.len()], &masks);
         // for x in xs.results() {
         //     println!(
         //         "({:?}, {:?}): {:?}",
