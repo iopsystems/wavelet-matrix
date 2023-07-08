@@ -144,14 +144,12 @@ impl WaveletMatrix32 {
         self.0.select(symbol, k, range_lo..range_hi)
     }
 
-    // first = 0,
-    // last = this.length,
-    // lower = 0,
-    // upper = this.maxSymbol,
-    // ignoreBits = 0,
+    pub fn morton_masks_for_dims(&self, dims: u32) -> Result<JsValue, String> {
+        let masks = self.0.morton_masks_for_dims(dims);
+        Ok(Uint32Array::from(&masks[..]).into())
+    }
+
     // assertPowerOfTwoSymbols = false, // optionally turn on additional error checking for ignorebits
-    // subcodeSeparator = 0,
-    // sort = false,
 
     pub fn len(&self) -> Ones {
         self.0.len()

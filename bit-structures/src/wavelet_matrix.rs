@@ -945,6 +945,28 @@ impl<V: BitVec> WaveletMatrix<V> {
         let (ret, _) = bincode::decode_from_slice(&data, config).unwrap();
         ret
     }
+
+    pub fn morton_masks_for_dims(&self, dims: u32) -> Vec<u32> {
+        const S1: [u32; 1] = [u32::MAX];
+        const S2: [u32; 2] = [morton::encode2(0, u32::MAX), morton::encode2(u32::MAX, 0)];
+        const S3: [u32; 3] = [
+            morton::encode3(0, 0, u32::MAX),
+            morton::encode3(0, u32::MAX, 0),
+            morton::encode3(u32::MAX, 0, 0),
+        ];
+        let masks = match dims {
+            1 => &S1[..],
+            2 => &S2[..],
+            3 => &S3[..],
+            _ => panic!("only 1-3 dimensions currently supported"),
+        };
+        masks
+            .iter()
+            .copied()
+            .cycle()
+            .take(self.num_levels())
+            .collect()
+    }
 }
 
 fn overlaps<T: BitBlock>(a: &Range<T>, b: &Range<T>) -> bool {
@@ -955,23 +977,6 @@ fn overlaps<T: BitBlock>(a: &Range<T>, b: &Range<T>) -> bool {
 fn fully_contains<T: BitBlock>(a: &Range<T>, b: &Range<T>) -> bool {
     // if a starts before b, and a ends after b.
     a.start <= b.start && a.end >= b.end
-}
-
-pub fn morton_masks_for_dims(dims: u32, num_levels: usize) -> Vec<u32> {
-    const S1: [u32; 1] = [u32::MAX];
-    const S2: [u32; 2] = [morton::encode2(0, u32::MAX), morton::encode2(u32::MAX, 0)];
-    const S3: [u32; 3] = [
-        morton::encode3(0, 0, u32::MAX),
-        morton::encode3(0, u32::MAX, 0),
-        morton::encode3(u32::MAX, 0, 0),
-    ];
-    let masks = match dims {
-        1 => &S1[..],
-        2 => &S2[..],
-        3 => &S3[..],
-        _ => panic!("only 1-3 dimensions currently supported"),
-    };
-    masks.iter().copied().cycle().take(num_levels).collect()
 }
 
 #[cfg(test)]
