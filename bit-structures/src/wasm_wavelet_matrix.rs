@@ -8,6 +8,7 @@ use wasm_bindgen::JsValue;
 // todo
 // - investigate exposing exclusive symbol range from the js side, which can represent 33-bit integers
 //   and accept the argument as a u64..
+// - return named fields startIndex/endIndex rather than start/end
 type Ones = u32;
 
 #[wasm_bindgen]
@@ -25,6 +26,74 @@ fn box_to_ref<T: ?Sized>(b: &Option<Box<T>>) -> Option<&T> {
 
 #[wasm_bindgen]
 impl WaveletMatrix32 {
+    pub fn locate_raw(
+        &self,
+        range_lo: Option<Box<[u32]>>,
+        range_hi: Option<Box<[u32]>>,
+        symbols: Box<[u32]>,
+    ) -> Result<JsValue, String> {
+        let ranges = if let (Some(range_lo), Some(range_hi)) = (range_lo, range_hi) {
+            assert!(range_lo.len() == range_hi.len());
+            let mut ranges = Vec::with_capacity(range_lo.len());
+            for (&lo, &hi) in range_lo.iter().zip(range_hi.iter()) {
+                ranges.push(lo..hi)
+            }
+            ranges
+        } else {
+            vec![0..self.0.len()]
+        };
+
+        let mut traversal = self.0.locate_batch(&ranges, &symbols);
+
+        let mut symbol_index = Vec::new();
+        let mut range_index = Vec::new();
+        let mut symbol = Vec::new();
+        let mut count = Vec::new(); // this is derivable from start/end but convenient to include
+        let mut preceding_count = Vec::new();
+        let mut start = Vec::new();
+        let mut end = Vec::new();
+        // let num_symbols = symbols.len();
+        let num_ranges = ranges.len();
+        for x in traversal.results() {
+            symbol_index.push((x.key / num_ranges) as u32);
+            range_index.push((x.key % num_ranges) as u32);
+            symbol.push(x.val.0);
+            preceding_count.push(x.val.1);
+            start.push(x.val.2);
+            end.push(x.val.3);
+            count.push(x.val.3 - x.val.2);
+        }
+        let obj = js_sys::Object::new();
+        let err = "could not set js property";
+        Reflect::set(
+            &obj,
+            &"range_index".into(),
+            &Uint32Array::from(&range_index[..]),
+        )
+        .expect(err);
+
+        Reflect::set(
+            &obj,
+            &"symbol_index".into(),
+            &Uint32Array::from(&symbol_index[..]),
+        )
+        .expect(err);
+
+        Reflect::set(&obj, &"symbol".into(), &Uint32Array::from(&symbol[..])).expect(err);
+        Reflect::set(&obj, &"count".into(), &Uint32Array::from(&count[..])).expect(err);
+        Reflect::set(
+            &obj,
+            &"preceding_count".into(),
+            &Uint32Array::from(&preceding_count[..]),
+        )
+        .expect(err);
+        Reflect::set(&obj, &"start".into(), &Uint32Array::from(&start[..])).expect(err);
+        Reflect::set(&obj, &"end".into(), &Uint32Array::from(&end[..])).expect(err);
+        Reflect::set(&obj, &"length".into(), &symbol.len().into()).expect(err);
+
+        Ok(obj.into())
+    }
+
     pub fn count_raw(
         &self,
         range_lo: Option<u32>,
@@ -39,7 +108,7 @@ impl WaveletMatrix32 {
             assert!(symbol_lo.len() == symbol_hi.len());
             let mut symbol_ranges = Vec::with_capacity(symbol_lo.len());
             for (&lo, &hi) in symbol_lo.iter().zip(symbol_hi.iter()) {
-                symbol_ranges.push(lo..hi)
+                symbol_ranges.push(lo..hi + 1) // for now .count_batch takes exclusive symbol ranges
             }
             symbol_ranges
         } else {

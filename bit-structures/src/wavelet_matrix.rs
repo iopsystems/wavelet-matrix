@@ -8,6 +8,10 @@ use std::debug_assert;
 use std::{collections::VecDeque, ops::Range};
 
 // todo
+// - figure out how to provide a fast family of related functions
+//   - individual/range of symbols/indices. the trouble with unifying these is that
+//     a range may recurse into both children, whereas as individual element can only go into one,
+//     and if implemented the usual way this means less branching for the symbol case.
 // - decide if symbols should be u32, u64, or V::Ones (or another generic), and be consistent throughout.
 // - consider the (internal) use of inclusive Extents to simplify range handling
 // - consider using the extent crate for ranges: https://github.com/graydon/extent/blob/main/src/lib.rs
@@ -715,6 +719,41 @@ impl<V: BitVec> WaveletMatrix<V> {
             }
         }
         (preceding_count, range)
+    }
+
+    pub fn locate_batch(
+        &self,
+        ranges: &[Range<V::Ones>],
+        symbols: &[V::Ones],
+    ) -> Traversal<(V::Ones, V::Ones, V::Ones, V::Ones)> {
+        let iter = symbols
+            .iter()
+            // todo: make a struct for this function: (symbol, preceding_count, start, end)
+            .flat_map(|symbol| {
+                ranges
+                    .iter()
+                    .map(|range| (*symbol, V::zero(), range.start, range.end))
+            });
+        let mut traversal = Traversal::new(iter);
+        for level in self.levels.iter() {
+            traversal.traverse(|xs, go| {
+                for x in xs {
+                    let (symbol, preceding_count) = (x.val.0, x.val.1);
+                    let (start, end) = (level.ranks(x.val.2), level.ranks(x.val.3));
+                    if (symbol & level.bit).is_zero() {
+                        go.left(x.val((symbol, preceding_count, start.0, end.0)));
+                    } else {
+                        go.right(x.val((
+                            symbol,
+                            preceding_count + end.0 - start.0,
+                            level.num_zeros + start.1,
+                            level.num_zeros + end.1,
+                        )));
+                    }
+                }
+            });
+        }
+        traversal
     }
 
     // number of symbols less than this one, restricted to the query range
