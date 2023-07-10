@@ -1,7 +1,7 @@
 #![allow(unused_imports)]
 use crate::dense_multi_bit_vec::DenseMultiBitVec;
 use crate::slice_bit_vec::SliceBitVec;
-use crate::{histogram::Histogram, sparse_bit_vec::SparseBitVec, wasm_bindgen};
+use crate::{histogram, histogram::Histogram, sparse_bit_vec::SparseBitVec, wasm_bindgen};
 
 // todo:
 // - consider leaving the 32-bit-nese implicit, leaving the suffix off of the struct name (and using 64 for the larger versions).
@@ -63,5 +63,53 @@ impl Histogram32 {
     }
     pub fn bin_index(&self, value: u64) -> u32 {
         self.0.params().bin_index(value)
+    }
+}
+
+#[wasm_bindgen]
+pub struct HistogramParams(histogram::HistogramParams);
+
+#[wasm_bindgen]
+impl HistogramParams {
+    #[wasm_bindgen(constructor)]
+    pub fn from_bin_counts(a: u32, b: u32, n: u32) -> HistogramParams {
+        let p = crate::histogram::HistogramParams::new(a, b, n);
+        HistogramParams(p)
+    }
+
+    pub fn bin_index(&self, value: u64) -> u32 {
+        self.0.bin_index(value)
+    }
+
+    pub fn low(&self, bin_index: u32) -> u64 {
+        self.0.low(bin_index)
+    }
+
+    pub fn high(&self, bin_index: u32) -> u64 {
+        self.0.high(bin_index)
+    }
+
+    pub fn max_value(&self) -> u64 {
+        self.0.max_value()
+    }
+
+    pub fn a(&self) -> u32 {
+        self.0.a()
+    }
+
+    pub fn b(&self) -> u32 {
+        self.0.b()
+    }
+
+    pub fn c(&self) -> u32 {
+        self.0.c()
+    }
+
+    pub fn n(&self) -> u32 {
+        self.0.n()
+    }
+
+    pub fn num_bins(&self) -> u32 {
+        self.0.num_bins()
     }
 }

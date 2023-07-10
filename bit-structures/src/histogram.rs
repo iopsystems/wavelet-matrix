@@ -181,7 +181,7 @@ pub struct HistogramParams {
 
 impl HistogramParams {
     // note: in the classical parameterization, m = a and r = c, which implies that b = r - m - 1.
-    fn new(a: u32, b: u32, n: u32) -> HistogramParams {
+    pub fn new(a: u32, b: u32, n: u32) -> HistogramParams {
         let c = a + b + 1;
         // todo: assert that the number of bins is <= u32::MAX
         let num_bins = if n < c {

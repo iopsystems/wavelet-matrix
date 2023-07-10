@@ -87,8 +87,8 @@ impl WaveletMatrix32 {
             &Uint32Array::from(&preceding_count[..]),
         )
         .expect(err);
-        Reflect::set(&obj, &"start".into(), &Uint32Array::from(&start[..])).expect(err);
-        Reflect::set(&obj, &"end".into(), &Uint32Array::from(&end[..])).expect(err);
+        Reflect::set(&obj, &"startIndex".into(), &Uint32Array::from(&start[..])).expect(err);
+        Reflect::set(&obj, &"endIndex".into(), &Uint32Array::from(&end[..])).expect(err);
         Reflect::set(&obj, &"length".into(), &symbol.len().into()).expect(err);
 
         Ok(obj.into())
@@ -112,7 +112,7 @@ impl WaveletMatrix32 {
             }
             symbol_ranges
         } else {
-            vec![0..self.0.len()]
+            vec![0..self.0.max_symbol() + 1] // for now .count_batch takes exclusive symbol ranges
         };
 
         let masks = box_to_ref(&masks);
@@ -174,19 +174,22 @@ impl WaveletMatrix32 {
         Reflect::set(&obj, &"symbol".into(), &Uint32Array::from(&symbol[..])).expect(err);
         // put count right after symbol for better output in the observable inspector
         Reflect::set(&obj, &"count".into(), &Uint32Array::from(&count[..])).expect(err);
-        Reflect::set(&obj, &"start".into(), &Uint32Array::from(&start[..])).expect(err);
-        Reflect::set(&obj, &"end".into(), &Uint32Array::from(&end[..])).expect(err);
+        Reflect::set(&obj, &"startIndex".into(), &Uint32Array::from(&start[..])).expect(err);
+        Reflect::set(&obj, &"endIndex".into(), &Uint32Array::from(&end[..])).expect(err);
         Reflect::set(&obj, &"length".into(), &symbol.len().into()).expect(err);
 
         Ok(obj.into())
     }
 
     #[wasm_bindgen(constructor)]
-    pub fn new(data: &[Ones], max_symbol: Ones) -> WaveletMatrix32 {
+    pub fn new(data: &[Ones], max_symbol: Option<Ones>) -> WaveletMatrix32 {
         // note: to_vec copies the data. ideally we would just take ownership of the passed-in data.
         // that might involve passing it in as other than a &[Ones].
         // we need a vector for large alphabet construction since it uses retain_mut.
-        WaveletMatrix32(WaveletMatrix::new(data.to_vec(), max_symbol))
+        WaveletMatrix32(WaveletMatrix::new(
+            data.to_vec(),
+            max_symbol.unwrap_or_else(|| data.iter().copied().max().unwrap_or(0)),
+        ))
     }
 
     pub fn simple_majority(&self, range_lo: Ones, range_hi: Ones) -> Option<Ones> {
