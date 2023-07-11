@@ -8,8 +8,8 @@ use crate::{histogram, histogram::Histogram, sparse_bit_vec::SparseBitVec, wasm_
 
 type Ones = u32;
 // type V = SliceBitVec<Ones>;
-// type V = SparseBitVec<Ones>;
-type V = DenseMultiBitVec<Ones>;
+type V = SparseBitVec<Ones>;
+// type V = DenseMultiBitVec<Ones>;
 
 #[wasm_bindgen]
 pub struct Histogram32(Histogram<V>);
@@ -42,6 +42,9 @@ impl Histogram32 {
     pub fn cumulative_count(&self, value: Ones) -> Ones {
         self.0.cumulative_count(value)
     }
+    pub fn cdf(&self, value: Ones) -> f64 {
+        self.0.cdf(value)
+    }
     pub fn quantile(&self, q: f64) -> Ones {
         self.0.quantile(q)
     }
@@ -67,30 +70,39 @@ impl Histogram32 {
 }
 
 #[wasm_bindgen]
-pub struct HistogramParams(histogram::HistogramParams);
+pub struct HistogramParams32(histogram::HistogramParams);
 
 #[wasm_bindgen]
-impl HistogramParams {
+impl HistogramParams32 {
     #[wasm_bindgen(constructor)]
-    pub fn from_bin_counts(a: u32, b: u32, n: u32) -> HistogramParams {
+    pub fn from_bin_counts(a: u32, b: u32, n: u32) -> HistogramParams32 {
         let p = crate::histogram::HistogramParams::new(a, b, n);
-        HistogramParams(p)
+        HistogramParams32(p)
     }
 
     pub fn bin_index(&self, value: u64) -> u32 {
         self.0.bin_index(value)
     }
 
-    pub fn low(&self, bin_index: u32) -> u64 {
-        self.0.low(bin_index)
+    pub fn low(&self, bin_index: u32) -> u32 {
+        self.0
+            .low(bin_index)
+            .try_into()
+            .expect("low cannot be greater than 2^32")
     }
 
-    pub fn high(&self, bin_index: u32) -> u64 {
-        self.0.high(bin_index)
+    pub fn high(&self, bin_index: u32) -> u32 {
+        self.0
+            .high(bin_index)
+            .try_into()
+            .expect("high cannot be greater than 2^32")
     }
 
-    pub fn max_value(&self) -> u64 {
-        self.0.max_value()
+    pub fn max_value(&self) -> u32 {
+        self.0
+            .max_value()
+            .try_into()
+            .expect("max_value cannot be greater than 2^32")
     }
 
     pub fn a(&self) -> u32 {

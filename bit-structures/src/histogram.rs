@@ -62,6 +62,11 @@ impl<V: MultiBitVec> Histogram<V> {
         self.cdf.select1(V::Ones::from_u32(bin_index))
     }
 
+    // Like cumulative_count, but returns the fraction of the data rather than a count.
+    pub fn cdf(&self, value: V::Ones) -> f64 {
+        self.cumulative_count(value).as_f64() / self.count().as_f64()
+    }
+
     /// Return an upper bound on the value of the q-th quantile.
     pub fn quantile(&self, q: f64) -> V::Ones {
         if self.count().is_zero() {

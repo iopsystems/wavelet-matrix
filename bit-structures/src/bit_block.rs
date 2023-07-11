@@ -88,6 +88,7 @@ pub trait BitBlock:
     fn as_u32(self) -> u32;
     fn as_u64(self) -> u64;
     fn as_usize(self) -> usize;
+    fn as_f64(self) -> f64;
 
     // will panic if the value does not fit
     fn from_u32(value: u32) -> Self;
@@ -145,6 +146,9 @@ macro_rules! bit_block_impl {
             }
             fn as_u64(self) -> u64 {
                 self as u64
+            }
+            fn as_f64(self) -> f64 {
+                self as f64
             }
             fn as_usize(self) -> usize {
                 self as usize
