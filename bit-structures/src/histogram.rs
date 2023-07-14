@@ -64,6 +64,9 @@ impl<V: MultiBitVec> Histogram<V> {
 
     // Like cumulative_count, but returns the fraction of the data rather than a count.
     pub fn cdf(&self, value: V::Ones) -> f64 {
+        if self.count().is_zero() {
+            return 1.0;
+        }
         self.cumulative_count(value).as_f64() / self.count().as_f64()
     }
 
