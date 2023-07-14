@@ -278,6 +278,10 @@ impl HistogramParams {
         }
     }
 
+    pub fn bin_width(&self, bin_index: u32) -> u64 {
+        self.high(bin_index) - self.low(bin_index) + 1
+    }
+
     /// Return the maximum value representable by these histogram parameters.
     pub fn max_value(&self) -> u64 {
         if self.n == u64::BITS {

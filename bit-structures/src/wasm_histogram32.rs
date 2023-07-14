@@ -84,6 +84,13 @@ impl HistogramParams32 {
         self.0.bin_index(value)
     }
 
+    pub fn bin_width(&self, bin_index: u32) -> u32 {
+        self.0
+            .bin_width(bin_index)
+            .try_into()
+            .expect("low cannot be greater than 2^32")
+    }
+
     pub fn low(&self, bin_index: u32) -> u32 {
         self.0
             .low(bin_index)
