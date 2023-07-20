@@ -1,6 +1,7 @@
 #![allow(unused_imports)]
 use crate::dense_multi_bit_vec::DenseMultiBitVec;
 use crate::slice_bit_vec::SliceBitVec;
+use crate::wasm_histogram32;
 use crate::{histogram, histogram::Histogram, sparse_bit_vec::SparseBitVec, wasm_bindgen};
 
 // todo:
@@ -67,6 +68,9 @@ impl Histogram32 {
     pub fn bin_index(&self, value: u64) -> u32 {
         self.0.params().bin_index(value)
     }
+    pub fn params(&self) -> HistogramParams32 {
+        wasm_histogram32::HistogramParams32(self.0.params())
+    }
 }
 
 #[wasm_bindgen]
@@ -75,7 +79,7 @@ pub struct HistogramParams32(histogram::HistogramParams);
 #[wasm_bindgen]
 impl HistogramParams32 {
     #[wasm_bindgen(constructor)]
-    pub fn from_bin_counts(a: u32, b: u32, n: u32) -> HistogramParams32 {
+    pub fn new(a: u32, b: u32, n: u32) -> HistogramParams32 {
         let p = crate::histogram::HistogramParams::new(a, b, n);
         HistogramParams32(p)
     }
@@ -130,5 +134,29 @@ impl HistogramParams32 {
 
     pub fn num_bins(&self) -> u32 {
         self.0.num_bins()
+    }
+}
+
+#[wasm_bindgen]
+pub struct HistogramBuilder32(histogram::HistogramBuilder<V>);
+
+#[wasm_bindgen]
+impl HistogramBuilder32 {
+    #[wasm_bindgen(constructor)]
+    pub fn new(a: u32, b: u32, n: u32) -> HistogramBuilder32 {
+        let p = histogram::HistogramBuilder::new(a, b, n);
+        HistogramBuilder32(p)
+    }
+
+    pub fn increment_value(&mut self, value: Ones, count: Ones) {
+        self.0.increment_value(value, count)
+    }
+
+    pub fn increment_index(&mut self, bin_index: usize, count: Ones) {
+        self.0.increment_index(bin_index, count)
+    }
+
+    pub fn build(self) -> Histogram32 {
+        Histogram32(self.0.build())
     }
 }
