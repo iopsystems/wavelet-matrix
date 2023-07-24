@@ -371,8 +371,8 @@ impl WaveletMatrix<Dense> {
                             go.right(x.val(CountSymbolRange::new(
                                 acc,
                                 mid,
-                                level.num_zeros + start.1,
-                                level.num_zeros + end.1,
+                                level.nz + start.1,
+                                level.nz + end.1,
                             )));
                         }
                     }
@@ -593,7 +593,8 @@ fn build_bitvecs_large_alphabet(mut data: Vec<u32>, num_levels: usize) -> Vec<De
 #[derive(Debug)]
 struct Level<V: BitVec> {
     bv: V,
-    num_zeros: V::Ones,
+    // the number of zeros at this level (ie. bv.rank0(bv.universe_size())
+    nz: V::Ones,
     // unsigned int with a single bit set signifying
     // the magnitude represented at that level.
     // e.g.  levels[0].bit == 1 << levels.len() - 1
@@ -601,13 +602,13 @@ struct Level<V: BitVec> {
 }
 
 impl<V: BitVec> bincode::Encode for Level<V> {
-    encode_impl!(bv, num_zeros, bit);
+    encode_impl!(bv, nz, bit);
 }
 impl<V: BitVec> bincode::Decode for Level<V> {
-    decode_impl!(bv, num_zeros, bit);
+    decode_impl!(bv, nz, bit);
 }
 impl<'de, V: BitVec> bincode::BorrowDecode<'de> for Level<V> {
-    borrow_decode_impl!(bv, num_zeros, bit);
+    borrow_decode_impl!(bv, nz, bit);
 }
 
 // Stores (rank0, rank1) as resulting from the Level::ranks function
@@ -677,7 +678,7 @@ impl<V: BitVec> WaveletMatrix<V> {
             .into_iter()
             .enumerate()
             .map(|(index, bits)| Level {
-                num_zeros: bits.rank0(bits.universe_size()),
+                nz: bits.rank0(bits.universe_size()),
                 bit: V::one() << (max_level - index),
                 bv: bits,
             })
@@ -721,7 +722,7 @@ impl<V: BitVec> WaveletMatrix<V> {
             } else {
                 // count the symbols in the left child before going right
                 preceding_count += end.0 - start.0;
-                range = level.num_zeros + start.1..level.num_zeros + end.1;
+                range = level.nz + start.1..level.nz + end.1;
             }
         }
         (preceding_count, range)
@@ -752,8 +753,8 @@ impl<V: BitVec> WaveletMatrix<V> {
                         go.right(x.val((
                             symbol,
                             preceding_count + end.0 - start.0,
-                            level.num_zeros + start.1,
-                            level.num_zeros + end.1,
+                            level.nz + start.1,
+                            level.nz + end.1,
                         )));
                     }
                 }
@@ -789,7 +790,7 @@ impl<V: BitVec> WaveletMatrix<V> {
                 // go right
                 k -= left_count;
                 symbol += level.bit;
-                range = level.num_zeros + start.1..level.num_zeros + end.1;
+                range = level.nz + start.1..level.nz + end.1;
             }
         }
         let count = range.end - range.start;
@@ -803,19 +804,25 @@ impl<V: BitVec> WaveletMatrix<V> {
         range: Range<V::Ones>,
         ignore_bits: usize,
     ) -> Option<V::Ones> {
+        if symbol > V::Ones::from_u32(self.max_symbol) {
+            return None;
+        }
+
         // track the symbol down to a range on the bottom-most level we're interested in
         let range = self.locate(symbol, range, ignore_bits).1;
+        let count = range.end - range.start;
 
         // If there are fewer than `k+1` copies of `symbol` in the range, return early.
-        if k < (range.end - range.start) {
+        // `k` is zero-indexed, so our check includes equality.
+        if count <= k {
             return None;
         }
 
         // track the k-th occurrence of the symbol up from the bottom-most virtual level
+        // or higher, if ignore_bits is non-zero.
         let mut index = range.start + k;
 
         for level in self.levels(ignore_bits).rev() {
-            let nz = level.num_zeros;
             // `index` represents an index on the level below this one, which may be
             // the bottom-most 'virtual' layer that contains all symbols in sorted order.
             //
@@ -832,12 +839,12 @@ impl<V: BitVec> WaveletMatrix<V> {
             // is represented by a 1-bit on this level; specifically, the `index - nz`-th 1-bit.
             //
             // In either case, we can use bitvector select to compute the index on this level.
-            if index < nz {
+            if index < level.nz {
                 // `index` represents a left child on this level, represented by the `index`-th 0-bit.
                 index = level.bv.select0(index);
             } else {
                 // `index` represents a right child on this level, represented by the `index-nz`-th 1-bit.
-                index = level.bv.select1(index - nz);
+                index = level.bv.select1(index - level.nz);
             }
         }
         Some(index)
@@ -875,7 +882,7 @@ impl<V: BitVec> WaveletMatrix<V> {
             } else {
                 // go right
                 symbol += level.bit;
-                index = level.num_zeros + level.bv.rank1(index);
+                index = level.nz + level.bv.rank1(index);
             }
         }
         symbol
@@ -933,8 +940,8 @@ impl<V: BitVec> WaveletMatrix<V> {
                     if start.1 != end.1 && symbol_extent.overlaps(right) {
                         go.right(x.val(CountAll::new(
                             symbol + level.bit,
-                            level.num_zeros + start.1,
-                            level.num_zeros + end.1,
+                            level.nz + start.1,
+                            level.nz + end.1,
                         )));
                     }
                 }
@@ -958,7 +965,7 @@ impl<V: BitVec> WaveletMatrix<V> {
                         let index = level.bv.rank0(index);
                         go.left(x.val((index, symbol)));
                     } else {
-                        let index = level.num_zeros + level.bv.rank1(index);
+                        let index = level.nz + level.bv.rank1(index);
                         let symbol = symbol + level.bit;
                         go.right(x.val((index, symbol)));
                     }
@@ -971,7 +978,7 @@ impl<V: BitVec> WaveletMatrix<V> {
     // Returns an iterator over levels from the high bit downwards, ignoring the
     // bottom `ignore_bits` levels.
     fn levels(&self, ignore_bits: usize) -> std::slice::Iter<Level<V>> {
-        self.levels[0..self.levels.len() - ignore_bits].iter()
+        self.levels[..self.levels.len() - ignore_bits].iter()
     }
 
     pub fn len(&self) -> V::Ones {
