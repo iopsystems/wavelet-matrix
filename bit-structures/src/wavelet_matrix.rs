@@ -280,7 +280,10 @@ impl WaveletMatrix<Dense> {
         // It also requires O(2^num_levels) space. So, we check whether the number of data points
         // is less than 2^num_levels, and if so use the scalable algorithm, and otherise use the
         // the efficient algorithm.
-        let levels = if num_levels <= (data.len().ilog2() as usize) {
+        let len = data.len();
+        let levels = if len == 0 {
+            vec![]
+        } else if num_levels <= (len.ilog2() as usize) {
             build_bitvecs(data, num_levels)
         } else {
             build_bitvecs_large_alphabet(data, num_levels)
@@ -666,7 +669,10 @@ pub fn num_levels_for_symbol(symbol: u32) -> usize {
 impl<V: BitVec> WaveletMatrix<V> {
     pub fn from_bitvecs(levels: Vec<V>, max_symbol: u32) -> WaveletMatrix<V> {
         let max_level = levels.len() - 1;
-        let len = levels.first().map(|level| level.universe_size()).unwrap();
+        let len = levels
+            .first()
+            .map(|level| level.universe_size())
+            .unwrap_or(V::zero());
         let levels: Vec<Level<V>> = levels
             .into_iter()
             .enumerate()
@@ -790,9 +796,15 @@ impl<V: BitVec> WaveletMatrix<V> {
         (symbol, count)
     }
 
-    pub fn select(&self, symbol: V::Ones, k: V::Ones, range: Range<V::Ones>) -> Option<V::Ones> {
-        // track the symbol down to a range on the bottom level
-        let range = self.locate(symbol, range, 0).1;
+    pub fn select(
+        &self,
+        symbol: V::Ones,
+        k: V::Ones,
+        range: Range<V::Ones>,
+        ignore_bits: usize,
+    ) -> Option<V::Ones> {
+        // track the symbol down to a range on the bottom-most level we're interested in
+        let range = self.locate(symbol, range, ignore_bits).1;
 
         // If there are fewer than `k+1` copies of `symbol` in the range, return early.
         if k < (range.end - range.start) {
@@ -802,7 +814,7 @@ impl<V: BitVec> WaveletMatrix<V> {
         // track the k-th occurrence of the symbol up from the bottom-most virtual level
         let mut index = range.start + k;
 
-        for level in self.levels.iter().rev() {
+        for level in self.levels(ignore_bits).rev() {
             let nz = level.num_zeros;
             // `index` represents an index on the level below this one, which may be
             // the bottom-most 'virtual' layer that contains all symbols in sorted order.
@@ -958,8 +970,8 @@ impl<V: BitVec> WaveletMatrix<V> {
 
     // Returns an iterator over levels from the high bit downwards, ignoring the
     // bottom `ignore_bits` levels.
-    fn levels(&self, ignore_bits: usize) -> impl Iterator<Item = &Level<V>> {
-        self.levels.iter().take(self.levels.len() - ignore_bits)
+    fn levels(&self, ignore_bits: usize) -> std::slice::Iter<Level<V>> {
+        self.levels[0..self.levels.len() - ignore_bits].iter()
     }
 
     pub fn len(&self) -> V::Ones {

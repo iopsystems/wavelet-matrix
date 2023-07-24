@@ -213,8 +213,16 @@ impl WaveletMatrix32 {
         SymbolCount { symbol, count }
     }
 
-    pub fn select(&self, symbol: Ones, k: Ones, range_lo: Ones, range_hi: Ones) -> Option<Ones> {
-        self.0.select(symbol, k, range_lo..range_hi)
+    pub fn select(
+        &self,
+        symbol: Ones,
+        k: Ones,
+        range_lo: Ones,
+        range_hi: Ones,
+        ignore_bits: Ones,
+    ) -> Option<Ones> {
+        self.0
+            .select(symbol, k, range_lo..range_hi, ignore_bits as usize)
     }
 
     pub fn morton_masks_for_dims(&self, dims: u32) -> Result<JsValue, String> {
