@@ -35,4 +35,10 @@ impl SparseBitVec32 {
     pub fn len(&self) -> Ones {
         self.0.universe_size()
     }
+    pub fn encode(&self) -> Vec<u8> {
+        self.0.encode()
+    }
+    pub fn decode(data: Vec<u8>) -> Self {
+        Self(SparseBitVec::decode(data))
+    }
 }

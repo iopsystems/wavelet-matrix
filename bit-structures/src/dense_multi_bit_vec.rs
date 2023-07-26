@@ -1,3 +1,5 @@
+use log::info;
+
 use crate::bincode_helpers::{borrow_decode_impl, decode_impl, encode_impl};
 use crate::bit_block::BitBlock;
 use crate::bit_vec::BitVec;
@@ -43,6 +45,8 @@ impl<Ones: BitBlock> BitVecFromSorted for DenseMultiBitVec<Ones> {
             cumulative_run_lengths.push(count);
         }
         let num_ones = Ones::from_usize(ones.len());
+        info!("universe_size: {:?}", universe_size);
+        info!("num_ones: {:?}", num_ones);
         Self {
             occupancy: DenseBitVec::from_sorted(ones, universe_size),
             multiplicity: SparseBitVec::from_sorted(
