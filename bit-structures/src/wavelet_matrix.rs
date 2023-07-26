@@ -709,6 +709,10 @@ impl<V: BitVec> WaveletMatrix<V> {
         range: Range<V::Ones>,
         ignore_bits: usize,
     ) -> (V::Ones, Range<V::Ones>) {
+        assert!(
+            symbol <= V::Ones::from_u32(self.max_symbol),
+            "symbol must not exceed max_symbol"
+        );
         let mut preceding_count = V::Ones::zero();
         let mut range = range;
         for level in self.levels(ignore_bits) {
@@ -737,6 +741,10 @@ impl<V: BitVec> WaveletMatrix<V> {
             .iter()
             // todo: make a struct for this function: (symbol, preceding_count, start, end)
             .flat_map(|symbol| {
+                assert!(
+                    *symbol <= V::Ones::from_u32(self.max_symbol),
+                    "symbol must not exceed max_symbol"
+                );
                 ranges
                     .iter()
                     .map(|range| (*symbol, V::zero(), range.start, range.end))
@@ -839,6 +847,35 @@ impl<V: BitVec> WaveletMatrix<V> {
             // is represented by a 1-bit on this level; specifically, the `index - nz`-th 1-bit.
             //
             // In either case, we can use bitvector select to compute the index on this level.
+            if index < level.nz {
+                // `index` represents a left child on this level, represented by the `index`-th 0-bit.
+                index = level.bv.select0(index);
+            } else {
+                // `index` represents a right child on this level, represented by the `index-nz`-th 1-bit.
+                index = level.bv.select1(index - level.nz);
+            }
+        }
+        Some(index)
+    }
+
+    // same as select, but select the k-th instance from the back
+    pub fn select_last(
+        &self,
+        symbol: V::Ones,
+        k: V::Ones,
+        range: Range<V::Ones>,
+        ignore_bits: usize,
+    ) -> Option<V::Ones> {
+        if symbol > V::Ones::from_u32(self.max_symbol) {
+            return None;
+        }
+        let range = self.locate(symbol, range, ignore_bits).1;
+        let count = range.end - range.start;
+        if count <= k {
+            return None;
+        }
+        let mut index = range.end - k - V::one(); // - 1 because end is exclusive
+        for level in self.levels(ignore_bits).rev() {
             if index < level.nz {
                 // `index` represents a left child on this level, represented by the `index`-th 0-bit.
                 index = level.bv.select0(index);

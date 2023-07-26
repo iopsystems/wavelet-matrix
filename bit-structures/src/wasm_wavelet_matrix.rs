@@ -225,6 +225,18 @@ impl WaveletMatrix32 {
             .select(symbol, k, range_lo..range_hi, ignore_bits as usize)
     }
 
+    pub fn select_last(
+        &self,
+        symbol: Ones,
+        k: Ones,
+        range_lo: Ones,
+        range_hi: Ones,
+        ignore_bits: Ones,
+    ) -> Option<Ones> {
+        self.0
+            .select_last(symbol, k, range_lo..range_hi, ignore_bits as usize)
+    }
+
     pub fn morton_masks_for_dims(&self, dims: u32) -> Result<JsValue, String> {
         let masks = self.0.morton_masks_for_dims(dims);
         Ok(Uint32Array::from(&masks[..]).into())
