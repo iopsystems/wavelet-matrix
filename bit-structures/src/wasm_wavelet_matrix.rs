@@ -32,6 +32,8 @@ impl WaveletMatrix32 {
         range_hi: Option<Box<[u32]>>,
         symbols: Box<[u32]>,
     ) -> Result<JsValue, String> {
+        // todo 🐛: there is a bug where we ignore range_lo if no range_hi is specified and vice versa.
+        // we should instead ask that both be either some or none, or interpolate the other as 0/wm.len().
         let ranges = if let (Some(range_lo), Some(range_hi)) = (range_lo, range_hi) {
             assert!(range_lo.len() == range_hi.len());
             let mut ranges = Vec::with_capacity(range_lo.len());
@@ -225,6 +227,10 @@ impl WaveletMatrix32 {
             .select(symbol, k, range_lo..range_hi, ignore_bits as usize)
     }
 
+    pub fn select_first_less_than(&self, p: Ones, range_lo: Ones, range_hi: Ones) -> Option<Ones> {
+        self.0.select_first_less_than(p, range_lo..range_hi)
+    }
+
     pub fn select_last(
         &self,
         symbol: Ones,
@@ -235,6 +241,10 @@ impl WaveletMatrix32 {
     ) -> Option<Ones> {
         self.0
             .select_last(symbol, k, range_lo..range_hi, ignore_bits as usize)
+    }
+
+    pub fn select_upwards(&self, index: Ones, ignore_bits: Ones) -> Option<Ones> {
+        self.0.select_upwards(index, ignore_bits as usize)
     }
 
     pub fn morton_masks_for_dims(&self, dims: u32) -> Result<JsValue, String> {

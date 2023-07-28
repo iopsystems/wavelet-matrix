@@ -3,7 +3,7 @@ use crate::bit_block::BitBlock;
 use crate::morton;
 use crate::nonempty_extent::Extent;
 use crate::{bit_buf::BitBuf, bit_vec::BitVec, dense_bit_vec::DenseBitVec};
-use num::{One, Zero};
+use num::{Bounded, One, Zero};
 use std::debug_assert;
 use std::{collections::VecDeque, ops::Range};
 
@@ -732,6 +732,62 @@ impl<V: BitVec> WaveletMatrix<V> {
         (preceding_count, range)
     }
 
+    // Returns the index of the first symbol less than p in the index range `range`.
+    // ("First" here is based on sequence order; we will return the leftmost such index).
+    pub fn select_first_less_than(&self, p: V::Ones, range: Range<V::Ones>) -> Option<V::Ones> {
+        let mut range = range;
+        let mut symbol = V::zero();
+        let mut best: Option<V::Ones> = None; // known best leftmost index of a symbol <= p in range
+        let max = Some(V::Ones::max_value()); // used as an initial value for the min reduction once a best candidate is found
+        let target = V::zero()..p;
+
+        for (level, ignore_bits) in self.levels(0).zip((0..self.num_levels()).rev()) {
+            let start = level.ranks(range.start); // start indices of left/right children
+            let end = level.ranks(range.end); // end indices of left/right children
+            let (left, mid, right) = level.splits(symbol); // value split points of left/right children
+
+            // left handling: either just recurse into left and don't look at right (if it is partial), or
+            // if it is complete, use it to update best.
+            // then, if right is full, then use it to update best; otherwise, recurse into right.
+
+            // todo: account for empty left/rights more cleanly (ie. stop if the left is empty)
+
+            if !fully_contains(&target, &(left..mid)) {
+                if start.0 != end.0 {
+                    // go left
+                    range = start.0..end.0;
+                } else {
+                    break;
+                }
+            } else {
+                if start.0 != end.0 {
+                    // update the best using the left node if it is nonempty
+                    best = best
+                        .or(max)
+                        .map(|x| x.min(self.select_upwards(start.0, ignore_bits).unwrap()));
+                }
+                if fully_contains(&target, &(mid..right)) {
+                    if start.1 != end.1 {
+                        // update the best using the right node if it is nonempty
+                        best = best
+                            .or(max)
+                            .map(|x| x.min(self.select_upwards(start.1, ignore_bits).unwrap()));
+                    }
+                    // since we fully contain both the left and right, no need to look further.
+                    break;
+                }
+                if start.1 != end.1 {
+                    // go right
+                    symbol += level.bit;
+                    range = level.nz + start.1..level.nz + end.1;
+                } else {
+                    break;
+                }
+            }
+        }
+        best
+    }
+
     pub fn locate_batch(
         &self,
         ranges: &[Range<V::Ones>],
@@ -828,34 +884,8 @@ impl<V: BitVec> WaveletMatrix<V> {
 
         // track the k-th occurrence of the symbol up from the bottom-most virtual level
         // or higher, if ignore_bits is non-zero.
-        let mut index = range.start + k;
-
-        for level in self.levels(ignore_bits).rev() {
-            // `index` represents an index on the level below this one, which may be
-            // the bottom-most 'virtual' layer that contains all symbols in sorted order.
-            //
-            // We want to determine the position of the element represented by `index` on
-            // this level, which we can do by "mapping" the index up to its parent node.
-            //
-            // `nz` tells us how many bits on the level below come from left children of
-            // the wavelet tree represented by this wavelet matrix. If the index < nz, that
-            // means that the index on the level below came from a left child on this level,
-            // which means that it must be represented by a 0-bit on this level; specifically,
-            // the `index`-th 0-bit, since the WT always represents a stable sort of its elements.
-            //
-            // On the other hand, if `index` came from a right child on this level, then it
-            // is represented by a 1-bit on this level; specifically, the `index - nz`-th 1-bit.
-            //
-            // In either case, we can use bitvector select to compute the index on this level.
-            if index < level.nz {
-                // `index` represents a left child on this level, represented by the `index`-th 0-bit.
-                index = level.bv.select0(index);
-            } else {
-                // `index` represents a right child on this level, represented by the `index-nz`-th 1-bit.
-                index = level.bv.select1(index - level.nz);
-            }
-        }
-        Some(index)
+        let index = range.start + k;
+        self.select_upwards(index, ignore_bits)
     }
 
     // same as select, but select the k-th instance from the back
@@ -874,8 +904,34 @@ impl<V: BitVec> WaveletMatrix<V> {
         if count <= k {
             return None;
         }
-        let mut index = range.end - k - V::one(); // - 1 because end is exclusive
+        let index = range.end - k - V::one(); // - 1 because end is exclusive
+        self.select_upwards(index, ignore_bits)
+    }
+
+    // This function abstracts the common second half of the select algorithm, once you've
+    // identified an index on the "bottom" level and want to bubble it back up to translate
+    // the "sorted" index from the bottom level to the index of that element in sequence order.
+    // We make this a pub fn since it could allow eg. external users of `locate` to efficiently
+    // select their chosen element. For example, perhaps we should remove `select_last`...
+    pub fn select_upwards(&self, index: V::Ones, ignore_bits: usize) -> Option<V::Ones> {
+        let mut index = index;
         for level in self.levels(ignore_bits).rev() {
+            // `index` represents an index on the level below this one, which may be
+            // the bottom-most 'virtual' layer that contains all symbols in sorted order.
+            //
+            // We want to determine the position of the element represented by `index` on
+            // this level, which we can do by "mapping" the index up to its parent node.
+            //
+            // `level.nz` tells us how many bits on the level below come from left children of
+            // the wavelet tree (represented by this wavelet matrix). If the index < nz, that
+            // means that the index on the level below came from a left child on this level,
+            // which means that it must be represented by a 0-bit on this level; specifically,
+            // the `index`-th 0-bit, since the WT always represents a stable sort of its elements.
+            //
+            // On the other hand, if `index` came from a right child on this level, then it
+            // is represented by a 1-bit on this level; specifically, the `index - nz`-th 1-bit.
+            //
+            // In either case, we can use bitvector select to compute the index on this level.
             if index < level.nz {
                 // `index` represents a left child on this level, represented by the `index`-th 0-bit.
                 index = level.bv.select0(index);

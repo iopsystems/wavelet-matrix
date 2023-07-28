@@ -19,10 +19,19 @@ impl<T: PrimInt> Extent<T> {
         self.start <= other.end && other.start <= self.end
     }
 
+    pub fn overlaps_range(&self, other: Range<T>) -> bool {
+        self.start < other.end && other.start <= self.end
+    }
+
     // Return true if self fully contains other
     pub fn fully_contains(&self, other: Extent<T>) -> bool {
         // if self starts before other, and self ends after other.
         self.start <= other.start && self.end >= other.end
+    }
+
+    pub fn fully_contains_range(&self, other: Range<T>) -> bool {
+        // if self starts before other, and self ends after other.
+        self.start <= other.start && self.end.saturating_add(T::one()) >= other.end
     }
 
     pub fn start(&self) -> T {
