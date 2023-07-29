@@ -227,8 +227,8 @@ impl WaveletMatrix32 {
             .select(symbol, k, range_lo..range_hi, ignore_bits as usize)
     }
 
-    pub fn select_first_less_than(&self, p: Ones, range_lo: Ones, range_hi: Ones) -> Option<Ones> {
-        self.0.select_first_less_than(p, range_lo..range_hi)
+    pub fn select_first_leq(&self, p: Ones, range_lo: Ones, range_hi: Ones) -> Option<Ones> {
+        self.0.select_first_leq(p, range_lo..range_hi)
     }
 
     pub fn select_last(

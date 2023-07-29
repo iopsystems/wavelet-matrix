@@ -734,12 +734,17 @@ impl<V: BitVec> WaveletMatrix<V> {
 
     // Returns the index of the first symbol less than p in the index range `range`.
     // ("First" here is based on sequence order; we will return the leftmost such index).
-    pub fn select_first_less_than(&self, p: V::Ones, range: Range<V::Ones>) -> Option<V::Ones> {
+    // Implements the following logic:
+    // selectFirstLeq = (arr, p, lo, hi) => {
+    //   let i = depths.slice(lo, hi).findIndex((x) => x <= p);
+    //   return i === -1 ? undefined : lo + i;
+    // }
+    pub fn select_first_leq(&self, p: V::Ones, range: Range<V::Ones>) -> Option<V::Ones> {
         let mut range = range;
         let mut symbol = V::zero();
         let mut best: Option<V::Ones> = None; // known best leftmost index of a symbol <= p in range
         let max = Some(V::Ones::max_value()); // used as an initial value for the min reduction once a best candidate is found
-        let target = V::zero()..p;
+        let target = Extent::new(V::zero(), p);
 
         for (level, ignore_bits) in self.levels(0).zip((0..self.num_levels()).rev()) {
             let start = level.ranks(range.start); // start indices of left/right children
@@ -751,8 +756,7 @@ impl<V: BitVec> WaveletMatrix<V> {
             // then, if right is full, then use it to update best; otherwise, recurse into right.
 
             // todo: account for empty left/rights more cleanly (ie. stop if the left is empty)
-
-            if !fully_contains(&target, &(left..mid)) {
+            if !target.fully_contains_range(left..mid) {
                 if start.0 != end.0 {
                     // go left
                     range = start.0..end.0;
@@ -766,7 +770,7 @@ impl<V: BitVec> WaveletMatrix<V> {
                         .or(max)
                         .map(|x| x.min(self.select_upwards(start.0, ignore_bits).unwrap()));
                 }
-                if fully_contains(&target, &(mid..right)) {
+                if target.fully_contains_range(mid..right) {
                     if start.1 != end.1 {
                         // update the best using the right node if it is nonempty
                         best = best

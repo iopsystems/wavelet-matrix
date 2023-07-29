@@ -1,7 +1,7 @@
 // Represents a non-empty inclusive range.
 // The non-empty invariant is upheld upon construction
 use num::PrimInt;
-use std::ops::Range;
+use std::{debug_assert, ops::Range};
 
 #[derive(Copy, Clone, Debug)]
 pub struct Extent<T: PrimInt> {
@@ -20,6 +20,8 @@ impl<T: PrimInt> Extent<T> {
     }
 
     pub fn overlaps_range(&self, other: Range<T>) -> bool {
+        // assumes non-degenerate range
+        debug_assert!(other.end > other.start);
         self.start < other.end && other.start <= self.end
     }
 
@@ -30,8 +32,10 @@ impl<T: PrimInt> Extent<T> {
     }
 
     pub fn fully_contains_range(&self, other: Range<T>) -> bool {
+        // assumes non-degenerate range
+        debug_assert!(other.end > other.start);
         // if self starts before other, and self ends after other.
-        self.start <= other.start && self.end.saturating_add(T::one()) >= other.end
+        self.start <= other.start && self.end >= other.end - T::one()
     }
 
     pub fn start(&self) -> T {
