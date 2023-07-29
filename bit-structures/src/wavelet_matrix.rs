@@ -751,7 +751,7 @@ impl<V: BitVec> WaveletMatrix<V> {
             if range.is_empty() {
                 break;
             }
-            
+
             let ignore_bits = self.num_levels() - i; // ignore all levels below this one when selecting
             let (left, mid, right) = level.splits(symbol); // value split points of left/right children
 
@@ -773,6 +773,7 @@ impl<V: BitVec> WaveletMatrix<V> {
             } else {
                 // we're in case 2, so update the best so far from the left child node if it is nonempty, then go right.
                 if start.0 != end.0 {
+                    // since this select is happening on the child level, un-ignore that level.
                     let candidate = self.select_upwards(start.0, ignore_bits - 1).unwrap();
                     best = best.min(candidate);
                     found = true;
