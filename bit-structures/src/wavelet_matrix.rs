@@ -3,7 +3,7 @@ use crate::bit_block::BitBlock;
 use crate::morton;
 use crate::nonempty_extent::Extent;
 use crate::{bit_buf::BitBuf, bit_vec::BitVec, dense_bit_vec::DenseBitVec};
-use num::{Bounded, One, Zero};
+use num::{One, Zero};
 use std::debug_assert;
 use std::{collections::VecDeque, ops::Range};
 
@@ -744,50 +744,38 @@ impl<V: BitVec> WaveletMatrix<V> {
         let mut range = range;
         let mut symbol = V::zero();
         let mut best: Option<V::Ones> = None; // known best leftmost index of a symbol <= p in range
-        let max = Some(V::Ones::max_value()); // used as an initial value for the min reduction once a best candidate is found
         let target = Extent::new(V::zero(), p);
 
         for (level, ignore_bits) in self.levels(0).zip((0..self.num_levels()).rev()) {
+            if range.is_empty() {
+                return best;
+            }
+
             let start = level.ranks(range.start); // start indices of left/right children
             let end = level.ranks(range.end); // end indices of left/right children
             let (left, mid, right) = level.splits(symbol); // value split points of left/right children
 
-            // left handling: either just recurse into left and don't look at right (if it is partial), or
-            // if it is complete, use it to update best.
-            // then, if right is full, then use it to update best; otherwise, recurse into right.
+            if target.fully_contains_range(left..right) {
+                return if ignore_bits == 0 {
+                    Some(range.start)
+                } else {
+                    let candidate = self.select_upwards(range.start, ignore_bits - 1);
+                    best.or(candidate).min(candidate)
+                };
+            }
 
-            // todo: account for empty left/rights more cleanly (ie. stop if the left is empty)
-            if !target.fully_contains_range(left..mid) {
+            if target.fully_contains_range(left..mid) {
+                // if left is nonempty, update best
                 if start.0 != end.0 {
-                    // go left
-                    range = start.0..end.0;
-                } else {
-                    break;
+                    let candidate = self.select_upwards(start.0, ignore_bits);
+                    best = best.or(candidate).min(candidate);
                 }
+                // go right
+                symbol += level.bit;
+                range = level.nz + start.1..level.nz + end.1;
             } else {
-                if start.0 != end.0 {
-                    // update the best using the left node if it is nonempty
-                    best = best
-                        .or(max)
-                        .map(|x| x.min(self.select_upwards(start.0, ignore_bits).unwrap()));
-                }
-                if target.fully_contains_range(mid..right) {
-                    if start.1 != end.1 {
-                        // update the best using the right node if it is nonempty
-                        best = best
-                            .or(max)
-                            .map(|x| x.min(self.select_upwards(start.1, ignore_bits).unwrap()));
-                    }
-                    // since we fully contain both the left and right, no need to look further.
-                    break;
-                }
-                if start.1 != end.1 {
-                    // go right
-                    symbol += level.bit;
-                    range = level.nz + start.1..level.nz + end.1;
-                } else {
-                    break;
-                }
+                // go left
+                range = start.0..end.0;
             }
         }
         best
