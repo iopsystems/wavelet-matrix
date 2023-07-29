@@ -739,6 +739,7 @@ impl<V: BitVec> WaveletMatrix<V> {
     //   let i = depths.slice(lo, hi).findIndex((x) => x <= p);
     //   return i === -1 ? undefined : lo + i;
     // }
+    // note: since the left extent of the target is always zero, we could optimize the containment checks.
     pub fn select_first_leq(&self, p: V::Ones, range: Range<V::Ones>) -> Option<V::Ones> {
         let mut range = range;
         let mut symbol = V::zero();
