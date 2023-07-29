@@ -3,7 +3,7 @@ use crate::bit_block::BitBlock;
 use crate::morton;
 use crate::nonempty_extent::Extent;
 use crate::{bit_buf::BitBuf, bit_vec::BitVec, dense_bit_vec::DenseBitVec};
-use num::{One, Zero};
+use num::{Bounded, One, Zero};
 use std::debug_assert;
 use std::{collections::VecDeque, ops::Range};
 
@@ -743,42 +743,51 @@ impl<V: BitVec> WaveletMatrix<V> {
     pub fn select_first_leq(&self, p: V::Ones, range: Range<V::Ones>) -> Option<V::Ones> {
         let mut range = range;
         let mut symbol = V::zero();
-        let mut best: Option<V::Ones> = None; // known best leftmost index of a symbol <= p in range
+        let mut best = V::Ones::max_value(); // known best leftmost index of a symbol <= p in range
         let target = Extent::new(V::zero(), p);
 
-        for (level, ignore_bits) in self.levels(0).zip((0..self.num_levels()).rev()) {
+        for (i, level) in self.levels(0).enumerate() {
+            let ignore_bits = self.num_levels() - i - 1;
+
+            //.zip((0..self.num_levels()).rev()) {
+            // if there are no elements in this wavelet tree node, return the best candidate we've seen.
             if range.is_empty() {
-                return best;
+                return Some(best);
+            }
+
+            let (left, mid, right) = level.splits(symbol); // value split points of left/right children
+
+            // if this wavelet tree node is fully contained in the target range, update best and return.
+            if target.fully_contains_range(left..right) {
+                let candidate = self.select_upwards(range.start, ignore_bits).unwrap();
+                return Some(best.min(candidate));
             }
 
             let start = level.ranks(range.start); // start indices of left/right children
             let end = level.ranks(range.end); // end indices of left/right children
-            let (left, mid, right) = level.splits(symbol); // value split points of left/right children
-
-            if target.fully_contains_range(left..right) {
-                return if ignore_bits == 0 {
-                    Some(range.start)
-                } else {
-                    let candidate = self.select_upwards(range.start, ignore_bits - 1);
-                    best.or(candidate).min(candidate)
-                };
-            }
 
             if target.fully_contains_range(left..mid) {
+                // this node only contains the left child but not the right child.
+                // we know that it does not fully contain the right child since otherwise
+                // the preceding if condition would have held, and we would have already returned.
+
                 // if left is nonempty, update best
                 if start.0 != end.0 {
-                    let candidate = self.select_upwards(start.0, ignore_bits);
-                    best = best.or(candidate).min(candidate);
+                    let candidate = self.select_upwards(start.0, ignore_bits + 1).unwrap();
+                    best = best.min(candidate);
                 }
                 // go right
                 symbol += level.bit;
                 range = level.nz + start.1..level.nz + end.1;
             } else {
+                // the left child is not fully contained in the range, which means that
+                // it is actually larger than the range; let's try recursing into it.
+
                 // go left
                 range = start.0..end.0;
             }
         }
-        best
+        None
     }
 
     pub fn locate_batch(
