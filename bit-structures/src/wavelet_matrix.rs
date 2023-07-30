@@ -636,9 +636,12 @@ impl<V: BitVec> Level<V> {
         (left, left + self.bit, left + self.bit + self.bit)
     }
 
-    pub fn children(&self, left: V::Ones, mask: u32) -> (Extent<V::Ones>, Extent<V::Ones>) {
-        let mid = left + self.bit;
-        let right = mid + self.bit;
+    pub fn child_symbol_extents(
+        &self,
+        left: V::Ones,
+        mask: u32,
+    ) -> (Extent<V::Ones>, Extent<V::Ones>) {
+        let (left, mid, right) = self.splits(left);
         (
             mask_extent(Extent::new(left, mid - V::one()), mask),
             mask_extent(Extent::new(mid, right - V::one()), mask),
@@ -984,6 +987,53 @@ impl<V: BitVec> WaveletMatrix<V> {
         symbol
     }
 
+    pub fn masked_quantile_experiment(
+        &self,
+        k: V::Ones,
+        range: Range<V::Ones>,
+        symbol_extent: Extent<V::Ones>,
+        masks: Option<&[u32]>,
+    ) -> (V::Ones, V::Ones) {
+        assert!(k < range.end - range.start);
+        let mut k = k;
+        let mut range = range;
+        let mut symbol = V::zero();
+        let masks = masks.unwrap_or(&self.default_masks);
+        for (level, mask) in self.levels.iter().zip(masks.iter().copied()) {
+            // todo: figure out how to do a symbol-ranged masked quantile operation...
+            // would let us do median filtering in 2d i think maybe. not sure.
+            //
+            // think of it first as 1d symbol range quantile - we may need a traversal here
+            // since we will need to descend down until the left node is fully contained in
+            // our symbol range so we can subtract the k... might even need a dfs style traversal
+            // rather than levelwise bfs since the bottommost left decision will tell us whether
+            // to expand the right node or not? not sure...
+            let symbol_extent = mask_extent(symbol_extent, mask);
+
+            // if start.0 != end.0 && symbol_extent.overlaps(left) {
+
+            // if start.1 != end.1 && symbol_extent.overlaps(right) {
+
+            // let (left_symbols, right_symbols) = level.child_symbol_extents(symbol, mask);
+
+            let start = level.ranks(range.start);
+            let end = level.ranks(range.end);
+            let left_count = end.0 - start.0;
+
+            if k < left_count {
+                // go left
+                range = start.0..end.0;
+            } else {
+                // go right
+                k -= left_count;
+                symbol += level.bit;
+                range = level.nz + start.1..level.nz + end.1;
+            }
+        }
+        let count = range.end - range.start;
+        (symbol, count)
+    }
+
     // Count the number of occurrences of each symbol in the given index range.
     // Returns a vec of (input_index, symbol, start, end) tuples.
     // Returning (start, end) rather than a count `end - start` is helpful for
@@ -1024,7 +1074,7 @@ impl<V: BitVec> WaveletMatrix<V> {
                 let mut rank_cache = RangedRankCache::new();
                 for x in xs {
                     let symbol = x.val.symbol;
-                    let (left, right) = level.children(symbol, mask);
+                    let (left, right) = level.child_symbol_extents(symbol, mask);
                     let (start, end) = rank_cache.get(x.val.start, x.val.end, level);
 
                     // if there are any left children, go left
