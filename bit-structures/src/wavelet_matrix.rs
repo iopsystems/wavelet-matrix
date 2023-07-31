@@ -739,16 +739,24 @@ impl<V: BitVec> WaveletMatrix<V> {
     // ("First" here is based on sequence order; we will return the leftmost such index).
     // Implements the following logic:
     // selectFirstLeq = (arr, p, lo, hi) => {
-    //   let i = depths.slice(lo, hi).findIndex((x) => x <= p);
+    //   let i = arr.slice(lo, hi).findIndex((x) => x <= p);
     //   return i === -1 ? undefined : lo + i;
     // }
     // note: since the left extent of the target is always zero, we could optimize the containment checks.
+    //
     pub fn select_first_leq(&self, p: V::Ones, range: Range<V::Ones>) -> Option<V::Ones> {
         let mut range = range; // index range
         let mut symbol = V::zero(); // leftmost symbol in the currently-considered wavelet tree node
         let mut best = V::Ones::max_value();
         let mut found = false;
         let target = Extent::new(V::zero(), p);
+
+        // todo: select_[first/last[_[leq/geq].
+        // The idea is to return the minimum select position across all the nodes that could
+        // potentially contain the first symbol <= p.
+        //
+        // We find the first left node that is fully contained in the [0, p] symbol range,
+        // and then we recurse into the right child if it is partly contained, and repeat.
 
         for (i, level) in self.levels.iter().enumerate() {
             if range.is_empty() {
@@ -985,53 +993,6 @@ impl<V: BitVec> WaveletMatrix<V> {
             }
         }
         symbol
-    }
-
-    pub fn masked_quantile_experiment(
-        &self,
-        k: V::Ones,
-        range: Range<V::Ones>,
-        symbol_extent: Extent<V::Ones>,
-        masks: Option<&[u32]>,
-    ) -> (V::Ones, V::Ones) {
-        assert!(k < range.end - range.start);
-        let mut k = k;
-        let mut range = range;
-        let mut symbol = V::zero();
-        let masks = masks.unwrap_or(&self.default_masks);
-        for (level, mask) in self.levels.iter().zip(masks.iter().copied()) {
-            // todo: figure out how to do a symbol-ranged masked quantile operation...
-            // would let us do median filtering in 2d i think maybe. not sure.
-            //
-            // think of it first as 1d symbol range quantile - we may need a traversal here
-            // since we will need to descend down until the left node is fully contained in
-            // our symbol range so we can subtract the k... might even need a dfs style traversal
-            // rather than levelwise bfs since the bottommost left decision will tell us whether
-            // to expand the right node or not? not sure...
-            let symbol_extent = mask_extent(symbol_extent, mask);
-
-            // if start.0 != end.0 && symbol_extent.overlaps(left) {
-
-            // if start.1 != end.1 && symbol_extent.overlaps(right) {
-
-            // let (left_symbols, right_symbols) = level.child_symbol_extents(symbol, mask);
-
-            let start = level.ranks(range.start);
-            let end = level.ranks(range.end);
-            let left_count = end.0 - start.0;
-
-            if k < left_count {
-                // go left
-                range = start.0..end.0;
-            } else {
-                // go right
-                k -= left_count;
-                symbol += level.bit;
-                range = level.nz + start.1..level.nz + end.1;
-            }
-        }
-        let count = range.end - range.start;
-        (symbol, count)
     }
 
     // Count the number of occurrences of each symbol in the given index range.
