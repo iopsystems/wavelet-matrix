@@ -26,6 +26,26 @@ fn box_to_ref<T: ?Sized>(b: &Option<Box<T>>) -> Option<&T> {
 
 #[wasm_bindgen]
 impl WaveletMatrix32 {
+    pub fn multi_range_quantile(
+        &self,
+        k: Ones,
+        range_lo: Option<Box<[u32]>>,
+        range_hi: Option<Box<[u32]>>,
+    ) -> SymbolCount {
+        let ranges = if let (Some(range_lo), Some(range_hi)) = (range_lo, range_hi) {
+            assert!(range_lo.len() == range_hi.len());
+            let mut ranges = Vec::with_capacity(range_lo.len());
+            for (&lo, &hi) in range_lo.iter().zip(range_hi.iter()) {
+                ranges.push(lo..hi)
+            }
+            ranges
+        } else {
+            vec![0..self.0.len()]
+        };
+        let (symbol, count) = self.0.multi_range_quantile(k, &ranges);
+        SymbolCount { symbol, count }
+    }
+
     pub fn locate_raw(
         &self,
         range_lo: Option<Box<[u32]>>,

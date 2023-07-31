@@ -1082,6 +1082,70 @@ impl<V: BitVec> WaveletMatrix<V> {
         traversal
     }
 
+    // Return the k-th element from the sorted concatenation of all the ranges.
+    // note: i think this even works for overlapping or out-of-order ranges
+    pub fn multi_range_quantile(
+        &self,
+        k: V::Ones,
+        ranges: &[Range<V::Ones>],
+    ) -> (V::Ones, V::Ones) {
+        assert!(k.u32() < ranges.iter().map(|x| (x.end - x.start).u32()).sum());
+        let mut k = k;
+        let mut symbol = V::zero();
+
+        // todo: i think we can do this without a traversal since each range gets mapped to exactly 1 range each time
+
+        // start, end
+        let mut traversal = Traversal::new(ranges.iter().map(|range| (range.start, range.end)));
+
+        for level in self.levels(0) {
+            let mut total_left_count = V::zero();
+            traversal.traverse(|xs, go| {
+                for x in xs {
+                    let (start, end) = x.val;
+                    let start = level.ranks(start);
+                    let end = level.ranks(end);
+                    let left_count = end.0 - start.0;
+                    total_left_count += left_count;
+                    // go right (since we know it does push_back) to keep elements in the same order.
+                    // note: we could cache ranks to not have to redo them the second traversal
+                    go.right(*x);
+                }
+            });
+
+            // now determine whether we actually want to go left or right for the 'true' pass
+            let go_left = k < total_left_count;
+
+            traversal.traverse(|xs, go| {
+                for x in xs {
+                    let (start, end) = x.val;
+                    let start = level.ranks(start);
+                    let end = level.ranks(end);
+
+                    if go_left {
+                        // go left
+                        go.left(x.val((start.0, end.0)));
+                    } else {
+                        // go right
+                        go.right(x.val((level.nz + start.1, level.nz + end.1)));
+                    }
+                }
+            });
+
+            if !go_left {
+                symbol += level.bit;
+                k -= total_left_count;
+            }
+        }
+
+        let mut count = V::zero();
+        for x in traversal.results() {
+            count += x.val.1 - x.val.0;
+        }
+
+        (symbol, count)
+    }
+
     // Returns an iterator over levels from the high bit downwards, ignoring the
     // bottom `ignore_bits` levels.
     fn levels(&self, ignore_bits: usize) -> std::slice::Iter<Level<V>> {
