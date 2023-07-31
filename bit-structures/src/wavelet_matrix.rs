@@ -1092,45 +1092,35 @@ impl<V: BitVec> WaveletMatrix<V> {
         assert!(k.u32() < ranges.iter().map(|x| (x.end - x.start).u32()).sum());
         let mut k = k;
         let mut symbol = V::zero();
-
-        // todo: i think we can do this without a traversal since each range gets mapped to exactly 1 range each time
-
-        // start, end
-        let mut traversal = Traversal::new(ranges.iter().map(|range| (range.start, range.end)));
+        let mut ranges = Vec::from(ranges);
+        // scratch space for start/end ranks
+        let mut starts = vec![];
+        let mut ends = vec![];
 
         for level in self.levels(0) {
             let mut total_left_count = V::zero();
-            traversal.traverse(|xs, go| {
-                for x in xs {
-                    let (start, end) = x.val;
-                    let start = level.ranks(start);
-                    let end = level.ranks(end);
-                    let left_count = end.0 - start.0;
-                    total_left_count += left_count;
-                    // go right (since we know it does push_back) to keep elements in the same order.
-                    // note: we could cache ranks to not have to redo them the second traversal
-                    go.right(*x);
-                }
-            });
+            starts.clear();
+            ends.clear();
+            for range in &ranges {
+                let start = level.ranks(range.start);
+                let end = level.ranks(range.end);
+                let left_count = end.0 - start.0;
+                total_left_count += left_count;
+                starts.push(start);
+                ends.push(end);
+            }
 
             // now determine whether we actually want to go left or right for the 'true' pass
             let go_left = k < total_left_count;
 
-            traversal.traverse(|xs, go| {
-                for x in xs {
-                    let (start, end) = x.val;
-                    let start = level.ranks(start);
-                    let end = level.ranks(end);
-
-                    if go_left {
-                        // go left
-                        go.left(x.val((start.0, end.0)));
-                    } else {
-                        // go right
-                        go.right(x.val((level.nz + start.1, level.nz + end.1)));
-                    }
+            // avoid iterating over the start/end and use the answers we just cached
+            for ((range, start), end) in ranges.iter_mut().zip(starts.iter()).zip(ends.iter()) {
+                if go_left {
+                    *range = start.0..end.0;
+                } else {
+                    *range = level.nz + start.1..level.nz + end.1;
                 }
-            });
+            }
 
             if !go_left {
                 symbol += level.bit;
@@ -1139,8 +1129,8 @@ impl<V: BitVec> WaveletMatrix<V> {
         }
 
         let mut count = V::zero();
-        for x in traversal.results() {
-            count += x.val.1 - x.val.0;
+        for ranges in ranges {
+            count += ranges.end - ranges.start;
         }
 
         (symbol, count)
