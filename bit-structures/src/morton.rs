@@ -2,6 +2,40 @@
 // https://fgiesen.wordpress.com/2009/12/13/decoding-morton-codes/
 // Note: We can implelement 4d codes by performing two 2d interleavings.
 // Note: This encodes 2d as yxyxyxyx and 3d as zyxzyxzyxzyx.
+// as Tropf notes in his 2021 bigmin-litmax note -- but he puts x first,
+// whereas we have y first, so ours are **transposed** compared to the image below:
+//
+// Bitwise interleaving the 2D data (x,y) effects that the entire point field is alternatingly
+// devided up in x and y direction.
+//
+// The first division is in x direchtion and splits it into a low x-section and a high x-section
+//
+// These sections are divided in y direchtion; the sections are all split into a low y-section
+// and a high y-section
+//
+// These sections are divided in x direchtion; the sections are all split into a low x-section
+// and a high x-section
+//
+// etc etc
+//
+//          ---> x
+// |                       |                     |                   |
+// |                       |                     |                   |
+// v                       |                     |                   |
+// y       -  -  -  -  -   |  -  -  - -  -  -    |  -  -  -  -  -    |  -  -  -  -  -
+//                         |                     |                   |
+//                         |                     |                   |
+//                         |                     |                   |
+//                                               |
+//          -  -  -  -  -  -  -  -  - -  -  -    |    -  -  -  -  -  -  -  -  -  -  -
+//                                               |
+//                         |                     |                   |
+//                         |                     |                   |
+//                         |                     |                   |
+//          -  -  -  -  -  |   -  -    -  -  -   |   -  -  -  -  -   |  -  -  -  -  -
+//                         |                     |                   |
+//                         |                     |                   |
+//                         |                     |                   |
 
 pub const fn encode2(x: u32, y: u32) -> u32 {
     (part_1_by_1(y) << 1) + part_1_by_1(x)
