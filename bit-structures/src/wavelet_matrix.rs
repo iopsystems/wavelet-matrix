@@ -1082,8 +1082,27 @@ impl<V: BitVec> WaveletMatrix<V> {
         traversal
     }
 
+    // todo: approximate_sum(ignore_levels) -> (Ones, Ones)
+    // descend the tree, and at each level, the lower bound on the sum is the number
+    // of elements that went right times the level bit for that level.
+    // the upper bound is the lower bound, plus the total number of elements times
+    // 0b00001111 with a number of 1s equal to the number of remaining levels (ie.
+    // the upper bound is achieved if every element goes right on every remaining level).
+    // there is a perf optimization on the last level to not actually project down to the
+    // next level, since we don't need the elements on the virtual layer; just their sum.
+
     // Return the k-th element from the sorted concatenation of all the ranges.
     // note: i think this even works for overlapping or out-of-order ranges
+    // todo: after each iteration,
+    // 1. merge contiguous ranges
+    // 2. remove empty ranges
+    // since we don't care about how many we have and it is better to have less of them.
+    // i think we can use retain_mut.
+    // note: there is an optimization on the last level where we actually don't need to
+    // project everyone down to the next level; we only need to check ranges until we
+    // figure out the final bit of the returned symbol (and its index, which will be
+    // in the final range that tells us that. Ie. does this just mean avoid the second
+    // for loop after we determine go_left?
     pub fn multi_range_quantile(
         &self,
         k: V::Ones,
@@ -1129,6 +1148,7 @@ impl<V: BitVec> WaveletMatrix<V> {
         }
 
         let mut count = V::zero();
+        // note: can compute the index on the virtual bottom level
         for ranges in ranges {
             count += ranges.end - ranges.start;
         }
