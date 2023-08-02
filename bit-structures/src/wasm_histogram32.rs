@@ -9,8 +9,8 @@ use crate::{histogram, histogram::Histogram, sparse_bit_vec::SparseBitVec, wasm_
 
 type Ones = u32;
 // type V = SliceBitVec<Ones>;
-type V = SparseBitVec<Ones>;
-// type V = DenseMultiBitVec<Ones>;
+// type V = SparseBitVec<Ones>;
+type V = DenseMultiBitVec<Ones>;
 
 #[wasm_bindgen]
 pub struct Histogram32(Histogram<V>);

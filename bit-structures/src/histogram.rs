@@ -162,7 +162,7 @@ impl<V: MultiBitVec> HistogramBuilder<V> {
             acc += *x;
             *x = acc;
         }
-        // todo:
+        // todo: try a bitvec type that internally stores sparse (indexes, counts)
         Histogram::new(self.params, V::from_sorted(&cdf[..], acc + One::one()))
     }
 }

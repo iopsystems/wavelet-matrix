@@ -1,16 +1,17 @@
-use log::info;
+
 
 use crate::bincode_helpers::{borrow_decode_impl, decode_impl, encode_impl};
 use crate::bit_block::BitBlock;
 use crate::bit_vec::BitVec;
 use crate::bit_vec::BitVecFromSorted;
 use crate::bit_vec::MultiBitVec;
-use crate::dense_bit_vec::DenseBitVec;
 use crate::sparse_bit_vec::SparseBitVec;
 
+// note: maybe this isn't the right name – this is just a bitvec that encodes multiplicity explicitly,
+// rather than via repetition.
 #[derive(Debug)]
 pub struct DenseMultiBitVec<Ones: BitBlock> {
-    occupancy: DenseBitVec<Ones>,
+    occupancy: SparseBitVec<Ones>, // note: in some contexts, this makes sense as a dense bit vector (with small universe)
     multiplicity: SparseBitVec<Ones>,
     num_ones: Ones,
     universe_size: Ones,
@@ -26,18 +27,22 @@ impl<'de, Ones: BitBlock> bincode::BorrowDecode<'de> for DenseMultiBitVec<Ones> 
     borrow_decode_impl!(occupancy, multiplicity, num_ones, universe_size);
 }
 
+// note: i think this might still be messed up... maybe when there are repeated ones.
 impl<Ones: BitBlock> BitVecFromSorted for DenseMultiBitVec<Ones> {
     fn from_sorted(ones: &[Ones], universe_size: Ones) -> Self {
         assert!(ones.windows(2).all(|w| w[0] <= w[1])); // assert sorted
 
         // collapse runs of the same one index into a vec of cumulative run lengths
-        let mut cumulative_run_lengths = Vec::new();
+        let mut cumulative_run_lengths = vec![];
+        let mut deduped_ones = vec![];
         if let Some((&first, rest)) = ones.split_first() {
             let mut cur = first;
             let mut count = Ones::one();
+            deduped_ones.push(cur);
             for next in rest.iter().copied() {
                 if next != cur {
                     cumulative_run_lengths.push(count);
+                    deduped_ones.push(next);
                     cur = next;
                 }
                 count += Ones::one()
@@ -45,10 +50,9 @@ impl<Ones: BitBlock> BitVecFromSorted for DenseMultiBitVec<Ones> {
             cumulative_run_lengths.push(count);
         }
         let num_ones = Ones::from_usize(ones.len());
-        info!("universe_size: {:?}", universe_size);
-        info!("num_ones: {:?}", num_ones);
+        
         Self {
-            occupancy: DenseBitVec::from_sorted(ones, universe_size),
+            occupancy: SparseBitVec::from_sorted(&deduped_ones, universe_size),
             multiplicity: SparseBitVec::from_sorted(
                 &cumulative_run_lengths,
                 num_ones + Ones::one(),
