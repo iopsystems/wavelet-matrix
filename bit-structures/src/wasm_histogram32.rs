@@ -8,6 +8,8 @@ use crate::{histogram, histogram::Histogram, sparse_bit_vec::SparseBitVec, wasm_
 // - consider leaving the 32-bit-nese implicit, leaving the suffix off of the struct name (and using 64 for the larger versions).
 // - rename to all xxxx32 to xxxx64
 
+const MAX_INT_F64: f64 = ((1u64 << 53) - 1) as f64; // maximum representable int in f64
+
 type Ones = u64;
 // type V = SliceBitVec<Ones>;
 // type V = SparseBitVec<Ones>;
@@ -34,21 +36,21 @@ impl Histogram32 {
         bin_indices: &[usize],
         counts: &[f64],
     ) -> Histogram32 {
-        let max_int_f64 = ((1u64 << 53) - 1) as f64; // maximum representable int in f64
-        
         // note: bin indices and counts need to be parallel but need not be sorted.
         let mut b = Histogram::<V>::builder(a, b, n);
         for (&bin_index, &count) in bin_indices.iter().zip(counts.iter()) {
-            assert!(count <= max_int_f64);
+            assert!(count <= MAX_INT_F64);
             b.increment_index(bin_index, count as u64);
         }
         Histogram32(b.build())
     }
-    pub fn cumulative_count(&self, value: Ones) -> f64 {
-        self.0.cumulative_count(value) as f64
+    pub fn cumulative_count(&self, value: f64) -> f64 {
+        assert!(value <= MAX_INT_F64);
+        self.0.cumulative_count(value as u64) as f64
     }
-    pub fn cdf(&self, value: Ones) -> f64 {
-        self.0.cdf(value)
+    pub fn cdf(&self, value: f64) -> f64 {
+        assert!(value <= MAX_INT_F64);
+        self.0.cdf(value as u64)
     }
     pub fn quantile(&self, q: f64) -> f64 {
         self.0.quantile(q) as f64
