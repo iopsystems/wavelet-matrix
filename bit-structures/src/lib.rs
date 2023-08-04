@@ -26,6 +26,7 @@ mod wasm_utils;
 mod wasm_wavelet_matrix;
 mod wavelet_matrix;
 mod wasm_sparse_bit_vec_64;
+mod wasm_slice_bit_vec;
 
 // Called by our JS entry point
 #[wasm_bindgen(start)]
