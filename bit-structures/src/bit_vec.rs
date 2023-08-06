@@ -34,6 +34,11 @@ pub trait BitVecFromSorted: BitVec {
     fn from_sorted(ones: &[Self::Ones], len: Self::Ones) -> Self;
 }
 
+// pub trait MultiBitVecFromSorted: MultiBitVec {
+//     // construct from (index, weight) pairs.
+//     fn from_sorted(ones: &[Self::Ones], counts: &[Self::Ones], len: Self::Ones) -> Self;
+// }
+
 // note: the static bounds are to support deriving bincode implementations for all concrete subtypes.
 // i don't fully understand this stuff yet so it may be a bad idea, but so far all bitvecs hold no references
 // and therefore seem to be compatible with a 'static lifetime...

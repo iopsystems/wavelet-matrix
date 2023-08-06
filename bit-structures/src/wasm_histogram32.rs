@@ -1,5 +1,6 @@
 #![allow(unused_imports)]
 use crate::dense_multi_bit_vec::DenseMultiBitVec;
+use crate::histogram::HistogramParams;
 use crate::slice_bit_vec::SliceBitVec;
 use crate::wasm_histogram32;
 use crate::{histogram, histogram::Histogram, sparse_bit_vec::SparseBitVec, wasm_bindgen};
@@ -7,6 +8,7 @@ use crate::{histogram, histogram::Histogram, sparse_bit_vec::SparseBitVec, wasm_
 // todo:
 // - consider leaving the 32-bit-nese implicit, leaving the suffix off of the struct name (and using 64 for the larger versions).
 // - rename to all xxxx32 to xxxx64
+// - we currently construct sparse histograms inefficiently, since the builder creates the dense cdf.
 
 const MAX_INT_F64: f64 = ((1u64 << 53) - 1) as f64; // maximum representable int in f64
 
@@ -32,10 +34,19 @@ impl Histogram32 {
     pub fn from_bin_counts(
         a: u32,
         b: u32,
-        n: u32,
+        n: Option<u32>,
         bin_indices: &[usize],
         counts: &[f64],
     ) -> Histogram32 {
+        // compute an n value from the maximum bin index if one is not provided.
+        // this matters for now because the builder will preallocate an array for the pdf,
+        // and the cdf will be larger, too.
+        let n = n.unwrap_or_else(|| {
+            let p = HistogramParams::new(a, b, 64);
+            let max_value = p.high(*bin_indices.iter().max().unwrap_or(&0) as u32);
+            (max_value as f64).log2().ceil() as u32
+        });
+        // log::info!("n: {}", n);
         // note: bin indices and counts need to be parallel but need not be sorted.
         let mut b = Histogram::<V>::builder(a, b, n);
         for (&bin_index, &count) in bin_indices.iter().zip(counts.iter()) {

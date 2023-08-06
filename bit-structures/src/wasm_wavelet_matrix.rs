@@ -171,13 +171,17 @@ impl WaveletMatrix32 {
 
         let mut traversal = self.0.counts(&ranges, symbols, masks);
 
+        // this can be expensive but makes processing more convenient downstream
+        let results = traversal.results();
+        results.sort_by(|a, b| a.key.cmp(&b.key));
+
         let mut input_index = Vec::new();
         let mut symbol = Vec::new();
         let mut start = Vec::new();
         let mut end = Vec::new();
         // add this for now, even though it could be computed from start and end.
         let mut count = Vec::new();
-        for x in traversal.results() {
+        for x in results {
             input_index.push(Ones::try_from(x.key).unwrap());
             symbol.push(x.val.symbol);
             start.push(x.val.start);
