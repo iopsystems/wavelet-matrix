@@ -22,6 +22,9 @@ pub struct Histogram<V: MultiBitVec + BitVecFromSorted> {
     params: HistogramParams,
 
     // A bitvector representing the cumulative counts for each bin.
+    // The bin index is represented implicitly, and the cumulative
+    // count for each bin is recorded in the bitvector. (Zero-count
+    // bins have the same count as their preceding bin.)
     cdf: V,
 
     // The total number of values added to this histogram
@@ -131,9 +134,12 @@ impl<V: MultiBitVec> Histogram<V> {
     }
 }
 
+// perhaps this is more of a DenseHistogramBuilder, and we can have
+// a fellow SparseHistogramBuilder that keeps a small key-value map instead?
 pub struct HistogramBuilder<V: MultiBitVec> {
     params: HistogramParams,
     pdf: Box<[V::Ones]>,
+    max_nonzero_bin: usize,
 }
 
 impl<V: MultiBitVec> HistogramBuilder<V> {
@@ -141,29 +147,37 @@ impl<V: MultiBitVec> HistogramBuilder<V> {
         let params = HistogramParams::new(a, b, n);
         let num_bins = params.num_bins();
         let pdf = vec![V::zero(); num_bins as usize].into();
-        HistogramBuilder { params, pdf }
+        HistogramBuilder {
+            params,
+            pdf,
+            max_nonzero_bin: 0,
+        }
     }
 
     // Increment the count in a bin corresponding to a data value
     pub fn increment_value(&mut self, value: V::Ones, count: V::Ones) {
-        let bin_index = self.params.bin_index(value.u64());
-        self.pdf[bin_index as usize] += count;
+        let bin_index = self.params.bin_index(value.u64()) as usize;
+        self.max_nonzero_bin = self.max_nonzero_bin.max(bin_index);
+        self.pdf[bin_index] += count;
     }
 
     // Increment the count in a bin at a particular index
     pub fn increment_index(&mut self, bin_index: usize, count: V::Ones) {
+        self.max_nonzero_bin = self.max_nonzero_bin.max(bin_index);
         self.pdf[bin_index] += count;
     }
 
     pub fn build(self) -> Histogram<V> {
         let mut acc = V::zero();
         let mut cdf = self.pdf;
-        for x in cdf.iter_mut() {
+        for x in cdf[..=self.max_nonzero_bin].iter_mut() {
             acc += *x;
             *x = acc;
         }
-        // todo: try a bitvec type that internally stores sparse (indexes, counts)
-        Histogram::new(self.params, V::from_sorted(&cdf[..], acc + One::one()))
+        Histogram::new(
+            self.params,
+            V::from_sorted(&cdf[..=self.max_nonzero_bin], acc + One::one()),
+        )
     }
 }
 

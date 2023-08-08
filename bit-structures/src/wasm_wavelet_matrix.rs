@@ -76,7 +76,9 @@ impl WaveletMatrix32 {
         let mut end = Vec::new();
         // let num_symbols = symbols.len();
         let num_ranges = ranges.len();
-        for x in traversal.results() {
+        let results = traversal.results();
+
+        for x in results {
             symbol_index.push((x.key / num_ranges) as u32);
             range_index.push((x.key % num_ranges) as u32);
             symbol.push(x.val.0);
@@ -171,16 +173,21 @@ impl WaveletMatrix32 {
 
         let mut traversal = self.0.counts(&ranges, symbols, masks);
 
-        // this can be expensive but makes processing more convenient downstream
-        let results = traversal.results();
-        results.sort_by(|a, b| a.key.cmp(&b.key));
-
         let mut input_index = Vec::new();
         let mut symbol = Vec::new();
         let mut start = Vec::new();
         let mut end = Vec::new();
         // add this for now, even though it could be computed from start and end.
         let mut count = Vec::new();
+
+        let results = traversal.results();
+
+        // sort by input index, then symbol
+        // todo: conduct careful benchmarking in practical scenarios
+        // to determine whether to sort the results thusly or not.
+        // in some scenarios it can improve the speed of downstream processing.
+        results.sort_by_key(|x| (x.key, x.val.symbol));
+
         for x in results {
             input_index.push(Ones::try_from(x.key).unwrap());
             symbol.push(x.val.symbol);

@@ -12,10 +12,7 @@ use crate::{histogram, histogram::Histogram, sparse_bit_vec::SparseBitVec, wasm_
 
 const MAX_INT_F64: f64 = ((1u64 << 53) - 1) as f64; // maximum representable int in f64
 
-type Ones = u64;
-// type V = SliceBitVec<Ones>;
-// type V = SparseBitVec<Ones>;
-type V = DenseMultiBitVec<Ones>;
+type V = DenseMultiBitVec<u64>;
 
 #[wasm_bindgen]
 pub struct Histogram32(Histogram<V>);
@@ -165,12 +162,14 @@ impl HistogramBuilder32 {
         HistogramBuilder32(p)
     }
 
-    pub fn increment_value(&mut self, value: Ones, count: Ones) {
-        self.0.increment_value(value, count)
+    pub fn increment_value(&mut self, value: f64, count: f64) {
+        assert!(value <= MAX_INT_F64 && count <= MAX_INT_F64);
+        self.0.increment_value(value as u64, count as u64)
     }
 
-    pub fn increment_index(&mut self, bin_index: usize, count: Ones) {
-        self.0.increment_index(bin_index, count)
+    pub fn increment_index(&mut self, bin_index: usize, count: f64) {
+        assert!(count <= MAX_INT_F64);
+        self.0.increment_index(bin_index, count as u64)
     }
 
     pub fn build(self) -> Histogram32 {
